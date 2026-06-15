@@ -215,16 +215,29 @@ void 代码生成器::生成(const 程序& 程序) {
     模块->getOrInsertFunction("映射获取", 映射获取类型);
 
     for (const auto& 全局变量 : 程序.全局变量) {
-        llvm::ConstantInt* 初始值 = nullptr;
-        if (全局变量->初始值 && 全局变量->初始值->类型 == 表达式类型::整数) {
-            初始值 = llvm::ConstantInt::get(上下文, llvm::APInt(32, static_cast<const 整数表达式&>(*全局变量->初始值).值));
-        } else if (全局变量->初始值 && 全局变量->初始值->类型 == 表达式类型::布尔值) {
-            初始值 = llvm::ConstantInt::get(上下文, llvm::APInt(32, static_cast<const 布尔表达式&>(*全局变量->初始值).值 ? 1 : 0));
+        if (全局变量->初始值 && 全局变量->初始值->类型 == 表达式类型::字符串) {
+            // 字符串全局变量
+            const auto& str = static_cast<const 字符串表达式&>(*全局变量->初始值);
+            llvm::Constant* strConst = llvm::ConstantDataArray::getString(上下文, str.值);
+            auto* 全局 = new llvm::GlobalVariable(*模块, strConst->getType(), true,
+                llvm::GlobalValue::InternalLinkage, strConst, ".str." + 全局变量->变量名);
+            // 创建指针全局变量
+            auto* 指针全局 = new llvm::GlobalVariable(*模块, llvm::PointerType::get(上下文, 0), false,
+                llvm::GlobalValue::ExternalLinkage, 全局, 全局变量->变量名);
+            符号表实例.声明全局变量(全局变量->变量名, 指针全局);
+            符号表实例.设置指针变量(全局变量->变量名);
         } else {
-            初始值 = llvm::ConstantInt::get(上下文, llvm::APInt(32, 0));
+            llvm::ConstantInt* 初始值 = nullptr;
+            if (全局变量->初始值 && 全局变量->初始值->类型 == 表达式类型::整数) {
+                初始值 = llvm::ConstantInt::get(上下文, llvm::APInt(32, static_cast<const 整数表达式&>(*全局变量->初始值).值));
+            } else if (全局变量->初始值 && 全局变量->初始值->类型 == 表达式类型::布尔值) {
+                初始值 = llvm::ConstantInt::get(上下文, llvm::APInt(32, static_cast<const 布尔表达式&>(*全局变量->初始值).值 ? 1 : 0));
+            } else {
+                初始值 = llvm::ConstantInt::get(上下文, llvm::APInt(32, 0));
+            }
+            auto* 全局 = new llvm::GlobalVariable(*模块, llvm::Type::getInt32Ty(上下文), false, llvm::GlobalValue::ExternalLinkage, 初始值, 全局变量->变量名);
+            符号表实例.声明全局变量(全局变量->变量名, 全局);
         }
-        auto* 全局 = new llvm::GlobalVariable(*模块, llvm::Type::getInt32Ty(上下文), false, llvm::GlobalValue::ExternalLinkage, 初始值, 全局变量->变量名);
-        符号表实例.声明全局变量(全局变量->变量名, 全局);
     }
 
     调试打印("[代码生成器] 预声明完成，开始生成函数");
@@ -820,6 +833,7 @@ llvm::Value* 代码生成器::生成表达式(const 表达式& 表达式) {
             const auto& 二元 = static_cast<const 二元运算表达式&>(表达式);
             if (二元.操作符 == 二元操作符::逻辑或) {
                 llvm::Value* 左 = 生成表达式(*二元.左操作数);
+                if (左->getType()->isIntegerTy(1)) 左 = 构建器->CreateZExt(左, llvm::Type::getInt32Ty(上下文));
                 llvm::Value* 左结果 = 构建器->CreateICmpNE(左, llvm::ConstantInt::get(上下文, llvm::APInt(32, 0)), "lortmp");
                 llvm::Function* 当前函数 = 构建器->GetInsertBlock()->getParent();
                 llvm::BasicBlock* 右块 = llvm::BasicBlock::Create(上下文, "lor_rhs", 当前函数);
@@ -828,6 +842,7 @@ llvm::Value* 代码生成器::生成表达式(const 表达式& 表达式) {
                 llvm::BasicBlock* 左块 = 构建器->GetInsertBlock();
                 构建器->SetInsertPoint(右块);
                 llvm::Value* 右 = 生成表达式(*二元.右操作数);
+                if (右->getType()->isIntegerTy(1)) 右 = 构建器->CreateZExt(右, llvm::Type::getInt32Ty(上下文));
                 llvm::Value* 右结果 = 构建器->CreateICmpNE(右, llvm::ConstantInt::get(上下文, llvm::APInt(32, 0)), "lortmp2");
                 右块 = 构建器->GetInsertBlock();
                 构建器->CreateBr(合并块);
@@ -840,6 +855,7 @@ llvm::Value* 代码生成器::生成表达式(const 表达式& 表达式) {
             }
             if (二元.操作符 == 二元操作符::逻辑与) {
                 llvm::Value* 左 = 生成表达式(*二元.左操作数);
+                if (左->getType()->isIntegerTy(1)) 左 = 构建器->CreateZExt(左, llvm::Type::getInt32Ty(上下文));
                 llvm::Value* 左结果 = 构建器->CreateICmpNE(左, llvm::ConstantInt::get(上下文, llvm::APInt(32, 0)), "landtmp");
                 llvm::Function* 当前函数 = 构建器->GetInsertBlock()->getParent();
                 llvm::BasicBlock* 右块 = llvm::BasicBlock::Create(上下文, "land_rhs", 当前函数);
@@ -848,6 +864,7 @@ llvm::Value* 代码生成器::生成表达式(const 表达式& 表达式) {
                 llvm::BasicBlock* 左块 = 构建器->GetInsertBlock();
                 构建器->SetInsertPoint(右块);
                 llvm::Value* 右 = 生成表达式(*二元.右操作数);
+                if (右->getType()->isIntegerTy(1)) 右 = 构建器->CreateZExt(右, llvm::Type::getInt32Ty(上下文));
                 llvm::Value* 右结果 = 构建器->CreateICmpNE(右, llvm::ConstantInt::get(上下文, llvm::APInt(32, 0)), "landtmp2");
                 右块 = 构建器->GetInsertBlock();
                 构建器->CreateBr(合并块);
