@@ -5,9 +5,12 @@ CXXFLAGS = -std=c++17 -Wall -Wextra -g \
            -I$(LLVM_PREFIX)/include \
            -D_GNU_SOURCE -D__STDC_CONSTANT_MACROS \
            -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS
-LDFLAGS = -L$(LLVM_PREFIX)/lib -lLLVM-22 -lshell32
-SRCS = 源/主程序.cpp 源/词法分析器.cpp 源/语法分析器.cpp 源/代码生成器.cpp 源/字节码.cpp 源/字节码编译器.cpp
-OBJS = $(patsubst 源/%.cpp,构建/%.o,$(SRCS))
+LDFLAGS = -L$(LLVM_PREFIX)/lib -lLLVM-22 -lshell32 -lws2_32
+SRCS = 源/主程序.cpp \
+       源/前端/词法分析器.cpp 源/前端/语法分析器.cpp \
+       源/后端/代码生成器.cpp 源/后端/代码生成器_语句.cpp 源/后端/代码生成器_表达式.cpp \
+       源/虚拟机/字节码.cpp 源/虚拟机/字节码编译器.cpp 源/虚拟机/虚拟机.cpp
+OBJS = $(SRCS:.cpp=.o)
 COMPILER = 日月.exe
 EXAMPLE_SRC = 示例/控制流.心
 TARGET = 构建/输出.exe
@@ -36,12 +39,18 @@ $(COMPILER): $(OBJS)
 	MSYS_NO_PATHCONV=1 ./$(COMPILER) --调试 $(EXAMPLE_SRC) $(TARGET) && ./$(TARGET)
 
 清理:
-	rm -rf 构建 $(COMPILER)
+	rm -rf 构建 $(COMPILER) 源/**/*.o 源/*.o
 
 测试:
-	$(CXX) $(CXXFLAGS) -I源 -o 构建/单元测试.exe 测试/单元测试.cpp 源/词法分析器.cpp 源/语法分析器.cpp && 构建/单元测试.exe
+	$(CXX) $(CXXFLAGS) -I源 -o 构建/单元测试.exe 测试/单元测试.cpp 源/前端/词法分析器.cpp 源/前端/语法分析器.cpp && 构建/单元测试.exe
 
-构建/%.o: 源/%.cpp | 构建
+测试语言: $(COMPILER)
+	MSYS_NO_PATHCONV=1 ./$(COMPILER) 测试/语言特性测试.心 构建/语言测试 && ./构建/语言测试.exe
+
+测试语言VM: $(COMPILER)
+	MSYS_NO_PATHCONV=1 ./$(COMPILER) --运行 测试/语言特性测试.心
+
+%.o: %.cpp
 	MSYS_NO_PATHCONV=1 $(CXX) $(CXXFLAGS) -c $< -o $@
 
 # 解析器生成器
@@ -49,37 +58,55 @@ $(COMPILER): $(OBJS)
 	cd 工具 && $(MAKE)
 
 生成: 生成器
-	工具/解析器生成器.exe 日月.语法 生成
+	工具/解析器生成器.exe 语法/日月.语法 生成
 
-# 自举测试
-自举: $(COMPILER)
-	@echo "=== Stage 0: 基础功能 ==="
-	MSYS_NO_PATHCONV=1 ./$(COMPILER) 自举/stage0_基础.心 构建/stage0 && ./构建/stage0.exe
+# 日月编译器验证
+编译器: $(COMPILER)
+	@echo "=== 日月编译器验证 ==="
+	@echo "[种子] 种子验证..."
+	MSYS_NO_PATHCONV=1 ./$(COMPILER) 编译器/种子验证.心 构建/种子验证 && ./构建/种子验证.exe
 	@echo ""
-	@echo "=== Stage 1: 表达式求值器 ==="
-	MSYS_NO_PATHCONV=1 ./$(COMPILER) 自举/stage1_求值器.心 构建/stage1 && ./构建/stage1.exe
+	@echo "[词法] 词法器..."
+	MSYS_NO_PATHCONV=1 ./$(COMPILER) 编译器/词法器.心 构建/词法器 && ./构建/词法器.exe
 	@echo ""
-	@echo "=== Stage 2: 词法分析器 ==="
-	MSYS_NO_PATHCONV=1 ./$(COMPILER) 自举/stage2_词法器.心 构建/stage2 && ./构建/stage2.exe
+	@echo "[语法] 语法器..."
+	MSYS_NO_PATHCONV=1 ./$(COMPILER) 编译器/语法器.心 构建/语法器 && ./构建/语法器.exe
 	@echo ""
-	@echo "=== Stage 3: 子集编译器 ==="
-	MSYS_NO_PATHCONV=1 ./$(COMPILER) 自举/stage3_编译器.心 构建/stage3 && ./构建/stage3.exe
-	@echo ""
-	@echo "=== 自举测试全部通过 ==="
+	@echo "=== 编译器验证完成 ==="
 
-自举VM: $(COMPILER)
-	@echo "=== Stage 0 (VM) ==="
-	MSYS_NO_PATHCONV=1 ./$(COMPILER) --运行 自举/stage0_基础.心
+编译器虚拟机: $(COMPILER)
+	@echo "=== 日月编译器验证 (虚拟机) ==="
+	@echo "[种子] 种子验证..."
+	MSYS_NO_PATHCONV=1 ./$(COMPILER) --运行 编译器/种子验证.心
 	@echo ""
-	@echo "=== Stage 1 (VM) ==="
-	MSYS_NO_PATHCONV=1 ./$(COMPILER) --运行 自举/stage1_求值器.心
+	@echo "[词法] 词法器..."
+	MSYS_NO_PATHCONV=1 ./$(COMPILER) --运行 编译器/词法器.心
 	@echo ""
-	@echo "=== Stage 2 (VM) ==="
-	MSYS_NO_PATHCONV=1 ./$(COMPILER) --运行 自举/stage2_词法器.心
+	@echo "[语法] 语法器..."
+	MSYS_NO_PATHCONV=1 ./$(COMPILER) --运行 编译器/语法器.心
 	@echo ""
-	@echo "=== Stage 3 (VM) ==="
-	MSYS_NO_PATHCONV=1 ./$(COMPILER) --运行 自举/stage3_编译器.心
-	@echo ""
-	@echo "=== 自举测试全部通过 (VM) ==="
+	@echo "=== 编译器验证完成 (虚拟机) ==="
 
-.PHONY: all 运行 虚拟机 调试 清理 测试 生成器 生成 自举 自举VM
+# 开发工具
+工具/格式化工具.exe: 工具/格式化工具.cpp
+	$(CXX) $(CXXFLAGS) -o 工具/格式化工具.exe 工具/格式化工具.cpp -lshell32
+
+工具/包管理器.exe: 工具/包管理器.cpp
+	$(CXX) $(CXXFLAGS) -o 工具/包管理器.exe 工具/包管理器.cpp -lshell32
+
+工具: 工具/格式化工具.exe 工具/包管理器.exe
+	@echo "工具已生成:"
+	@echo "  工具/格式化工具.exe  - 代码格式化"
+	@echo "  工具/包管理器.exe    - 包管理"
+
+格式化: 工具/格式化工具.exe
+	@echo "格式化示例..."
+	工具/格式化工具.exe 示例/控制流.心
+
+包初始化: 工具/包管理器.exe
+	工具/包管理器.exe 初始化
+
+包列表: 工具/包管理器.exe
+	工具/包管理器.exe 列表
+
+.PHONY: all 运行 虚拟机 调试 清理 测试 测试语言 测试语言VM 生成器 生成 编译器 编译器虚拟机 工具 格式化 包初始化 包列表

@@ -1,8 +1,8 @@
-#include "语法分析器.h"
-#include "代码生成器.h"
-#include "字节码编译器.h"
-#include "虚拟机.h"
-#include "公共.h"
+#include "前端/语法分析器.h"
+#include "后端/代码生成器.h"
+#include "虚拟机/字节码编译器.h"
+#include "虚拟机/虚拟机.h"
+#include "前端/公共.h"
 #include "llvm/IR/LLVMContext.h"
 #include <iostream>
 #include <string>
@@ -33,11 +33,14 @@ static std::vector<std::string> 获取UTF8参数() {
 
 void 显示用法(const std::string& 程序名) {
     std::cerr << "用法:" << std::endl;
-    std::cerr << "  " << 程序名 << " [--调试] 输入文件.心 输出文件    (编译为原生可执行文件)" << std::endl;
+    std::cerr << "  " << 程序名 << " [--调试] [--优化] 输入文件.心 输出文件    (编译为原生可执行文件)" << std::endl;
     std::cerr << "  " << 程序名 << " --运行 输入文件.心               (虚拟机直接运行)" << std::endl;
     std::cerr << "  " << 程序名 << " --字节码 输入文件.心 输出.riue   (编译为字节码)" << std::endl;
     std::cerr << "  " << 程序名 << " --执行 输出.riue                (执行字节码文件)" << std::endl;
     std::cerr << "  " << 程序名 << " --交互                         (交互式REPL)" << std::endl;
+    std::cerr << std::endl;
+    std::cerr << "优化选项:" << std::endl;
+    std::cerr << "  --优化    启用编译器优化（尾递归优化、死代码消除、内联优化、循环优化）" << std::endl;
 }
 
 static bool 是完整语句(const std::string& 输入) {
@@ -133,7 +136,7 @@ int 运行REPL() {
             }
 
             auto 程序 = std::make_unique<struct 程序>();
-            auto 主函数 = std::make_unique<函数>("__repl_main", std::vector<函数参数>{}, std::string(""), std::move(语句列表));
+            auto 主函数 = std::make_unique<函数>("__repl_main", std::vector<std::string>{}, std::vector<函数参数>{}, std::string(""), std::move(语句列表));
             程序->函数列表.push_back(std::move(主函数));
 
             字节码编译器 编译器;
@@ -163,21 +166,27 @@ int main() {
 
     std::string 模式 = "编译";
     int 输入文件索引 = 1;
+    bool 启用优化 = false;
 
-    if (参数[1] == "--调试") {
-        调试模式 = true;
-        输入文件索引 = 2;
-    } else if (参数[1] == "--运行") {
-        模式 = "运行";
-        输入文件索引 = 2;
-    } else if (参数[1] == "--字节码") {
-        模式 = "字节码";
-        输入文件索引 = 2;
-    } else if (参数[1] == "--执行") {
-        模式 = "执行";
-        输入文件索引 = 2;
-    } else if (参数[1] == "--交互") {
-        return 运行REPL();
+    for (int i = 1; i < argc; i++) {
+        if (参数[i] == "--调试") {
+            调试模式 = true;
+            输入文件索引 = i + 1;
+        } else if (参数[i] == "--优化") {
+            启用优化 = true;
+            输入文件索引 = i + 1;
+        } else if (参数[i] == "--运行") {
+            模式 = "运行";
+            输入文件索引 = i + 1;
+        } else if (参数[i] == "--字节码") {
+            模式 = "字节码";
+            输入文件索引 = i + 1;
+        } else if (参数[i] == "--执行") {
+            模式 = "执行";
+            输入文件索引 = i + 1;
+        } else if (参数[i] == "--交互") {
+            return 运行REPL();
+        }
     }
 
     if (输入文件索引 >= argc) {
@@ -279,11 +288,13 @@ int main() {
             }
 
             llvm::LLVMContext 上下文;
-            代码生成器 生成器(上下文, 输出文件);
+            代码生成器 生成器(上下文, 输出文件, 启用优化);
             生成器.生成(*程序);
             生成器.生成可执行文件();
 
-            std::cout << "编译完成: " << 输出文件 << std::endl;
+            std::cout << "编译完成: " << 输出文件;
+            if (启用优化) std::cout << " (已优化)";
+            std::cout << std::endl;
             return 0;
         }
     } catch (const std::exception& e) {
