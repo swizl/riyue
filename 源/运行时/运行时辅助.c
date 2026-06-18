@@ -6,6 +6,9 @@
 #include <math.h>
 
 #ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
 #include <windows.h>
 #include <shellapi.h>
 #endif
@@ -925,6 +928,77 @@ long 获取目录项大小(int 索引) {
         return 目录项列表[索引].大小;
     }
     return 0;
+}
+
+// 递归遍历目录，收集所有文件到目录项列表
+int 递归遍历目录(const char* 路径, int 深度) {
+    int 开始索引 = 目录项数量;
+    
+#ifdef _WIN32
+    char 搜索路径[512];
+    snprintf(搜索路径, sizeof(搜索路径), "%s\\*", 路径);
+    
+    int 宽长度 = MultiByteToWideChar(CP_UTF8, 0, 搜索路径, -1, NULL, 0);
+    wchar_t* 宽路径 = (wchar_t*)malloc(宽长度 * sizeof(wchar_t));
+    MultiByteToWideChar(CP_UTF8, 0, 搜索路径, -1, 宽路径, 宽长度);
+    
+    WIN32_FIND_DATAW 查找数据;
+    HANDLE 句柄 = FindFirstFileW(宽路径, &查找数据);
+    free(宽路径);
+    
+    if (句柄 == INVALID_HANDLE_VALUE) {
+        return 0;
+    }
+    
+    do {
+        if (wcscmp(查找数据.cFileName, L".") == 0 || wcscmp(查找数据.cFileName, L"..") == 0) {
+            continue;
+        }
+        
+        if (目录项数量 >= 最大目录项数) break;
+        
+        int 名称长度 = WideCharToMultiByte(CP_UTF8, 0, 查找数据.cFileName, -1, NULL, 0, NULL, NULL);
+        WideCharToMultiByte(CP_UTF8, 0, 查找数据.cFileName, -1, 目录项列表[目录项数量].名称, 名称长度, NULL, NULL);
+        
+        目录项列表[目录项数量].是目录 = (查找数据.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) ? 1 : 0;
+        目录项列表[目录项数量].大小 = ((long long)查找数据.nFileSizeHigh << 32) | 查找数据.nFileSizeLow;
+        
+        目录项数量++;
+        
+        // 如果是目录，递归遍历
+        if ((查找数据.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) && 深度 > 0) {
+            char 子路径[512];
+            snprintf(子路径, sizeof(子路径), "%s/%s", 路径, 目录项列表[目录项数量 - 1].名称);
+            递归遍历目录(子路径, 深度 - 1);
+        }
+    } while (FindNextFileW(句柄, &查找数据));
+    
+    FindClose(句柄);
+#else
+    DIR* 目录 = opendir(路径);
+    if (!目录) return 0;
+    
+    struct dirent* 入口;
+    while ((入口 = readdir(目录)) != NULL) {
+        if (strcmp(入口->d_name, ".") == 0 || strcmp(入口->d_name, "..") == 0) continue;
+        if (目录项数量 >= 最大目录项数) break;
+        
+        strncpy(目录项列表[目录项数量].名称, 入口->d_name, 255);
+        目录项列表[目录项数量].名称[255] = '\0';
+        目录项列表[目录项数量].是目录 = (入口->d_type == DT_DIR) ? 1 : 0;
+        目录项列表[目录项数量].大小 = 0;
+        目录项数量++;
+        
+        if (入口->d_type == DT_DIR && 深度 > 0) {
+            char 子路径[512];
+            snprintf(子路径, sizeof(子路径), "%s/%s", 路径, 入口->d_name);
+            递归遍历目录(子路径, 深度 - 1);
+        }
+    }
+    closedir(目录);
+#endif
+    
+    return 目录项数量 - 开始索引;
 }
 
 // 删除目录（递归）

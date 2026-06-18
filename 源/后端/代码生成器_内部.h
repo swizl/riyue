@@ -20,6 +20,9 @@
 extern std::unordered_map<std::string, const 函数*> 全局函数定义映射;
 
 #ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
 #include <windows.h>
 inline int 执行命令(const std::string& 命令) {
     int 宽长度 = MultiByteToWideChar(CP_UTF8, 0, 命令.c_str(), (int)命令.size(), nullptr, 0);

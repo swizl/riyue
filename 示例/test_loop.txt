@@ -1,0 +1,6 @@
+// test
+函数 main {
+    loop (i: 0, 3) {
+        (i)print;
+    }
+}

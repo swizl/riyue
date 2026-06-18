@@ -6,6 +6,9 @@
 #include <iomanip>
 #include <vector>
 #ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
 #include <windows.h>
 #endif
 
@@ -24,7 +27,8 @@ static std::unordered_map<std::string, 标记类型> 关键字 = {
     {"整数", 标记类型::整数类型}, {"浮点", 标记类型::浮点类型}, {"布尔", 标记类型::布尔类型},
     {"字符串", 标记类型::字符串类型}, {"结构体", 标记类型::结构体},
     {"枚举", 标记类型::枚举},
-    {"真", 标记类型::真}, {"假", 标记类型::假}
+    {"真", 标记类型::真}, {"假", 标记类型::假},
+    {"入", 标记类型::入}
 };
 
 std::string 标记类型转字符串(标记类型 类型) {
@@ -88,6 +92,9 @@ std::string 标记类型转字符串(标记类型 类型) {
         case 标记类型::枚举: return "枚举";
         case 标记类型::真: return "真";
         case 标记类型::假: return "假";
+        case 标记类型::问号: return "问号";
+        case 标记类型::问问: return "问问";
+        case 标记类型::入: return "入";
         default: return "未知";
     }
 }
@@ -471,11 +478,15 @@ std::string 词法分析器::读取多字节字符() {
         }
         case '?': {
             前进字节(1);
+            if (字节() == '?') {
+                前进字节(1);
+                return 标记(标记类型::问问, "??", 当前行);
+            }
             if (字节() == '=') {
                 前进字节(1);
                 return 标记(标记类型::等于等于, "?=", 当前行);
             }
-            return 标记(标记类型::未知, "?", 当前行);
+            return 标记(标记类型::问号, "?", 当前行);
         }
         case '=': {
             前进字节(1);

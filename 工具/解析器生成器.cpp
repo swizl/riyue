@@ -1,6 +1,9 @@
 #include "解析器生成器.h"
 #include <filesystem>
 #ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
 #include <windows.h>
 #include <fstream>
 #include <codecvt>
@@ -263,6 +266,9 @@ void 解析器生成器::生成词法分析器源文件(const std::string& 输�
     文件 << "#include <iostream>" << std::endl;
     文件 << "#include <vector>" << std::endl;
     文件 << "#ifdef _WIN32" << std::endl;
+    文件 << "#ifndef WIN32_LEAN_AND_MEAN" << std::endl;
+    文件 << "#define WIN32_LEAN_AND_MEAN" << std::endl;
+    文件 << "#endif" << std::endl;
     文件 << "#include <windows.h>" << std::endl;
     文件 << "#endif" << std::endl;
     文件 << std::endl;

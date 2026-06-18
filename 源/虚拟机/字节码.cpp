@@ -65,6 +65,11 @@ std::string 操作码名称(操作码 码) {
         case 操作码::创建结构体: return "创建结构体";
         case 操作码::存储成员: return "存储成员";
         case 操作码::加载成员: return "加载成员";
+        case 操作码::列出目录运算: return "列出目录运算";
+        case 操作码::获取目录项名称运算: return "获取目录项名称运算";
+        case 操作码::获取目录项是否目录运算: return "获取目录项是否目录运算";
+        case 操作码::获取目录项大小运算: return "获取目录项大小运算";
+        case 操作码::递归遍历目录运算: return "递归遍历目录运算";
         default: return "未知";
     }
 }

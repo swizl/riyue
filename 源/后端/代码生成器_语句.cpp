@@ -127,6 +127,24 @@ void 代码生成器::生成语句(const 语句& 语句) {
             }
             break;
         }
+        case 语句类型::复合赋值: {
+            const auto& 复合赋值 = static_cast<const 复合赋值语句&>(语句);
+            llvm::Value* 变量地址 = 符号表实例.获取变量值(复合赋值.变量名);
+            if (!变量地址) throw std::runtime_error("未定义的变量: " + 复合赋值.变量名);
+            llvm::Value* 当前值 = 构建器->CreateLoad(llvm::Type::getInt32Ty(上下文), 变量地址, 复合赋值.变量名);
+            llvm::Value* 增量值 = 生成表达式(*复合赋值.值表达式);
+            llvm::Value* 新值;
+            switch (复合赋值.操作) {
+                case 二元操作符::加法: 新值 = 构建器->CreateAdd(当前值, 增量值); break;
+                case 二元操作符::减法: 新值 = 构建器->CreateSub(当前值, 增量值); break;
+                case 二元操作符::乘法: 新值 = 构建器->CreateMul(当前值, 增量值); break;
+                case 二元操作符::除法: 新值 = 构建器->CreateSDiv(当前值, 增量值); break;
+                case 二元操作符::取模: 新值 = 构建器->CreateSRem(当前值, 增量值); break;
+                default: throw std::runtime_error("不支持的复合赋值操作");
+            }
+            构建器->CreateStore(新值, 变量地址);
+            break;
+        }
         case 语句类型::下标赋值语句: {
             const auto& 下标赋值 = static_cast<const 下标赋值语句&>(语句);
             if (符号表实例.是常量(下标赋值.数组名)) {

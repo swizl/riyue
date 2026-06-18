@@ -8,6 +8,7 @@
 #include <cstring>
 #include <cmath>
 #include <algorithm>
+#include <cstdint>
 
 // 运行时函数声明
 extern "C" {
@@ -38,6 +39,13 @@ extern "C" {
     void 动态数组删除(动态数组* arr, int 索引);
     void 动态数组插入(动态数组* arr, int 索引, int 值);
     void 释放动态数组(动态数组* arr);
+
+    // 目录操作
+    int 列出目录(const char* 路径);
+    const char* 获取目录项名称(int 索引);
+    int 获取目录项是否目录(int 索引);
+    int64_t 获取目录项大小(int 索引);
+    int 递归遍历目录(const char* 路径, int 深度);
 }
 
 class 虚拟机 {

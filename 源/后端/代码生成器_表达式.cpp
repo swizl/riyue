@@ -1058,6 +1058,15 @@ llvm::Value* 代码生成器::生成表达式(const 表达式& 表达式) {
                 模块->getOrInsertFunction("获取目录项大小", 函数类型);
                 return 构建器->CreateCall(模块->getFunction("获取目录项大小"), {索引});
             }
+            if (调用.函数名 == "递归遍历目录") {
+                llvm::Value* 路径 = 生成表达式(*调用.参数列表[0]);
+                llvm::Value* 深度 = 生成表达式(*调用.参数列表[1]);
+                llvm::FunctionType* 函数类型 = llvm::FunctionType::get(
+                    llvm::Type::getInt32Ty(上下文),
+                    {llvm::PointerType::get(上下文, 0), llvm::Type::getInt32Ty(上下文)}, false);
+                模块->getOrInsertFunction("递归遍历目录", 函数类型);
+                return 构建器->CreateCall(模块->getFunction("递归遍历目录"), {路径, 深度});
+            }
             if (调用.函数名 == "删除目录") {
                 llvm::Value* 路径 = 生成表达式(*调用.参数列表[0]);
                 llvm::FunctionType* 函数类型 = llvm::FunctionType::get(
@@ -1962,6 +1971,103 @@ llvm::Value* 代码生成器::生成表达式(const 表达式& 表达式) {
                 return llvm::ConstantInt::get(上下文, llvm::APInt(32, 0));
             }
             return 构建器->CreateCall(右函数, 参数值, 管道.右函数名 + "_管道结果");
+        }
+        case 表达式类型::条件表达式: {
+            const auto& 条件表达 = static_cast<const 条件表达式&>(表达式);
+            llvm::Value* 条件值 = 生成表达式(*条件表达.条件);
+            
+            // 转换条件为布尔值
+            llvm::Value* 条件布尔 = 条件值;
+            if (条件值->getType()->isIntegerTy()) {
+                条件布尔 = 构建器->CreateICmpNE(条件值, llvm::ConstantInt::get(上下文, llvm::APInt(32, 0)));
+            }
+            
+            // 创建基本块
+            llvm::Function* 当前函数 = 构建器->GetInsertBlock()->getParent();
+            llvm::BasicBlock* 真值块 = llvm::BasicBlock::Create(上下文, "三元真", 当前函数);
+            llvm::BasicBlock* 假值块 = llvm::BasicBlock::Create(上下文, "三元假");
+            llvm::BasicBlock* 合并块 = llvm::BasicBlock::Create(上下文, "三元合并");
+            
+            构建器->CreateCondBr(条件布尔, 真值块, 假值块);
+            
+            // 生成真值
+            构建器->SetInsertPoint(真值块);
+            llvm::Value* 真值 = 生成表达式(*条件表达.真值);
+            构建器->CreateBr(合并块);
+            真值块 = 构建器->GetInsertBlock();
+            
+            // 生成假值
+            当前函数->insert(当前函数->end(), 假值块);
+            构建器->SetInsertPoint(假值块);
+            llvm::Value* 假值 = 生成表达式(*条件表达.假值);
+            构建器->CreateBr(合并块);
+            假值块 = 构建器->GetInsertBlock();
+            
+            // 合并
+            当前函数->insert(当前函数->end(), 合并块);
+            构建器->SetInsertPoint(合并块);
+            
+            // 创建 PHI 节点
+            llvm::PHINode* phi = 构建器->CreatePHI(真值->getType(), 2);
+            phi->addIncoming(真值, 真值块);
+            phi->addIncoming(假值, 假值块);
+            return phi;
+        }
+        case 表达式类型::空值合并: {
+            const auto& 空值合并表达 = static_cast<const 空值合并表达式&>(表达式);
+            llvm::Value* 左值 = 生成表达式(*空值合并表达.左表达式);
+            llvm::Value* 右值 = 生成表达式(*空值合并表达.右表达式);
+            
+            // 对于整数类型，检查左值是否为0（空值）
+            if (左值->getType()->isIntegerTy() && 右值->getType()->isIntegerTy()) {
+                // 创建基本块
+                llvm::Function* 当前函数 = 构建器->GetInsertBlock()->getParent();
+                llvm::BasicBlock* 检查块 = 构建器->GetInsertBlock();
+                llvm::BasicBlock* 使用默认块 = llvm::BasicBlock::Create(上下文, "空值使用默认", 当前函数);
+                llvm::BasicBlock* 合并块 = llvm::BasicBlock::Create(上下文, "空值合并", 当前函数);
+                
+                // 检查左值是否为0
+                llvm::Value* 是空 = 构建器->CreateICmpEQ(左值, llvm::ConstantInt::get(上下文, llvm::APInt(32, 0)));
+                构建器->CreateCondBr(是空, 使用默认块, 合并块);
+                
+                // 使用默认值
+                构建器->SetInsertPoint(使用默认块);
+                构建器->CreateBr(合并块);
+                使用默认块 = 构建器->GetInsertBlock();
+                
+                // 合并
+                构建器->SetInsertPoint(合并块);
+                
+                llvm::PHINode* phi = 构建器->CreatePHI(左值->getType(), 2);
+                phi->addIncoming(左值, 检查块);
+                phi->addIncoming(右值, 使用默认块);
+                return phi;
+            }
+            
+            // 对于指针类型，检查左值是否为null
+            if (左值->getType()->isPointerTy() && 右值->getType()->isPointerTy()) {
+                llvm::Function* 当前函数 = 构建器->GetInsertBlock()->getParent();
+                llvm::BasicBlock* 检查块 = 构建器->GetInsertBlock();
+                llvm::BasicBlock* 使用默认块 = llvm::BasicBlock::Create(上下文, "空值使用默认", 当前函数);
+                llvm::BasicBlock* 合并块 = llvm::BasicBlock::Create(上下文, "空值合并", 当前函数);
+                
+                llvm::Value* 是空 = 构建器->CreateICmpEQ(左值, llvm::ConstantPointerNull::get(llvm::PointerType::get(上下文, 0)));
+                构建器->CreateCondBr(是空, 使用默认块, 合并块);
+                
+                构建器->SetInsertPoint(使用默认块);
+                构建器->CreateBr(合并块);
+                使用默认块 = 构建器->GetInsertBlock();
+                
+                构建器->SetInsertPoint(合并块);
+                
+                llvm::PHINode* phi = 构建器->CreatePHI(左值->getType(), 2);
+                phi->addIncoming(左值, 检查块);
+                phi->addIncoming(右值, 使用默认块);
+                return phi;
+            }
+            
+            // 默认返回左值
+            return 左值;
         }
         default:
             throw std::runtime_error("未知表达式类型");

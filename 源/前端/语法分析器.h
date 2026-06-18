@@ -28,6 +28,8 @@ private:
     std::unique_ptr<表达式> 解析逻辑与表达式();
     std::unique_ptr<表达式> 解析逻辑或表达式();
     std::unique_ptr<表达式> 解析管道表达式();
+    std::unique_ptr<表达式> 解析空值合并表达式();
+    std::unique_ptr<表达式> 解析条件表达式();
 
 public:
     std::unique_ptr<表达式> 解析表达式();

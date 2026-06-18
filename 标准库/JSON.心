@@ -1,0 +1,30 @@
+// 日月标准库 - JSON工具
+// 封装已有的JSON运行时函数
+
+函数 (json:字符串, key:字符串)(0 = 结果:整数) {
+    (json, key)JSON获取整数 = 结果;
+}
+
+函数 (json:字符串, key:字符串)("" = 结果:字符串) {
+    (json, key)JSON获取字符串 = 结果;
+}
+
+函数 (json:字符串, key:字符串)(0.0 = 结果:浮点数) {
+    (json, key)JSON获取浮点 = 结果;
+}
+
+函数 (json:字符串, key:字符串)(0 = 结果:整数) {
+    (json, key)JSON获取布尔 = 结果;
+}
+
+函数 (json:字符串, key:字符串)(0 = 结果:整数) {
+    (json, key)JSON存在 = 结果;
+}
+
+函数 (key:字符串, value:整数)("" = 结果:字符串) {
+    (key, value)JSON创建整数 = 结果;
+}
+
+函数 (key:字符串, value:字符串)("" = 结果:字符串) {
+    (key, value)JSON创建字符串 = 结果;
+}

@@ -7,6 +7,9 @@
 #include <sstream>
 #include <filesystem>
 #include <algorithm>
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
 #include <windows.h>
 #include <shellapi.h>
 
