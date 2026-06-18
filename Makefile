@@ -10,7 +10,8 @@ SRCS = 源/主程序.cpp \
        源/前端/词法分析器.cpp 源/前端/语法分析器.cpp \
        源/后端/代码生成器.cpp 源/后端/代码生成器_语句.cpp 源/后端/代码生成器_表达式.cpp \
        源/虚拟机/字节码.cpp 源/虚拟机/字节码编译器.cpp 源/虚拟机/虚拟机.cpp
-OBJS = $(SRCS:.cpp=.o)
+RTSRC = 源/运行时/运行时辅助.c
+OBJS = $(SRCS:.cpp=.o) 源/运行时/运行时辅助.o
 COMPILER = 日月.exe
 EXAMPLE_SRC = 示例/控制流.心
 TARGET = 构建/输出.exe
@@ -50,8 +51,17 @@ $(COMPILER): $(OBJS)
 测试语言VM: $(COMPILER)
 	MSYS_NO_PATHCONV=1 ./$(COMPILER) --运行 测试/语言特性测试.心
 
+格式化器: 源/格式化器.cpp
+	$(CXX) -std=c++17 -Wall -g -finput-charset=UTF-8 -fexec-charset=UTF-8 -o 格式化器.exe 源/格式化器.cpp
+
+包管理器: 源/包管理器.cpp
+	$(CXX) -std=c++17 -Wall -g -finput-charset=UTF-8 -fexec-charset=UTF-8 -o 包管理器.exe 源/包管理器.cpp
+
 %.o: %.cpp
 	MSYS_NO_PATHCONV=1 $(CXX) $(CXXFLAGS) -c $< -o $@
+
+%.o: %.c
+	MSYS_NO_PATHCONV=1 clang -g -finput-charset=UTF-8 -fexec-charset=UTF-8 -c $< -o $@
 
 # 解析器生成器
 生成器:

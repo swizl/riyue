@@ -9,6 +9,37 @@
 #include <cmath>
 #include <algorithm>
 
+// 运行时函数声明
+extern "C" {
+    int 获取参数数量();
+    const char* 获取参数(int 索引);
+    void 输出错误(const char* 消息);
+    void 输出错误值(int 值);
+    int 创建目录(const char* 路径);
+    int 目录存在(const char* 路径);
+    int 删除文件(const char* 路径);
+    int 分割行数(const char* 文本);
+    const char* 获取行(const char* 文本, int 行号);
+    const char* 去除空白(const char* 文本);
+    const char* 转小写(const char* 文本);
+    const char* 转大写(const char* 文本);
+    int 字符串开头(const char* 文本, const char* 前缀);
+    int 字符串结尾(const char* 文本, const char* 后缀);
+    int 字符码(const char* 文本, int 位置);
+    const char* 字符(int 码点);
+
+    // 动态数组
+    typedef struct { int* 数据; int 大小; int 容量; } 动态数组;
+    动态数组* 创建动态数组();
+    void 动态数组添加(动态数组* arr, int 值);
+    int 动态数组获取(动态数组* arr, int 索引);
+    void 动态数组设置(动态数组* arr, int 索引, int 值);
+    int 动态数组大小(动态数组* arr);
+    void 动态数组删除(动态数组* arr, int 索引);
+    void 动态数组插入(动态数组* arr, int 索引, int 值);
+    void 释放动态数组(动态数组* arr);
+}
+
 class 虚拟机 {
     字节码 程序;
 

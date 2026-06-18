@@ -9,6 +9,8 @@ private:
     标记 _当前标记;
     std::vector<std::pair<std::string, std::vector<结构体成员>>> 结构体定义缓存;
     std::vector<std::string> 导入列表;
+    std::unordered_map<std::string, std::string> 导入别名映射;
+    std::unordered_map<std::string, std::vector<std::string>> 选择导入映射;
 
     void 前进();
     void 期望类型(标记类型 类型, const std::string& 信息);
@@ -25,6 +27,7 @@ private:
     std::unique_ptr<表达式> 解析位或表达式();
     std::unique_ptr<表达式> 解析逻辑与表达式();
     std::unique_ptr<表达式> 解析逻辑或表达式();
+    std::unique_ptr<表达式> 解析管道表达式();
 
 public:
     std::unique_ptr<表达式> 解析表达式();
@@ -44,4 +47,6 @@ public:
     const 标记& 当前标记() const { return _当前标记; }
     const std::vector<std::pair<std::string, std::vector<结构体成员>>>& 获取结构体定义() const { return 结构体定义缓存; }
     const std::vector<std::string>& 获取导入列表() const { return 导入列表; }
+    const std::unordered_map<std::string, std::string>& 获取导入别名映射() const { return 导入别名映射; }
+    const std::unordered_map<std::string, std::vector<std::string>>& 获取选择导入映射() const { return 选择导入映射; }
 };

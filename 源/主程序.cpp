@@ -10,6 +10,10 @@
 #include <windows.h>
 #include <shellapi.h>
 
+extern "C" {
+    void 设置参数(int argc, const char** argv);
+}
+
 bool 调试模式 = false;
 
 static std::string 宽字符转UTF8(const std::wstring& 宽串) {
@@ -136,7 +140,7 @@ int 运行REPL() {
             }
 
             auto 程序 = std::make_unique<struct 程序>();
-            auto 主函数 = std::make_unique<函数>("__repl_main", std::vector<std::string>{}, std::vector<函数参数>{}, std::string(""), std::move(语句列表));
+            auto 主函数 = std::make_unique<函数>("__repl_main", std::vector<std::string>{}, std::vector<函数参数>{}, std::vector<返回值描述>{}, std::move(语句列表));
             程序->函数列表.push_back(std::move(主函数));
 
             字节码编译器 编译器;
@@ -158,6 +162,11 @@ int 运行REPL() {
 int main() {
     auto 参数 = 获取UTF8参数();
     int argc = (int)参数.size();
+
+    // 设置命令行参数供运行时使用
+    std::vector<const char*> 参数指针;
+    for (const auto& arg : 参数) 参数指针.push_back(arg.c_str());
+    设置参数(argc, 参数指针.data());
 
     if (argc < 2) {
         显示用法(参数[0]);
@@ -253,8 +262,33 @@ int main() {
 
             // 处理导入
             auto 导入列表 = 分析器.获取导入列表();
+            auto 导入别名映射 = 分析器.获取导入别名映射();
+            auto 选择导入映射 = 分析器.获取选择导入映射();
+            
+            // 获取输入文件所在目录（用于路径解析）
+            std::string 输入目录;
+            size_t 最后分隔符 = 输入文件.find_last_of("/\\");
+            if (最后分隔符 != std::string::npos) {
+                输入目录 = 输入文件.substr(0, 最后分隔符 + 1);
+            }
+            
             for (const auto& 模块名 : 导入列表) {
                 std::string 模块路径 = 模块名;
+                
+                调试打印("[主程序] 原始模块路径: " << 模块路径);
+                调试打印("[主程序] 输入目录: " << 输入目录);
+                
+                // 路径解析：相对路径基于当前文件目录
+                if (模块路径.find(":") == std::string::npos && 模块路径[0] != '/') {
+                    // 只有当模块路径不以输入目录开头时才添加
+                    if (输入目录.empty() || 模块路径.substr(0, 输入目录.size()) != 输入目录) {
+                        模块路径 = 输入目录 + 模块路径;
+                        调试打印("[主程序] 添加目录后: " << 模块路径);
+                    } else {
+                        调试打印("[主程序] 路径已包含目录，跳过添加");
+                    }
+                }
+                
                 // 尝试添加.心后缀
                 if (模块路径.find(".心") == std::string::npos) {
                     模块路径 += ".心";
@@ -263,12 +297,28 @@ int main() {
                 try {
                     语法分析器 模块分析器(模块路径);
                     auto 模块程序 = 模块分析器.解析程序();
-                    // 合并函数（插入到主程序函数之前）
-                    size_t 插入位置 = 0;
-                    for (auto& 函数 : 模块程序->函数列表) {
-                        程序->函数列表.insert(程序->函数列表.begin() + 插入位置, std::move(函数));
-                        插入位置++;
+                    
+                    // 检查是否有选择性导入
+                    auto 选择导入 = 选择导入映射.find(模块名);
+                    if (选择导入 != 选择导入映射.end()) {
+                        // 只导入指定的函数
+                        for (const auto& 函数名 : 选择导入->second) {
+                            for (auto& 函数 : 模块程序->函数列表) {
+                                if (函数->名称 == 函数名) {
+                                    程序->函数列表.insert(程序->函数列表.begin(), std::move(函数));
+                                    break;
+                                }
+                            }
+                        }
+                    } else {
+                        // 合并所有函数（插入到主程序函数之前）
+                        size_t 插入位置 = 0;
+                        for (auto& 函数 : 模块程序->函数列表) {
+                            程序->函数列表.insert(程序->函数列表.begin() + 插入位置, std::move(函数));
+                            插入位置++;
+                        }
                     }
+                    
                     // 合并结构体定义
                     for (auto& 结构体 : 模块程序->结构体定义列表) {
                         程序->结构体定义列表.push_back(std::move(结构体));

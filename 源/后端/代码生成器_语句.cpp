@@ -74,13 +74,22 @@ void 代码生成器::生成语句(const 语句& 语句) {
                 llvm::Value* 初始值 = 生成表达式(*初始值表达式);
                 bool 是浮点 = 初始值->getType()->isDoubleTy();
                 bool 是指针 = 初始值->getType()->isPointerTy();
-                llvm::Type* 变量类型;
-                if (是浮点) 变量类型 = llvm::Type::getDoubleTy(上下文);
-                else if (是指针) 变量类型 = llvm::PointerType::get(上下文, 0);
-                else 变量类型 = llvm::Type::getInt32Ty(上下文);
-                llvm::AllocaInst* 分配 = 构建器->CreateAlloca(变量类型, nullptr, 名称);
-                构建器->CreateStore(初始值, 分配);
-                符号表实例.声明变量(名称, 分配);
+
+                // 检查变量是否已存在
+                llvm::Value* 已有地址 = 符号表实例.获取变量值(名称);
+                if (已有地址) {
+                    // 变量已存在，更新值
+                    构建器->CreateStore(初始值, 已有地址);
+                } else {
+                    // 变量不存在，创建新变量
+                    llvm::Type* 变量类型;
+                    if (是浮点) 变量类型 = llvm::Type::getDoubleTy(上下文);
+                    else if (是指针) 变量类型 = llvm::PointerType::get(上下文, 0);
+                    else 变量类型 = llvm::Type::getInt32Ty(上下文);
+                    llvm::AllocaInst* 分配 = 构建器->CreateAlloca(变量类型, nullptr, 名称);
+                    构建器->CreateStore(初始值, 分配);
+                    符号表实例.声明变量(名称, 分配);
+                }
                 if (是浮点) 符号表实例.设置浮点变量(名称);
                 if (是指针) 符号表实例.设置指针变量(名称);
             }
@@ -272,26 +281,7 @@ void 代码生成器::生成语句(const 语句& 语句) {
             break;
         }
         case 语句类型::返回语句: {
-            const auto& 返回 = static_cast<const 返回语句&>(语句);
-            if (返回.返回值) {
-                llvm::Value* 返回值 = 生成表达式(*返回.返回值);
-                // 尾递归优化：检测是否是尾递归调用
-                if (启用优化 && 返回.返回值->类型 == 表达式类型::函数调用) {
-                    const auto& 调用 = static_cast<const 函数调用表达式&>(*返回.返回值);
-                    llvm::Function* 当前函数 = 构建器->GetInsertBlock()->getParent();
-                    if (调用.函数名 == 当前函数->getName().str()) {
-                        调试打印("[优化] 检测到尾递归调用: " << 调用.函数名);
-                        // 尾递归优化由 LLVM 的 Tail Call Elimination Pass 处理
-                        // 这里只是标记，实际优化在 LLVM Pass 中完成
-                    }
-                }
-                构建器->CreateRet(返回值);
-            } else {
-                构建器->CreateRetVoid();
-            }
-            llvm::BasicBlock* 新块 = llvm::BasicBlock::Create(上下文, "afterreturn", 构建器->GetInsertBlock()->getParent());
-            构建器->SetInsertPoint(新块);
-            break;
+            throw std::runtime_error("不允许使用'返回'关键字，请直接赋值返回值变量");
         }
         case 语句类型::打印语句: {
             const auto& 打印 = static_cast<const 打印语句&>(语句);
@@ -304,8 +294,6 @@ void 代码生成器::生成语句(const 语句& 语句) {
                 构建器->CreateCall(模块->getFunction("printf"), {构建器->CreateGlobalString("%.6g\n"), 打印值});
             } else if (打印值->getType()->isPointerTy()) {
                 构建器->CreateCall(模块->getFunction("printf"), {构建器->CreateGlobalString("%s\n"), 打印值});
-            } else if (打印.值表达式->类型 == 表达式类型::变量 && 符号表实例.是浮点变量(static_cast<const 变量表达式&>(*打印.值表达式).名称)) {
-                构建器->CreateCall(模块->getFunction("printf"), {构建器->CreateGlobalString("%.6g\n"), 打印值});
             } else if (打印.值表达式->类型 == 表达式类型::下标访问 && 符号表实例.是映射变量(static_cast<const 下标访问表达式&>(*打印.值表达式).数组名)) {
                 构建器->CreateCall(模块->getFunction("printf"), {构建器->CreateGlobalString("%s\n"), 打印值});
             } else {
@@ -316,6 +304,33 @@ void 代码生成器::生成语句(const 语句& 语句) {
         case 语句类型::表达式语句:
             生成表达式(*static_cast<const 表达式语句&>(语句).值表达式);
             break;
+        case 语句类型::解构赋值: {
+            const auto& 解构 = static_cast<const 解构赋值语句&>(语句);
+            llvm::Value* 值 = 生成表达式(*解构.值表达式);
+            
+            // 检查是否为结构体类型（多返回值）
+            if (值->getType()->isStructTy()) {
+                auto* 结构体类型 = llvm::cast<llvm::StructType>(值->getType());
+                for (size_t i = 0; i < 解构.变量名列表.size() && i < 结构体类型->getNumElements(); i++) {
+                    llvm::Value* 元素值 = 构建器->CreateExtractValue(值, {static_cast<unsigned>(i)});
+                    std::string 变量名 = 解构.变量名列表[i];
+                    
+                    // 检查变量是否已存在
+                    llvm::Value* 已有地址 = 符号表实例.获取变量值(变量名);
+                    if (已有地址) {
+                        构建器->CreateStore(元素值, 已有地址);
+                    } else {
+                        llvm::Type* 元素类型 = 结构体类型->getElementType(i);
+                        llvm::AllocaInst* 分配 = 构建器->CreateAlloca(元素类型, nullptr, 变量名);
+                        构建器->CreateStore(元素值, 分配);
+                        符号表实例.声明变量(变量名, 分配);
+                        if (元素类型->isDoubleTy()) 符号表实例.设置浮点变量(变量名);
+                        else if (元素类型->isPointerTy()) 符号表实例.设置指针变量(变量名);
+                    }
+                }
+            }
+            break;
+        }
         case 语句类型::代码块: {
             符号表实例.进入作用域();
             for (size_t i = 0; i < static_cast<const 代码块语句&>(语句).语句列表.size(); i++) {

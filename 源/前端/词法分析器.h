@@ -118,6 +118,10 @@ public:
     }
     bool 已到文件尾() const { return 位置 >= 源代码.size(); }
     标记 下一个标记();
+    size_t 获取位置() const { return 位置; }
+    void 设置位置(size_t 新位置) { 位置 = 新位置; }
+    int 获取当前行() const { return 当前行; }
+    void 设置当前行(int 行) { 当前行 = 行; }
 };
 
 #endif // 词法分析器_H

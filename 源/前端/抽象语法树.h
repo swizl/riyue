@@ -4,8 +4,9 @@
 #include <memory>
 #include <vector>
 #include <string>
+#include <unordered_map>
 
-enum class 表达式类型 { 整数, 浮点数, 布尔值, 字符, 字符串, 变量, 二元运算, 一元运算, 函数调用, 数组字面量, 下标访问, 匿名函数, 结构体实例, 成员访问, 映射字面量, 枚举成员, 元组字面量, 元组访问, 分片访问, 自增自减 };
+enum class 表达式类型 { 整数, 浮点数, 布尔值, 字符, 字符串, 变量, 二元运算, 一元运算, 函数调用, 数组字面量, 下标访问, 匿名函数, 结构体实例, 成员访问, 映射字面量, 枚举成员, 元组字面量, 元组访问, 分片访问, 自增自减, 管道调用 };
 enum class 二元操作符 { 加法, 减法, 乘法, 除法, 取模, 等于, 不等于, 小于, 大于, 小于等于, 大于等于, 逻辑与, 逻辑或, 左移, 右移, 位与, 位或, 位异或 };
 enum class 一元操作符 { 逻辑非, 取负 };
 
@@ -103,15 +104,16 @@ public:
 };
 
 struct 函数参数;
+struct 返回值描述;
 class 语句;
 
 class 匿名函数表达式 : public 表达式 {
 public:
     std::vector<函数参数> 参数列表;
-    std::string 返回类型;
+    std::vector<返回值描述> 返回值列表;
     std::vector<std::unique_ptr<语句>> 主体;
-    匿名函数表达式(std::vector<函数参数> 参数, std::string 返回, std::vector<std::unique_ptr<语句>> body)
-        : 表达式(表达式类型::匿名函数), 参数列表(std::move(参数)), 返回类型(std::move(返回)), 主体(std::move(body)) {}
+    匿名函数表达式(std::vector<函数参数> 参数, std::vector<返回值描述> 返回值, std::vector<std::unique_ptr<语句>> body)
+        : 表达式(表达式类型::匿名函数), 参数列表(std::move(参数)), 返回值列表(std::move(返回值)), 主体(std::move(body)) {}
 };
 
 class 结构体实例表达式 : public 表达式 {
@@ -168,7 +170,21 @@ public:
         : 表达式(表达式类型::自增自减), 变量名(std::move(名)), 是自增(增) {}
 };
 
-enum class 语句类型 { 变量声明, 常量声明, 赋值语句, 下标赋值语句, 如果语句, 循环语句, 当循环语句, 做循环语句, 中断语句, 继续语句, 打印语句, 返回语句, 表达式语句, 代码块, 匹配语句, 遍历语句, 结构体定义, 枚举定义, 导入语句 };
+class 管道调用表达式 : public 表达式 {
+public:
+    std::unique_ptr<表达式> 左表达式;  // 管道左边的表达式（通常是函数调用）
+    std::string 右函数名;               // 管道右边的函数名
+    std::vector<std::unique_ptr<表达式>> 右参数列表;  // 右边函数的额外参数
+    std::unordered_map<std::string, std::string> 参数映射;  // 左返回值名 -> 右参数名映射
+
+    管道调用表达式(std::unique_ptr<表达式> 左, std::string 右名,
+                   std::vector<std::unique_ptr<表达式>> 右参数,
+                   std::unordered_map<std::string, std::string> 映射)
+        : 表达式(表达式类型::管道调用), 左表达式(std::move(左)), 右函数名(std::move(右名)),
+          右参数列表(std::move(右参数)), 参数映射(std::move(映射)) {}
+};
+
+enum class 语句类型 { 变量声明, 常量声明, 赋值语句, 下标赋值语句, 解构赋值, 如果语句, 循环语句, 当循环语句, 做循环语句, 中断语句, 继续语句, 打印语句, 返回语句, 表达式语句, 代码块, 匹配语句, 遍历语句, 结构体定义, 枚举定义, 导入语句 };
 
 class 语句 {
 public:
@@ -290,6 +306,14 @@ public:
         : 语句(语句类型::表达式语句), 值表达式(std::move(expr)) {}
 };
 
+class 解构赋值语句 : public 语句 {
+public:
+    std::vector<std::string> 变量名列表;
+    std::unique_ptr<表达式> 值表达式;
+    解构赋值语句(std::vector<std::string> 变量名, std::unique_ptr<表达式> 值)
+        : 语句(语句类型::解构赋值), 变量名列表(std::move(变量名)), 值表达式(std::move(值)) {}
+};
+
 class 代码块语句 : public 语句 {
 public:
     std::vector<std::unique_ptr<语句>> 语句列表;
@@ -360,16 +384,22 @@ struct 函数参数 {
     bool 是否数组 = false;
 };
 
+struct 返回值描述 {
+    std::string 名称;
+    std::string 类型;
+    std::unique_ptr<表达式> 默认值;
+};
+
 class 函数 {
 public:
     std::string 名称;
     std::vector<std::string> 类型参数列表;
     std::vector<函数参数> 参数列表;
-    std::string 返回类型;
+    std::vector<返回值描述> 返回值列表;  // 支持多返回值
     std::vector<std::unique_ptr<语句>> 主体;
-    函数(std::string 名, std::vector<std::string> 类型参数, std::vector<函数参数> 参数, std::string 返回,
+    函数(std::string 名, std::vector<std::string> 类型参数, std::vector<函数参数> 参数, std::vector<返回值描述> 返回值,
          std::vector<std::unique_ptr<语句>> body)
-        : 名称(std::move(名)), 类型参数列表(std::move(类型参数)), 参数列表(std::move(参数)), 返回类型(std::move(返回)),
+        : 名称(std::move(名)), 类型参数列表(std::move(类型参数)), 参数列表(std::move(参数)), 返回值列表(std::move(返回值)),
           主体(std::move(body)) {}
 };
 

@@ -13,7 +13,7 @@ std::unordered_map<std::string, const 函数*> 全局函数定义映射;
 llvm::Type* 代码生成器::类型名到LLVM类型(const std::string& 类型名) {
     if (类型名 == "浮点" || 类型名 == "浮点数") return llvm::Type::getDoubleTy(上下文);
     if (类型名 == "布尔" || 类型名 == "布尔值") return llvm::Type::getInt1Ty(上下文);
-    if (类型名 == "字符串") return llvm::PointerType::get(上下文, 0);
+    if (类型名 == "字符串" || 类型名 == "函数") return llvm::PointerType::get(上下文, 0);
     return llvm::Type::getInt32Ty(上下文);
 }
 
@@ -247,12 +247,24 @@ void 代码生成器::生成(const 程序& 程序) {
             if (!函数->参数列表[i].类型.empty()) {
                 参数类型.push_back(类型名到LLVM类型(函数->参数列表[i].类型));
             } else {
-                参数类型.push_back(llvm::PointerType::get(上下文, 0));
+                参数类型.push_back(llvm::Type::getInt32Ty(上下文));
             }
         }
+        // 计算返回类型
         llvm::Type* 返回LLVM类型 = llvm::Type::getVoidTy(上下文);
-        if (!函数->返回类型.empty() && 函数->返回类型 != "空") {
-            返回LLVM类型 = 类型名到LLVM类型(函数->返回类型);
+        if (函数->返回值列表.size() == 1 && !函数->返回值列表[0].类型.empty() && 函数->返回值列表[0].类型 != "空") {
+            返回LLVM类型 = 类型名到LLVM类型(函数->返回值列表[0].类型);
+        } else if (函数->返回值列表.size() > 1) {
+            // 多返回值：创建结构体类型
+            std::vector<llvm::Type*> 返回类型列表;
+            for (const auto& 返回值 : 函数->返回值列表) {
+                if (!返回值.类型.empty() && 返回值.类型 != "空") {
+                    返回类型列表.push_back(类型名到LLVM类型(返回值.类型));
+                }
+            }
+            if (!返回类型列表.empty()) {
+                返回LLVM类型 = llvm::StructType::get(上下文, 返回类型列表);
+            }
         }
         llvm::FunctionType* 函数类型 = llvm::FunctionType::get(返回LLVM类型, 参数类型, false);
         llvm::Function::Create(函数类型, llvm::Function::ExternalLinkage, 函数->名称, *模块);
@@ -289,12 +301,24 @@ void 代码生成器::生成函数(const 函数& 函数) {
             } else if (!函数.参数列表[i].类型.empty()) {
                 参数类型.push_back(类型名到LLVM类型(函数.参数列表[i].类型));
             } else {
-                参数类型.push_back(llvm::PointerType::get(上下文, 0));
+                参数类型.push_back(llvm::Type::getInt32Ty(上下文));
             }
         }
+        // 计算返回类型
         llvm::Type* 返回LLVM类型 = llvm::Type::getVoidTy(上下文);
-        if (!函数.返回类型.empty() && 函数.返回类型 != "空") {
-            返回LLVM类型 = 类型名到LLVM类型(函数.返回类型);
+        if (函数.返回值列表.size() == 1 && !函数.返回值列表[0].类型.empty() && 函数.返回值列表[0].类型 != "空") {
+            返回LLVM类型 = 类型名到LLVM类型(函数.返回值列表[0].类型);
+        } else if (函数.返回值列表.size() > 1) {
+            // 多返回值：创建结构体类型
+            std::vector<llvm::Type*> 返回类型列表;
+            for (const auto& 返回值 : 函数.返回值列表) {
+                if (!返回值.类型.empty() && 返回值.类型 != "空") {
+                    返回类型列表.push_back(类型名到LLVM类型(返回值.类型));
+                }
+            }
+            if (!返回类型列表.empty()) {
+                返回LLVM类型 = llvm::StructType::get(上下文, 返回类型列表);
+            }
         }
         llvm::FunctionType* 函数类型 = llvm::FunctionType::get(返回LLVM类型, 参数类型, false);
         llvm函数 = llvm::Function::Create(函数类型, llvm::Function::ExternalLinkage, 函数.名称, *模块);
@@ -303,14 +327,28 @@ void 代码生成器::生成函数(const 函数& 函数) {
     llvm::BasicBlock* 入口块 = llvm::BasicBlock::Create(上下文, "entry", llvm函数);
     构建器->SetInsertPoint(入口块);
     符号表实例.重置为全局作用域();
+    符号表实例.进入作用域();  // 函数体独立作用域
 
     size_t i = 0;
     for (auto& 参数 : llvm函数->args()) {
         参数.setName(函数.参数列表[i].名称);
-        符号表实例.声明变量(函数.参数列表[i].名称, &参数);
+
+        // 为参数创建 alloca
+        llvm::Type* 参数类型;
+        if (函数.参数列表[i].是否变长) {
+            参数类型 = llvm::PointerType::get(上下文, 0);
+        } else if (!函数.参数列表[i].类型.empty()) {
+            参数类型 = 类型名到LLVM类型(函数.参数列表[i].类型);
+        } else {
+            参数类型 = llvm::Type::getInt32Ty(上下文);
+        }
+        llvm::AllocaInst* 分配 = 构建器->CreateAlloca(参数类型, nullptr, 函数.参数列表[i].名称);
+        构建器->CreateStore(&参数, 分配);
+        符号表实例.声明变量(函数.参数列表[i].名称, 分配);
+
         if (函数.参数列表[i].是否变长) {
             // 变长参数标记为数组
-            符号表实例.声明数组(函数.参数列表[i].名称, &参数, 0);
+            符号表实例.声明数组(函数.参数列表[i].名称, 分配, 0);
         } else if (函数.参数列表[i].类型 == "浮点" || 函数.参数列表[i].类型 == "浮点数") {
             符号表实例.设置浮点变量(函数.参数列表[i].名称);
         } else if (函数.参数列表[i].类型 == "字符串") {
@@ -319,15 +357,54 @@ void 代码生成器::生成函数(const 函数& 函数) {
         i++;
     }
 
+    // 为返回值创建 alloca（支持多返回值）
+    std::vector<llvm::AllocaInst*> 返回值分配列表;
+    for (const auto& 返回值 : 函数.返回值列表) {
+        if (!返回值.名称.empty() && !返回值.类型.empty() && 返回值.类型 != "空") {
+            llvm::Type* 返回LLVM类型 = 类型名到LLVM类型(返回值.类型);
+            llvm::AllocaInst* 分配 = 构建器->CreateAlloca(返回LLVM类型, nullptr, 返回值.名称);
+            符号表实例.声明变量(返回值.名称, 分配);
+            if (返回LLVM类型->isDoubleTy()) {
+                符号表实例.设置浮点变量(返回值.名称);
+            } else if (返回LLVM类型->isPointerTy()) {
+                符号表实例.设置指针变量(返回值.名称);
+            }
+            // 存储默认值
+            if (返回值.默认值) {
+                llvm::Value* 默认值 = 生成表达式(*返回值.默认值);
+                构建器->CreateStore(默认值, 分配);
+            }
+            返回值分配列表.push_back(分配);
+        }
+    }
+
     for (const auto& 语句 : 函数.主体) 生成语句(*语句);
 
+    // 自动返回返回值
     if (构建器->GetInsertBlock()->getTerminator() == nullptr) {
-        if (!函数.返回类型.empty() && 函数.返回类型 != "空") {
-            构建器->CreateRet(llvm::ConstantInt::get(上下文, llvm::APInt(32, 0)));
+        if (返回值分配列表.size() == 1) {
+            // 单返回值
+            llvm::Type* 返回LLVM类型 = 返回值分配列表[0]->getAllocatedType();
+            llvm::Value* 返回值 = 构建器->CreateLoad(返回LLVM类型, 返回值分配列表[0], "返回值");
+            构建器->CreateRet(返回值);
+        } else if (返回值分配列表.size() > 1) {
+            // 多返回值：创建结构体
+            std::vector<llvm::Type*> 返回类型列表;
+            for (const auto& 分配 : 返回值分配列表) {
+                返回类型列表.push_back(分配->getAllocatedType());
+            }
+            llvm::StructType* 返回结构体类型 = llvm::StructType::get(上下文, 返回类型列表);
+            llvm::Value* 返回结构体 = llvm::UndefValue::get(返回结构体类型);
+            for (size_t j = 0; j < 返回值分配列表.size(); j++) {
+                llvm::Value* 值 = 构建器->CreateLoad(返回值分配列表[j]->getAllocatedType(), 返回值分配列表[j], "返回值" + std::to_string(j));
+                返回结构体 = 构建器->CreateInsertValue(返回结构体, 值, {static_cast<unsigned>(j)});
+            }
+            构建器->CreateRet(返回结构体);
         } else {
             构建器->CreateRetVoid();
         }
     }
+    符号表实例.退出作用域();  // 退出函数体作用域
     llvm::verifyFunction(*llvm函数);
 }
 

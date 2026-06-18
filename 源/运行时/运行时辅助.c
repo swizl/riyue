@@ -5,6 +5,11 @@
 #include <time.h>
 #include <math.h>
 
+#ifdef _WIN32
+#include <windows.h>
+#include <shellapi.h>
+#endif
+
 // 将UTF-8字符位置转换为字节位置
 int 字符位置到字节位置(const char* str, int char_pos) {
     int byte_pos = 0;
@@ -253,7 +258,6 @@ long long 时间差(long long 时间戳1, long long 时间戳2) {
 
 // 程序休眠（毫秒）
 #ifdef _WIN32
-#include <windows.h>
 void 休眠(int 毫秒) {
     Sleep(毫秒);
 }
@@ -457,6 +461,9 @@ double 随机浮点() {
 // ==================== 网络函数 ====================
 
 #ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #pragma comment(lib, "ws2_32.lib")
@@ -700,4 +707,640 @@ long 获取文件大小(const char* 路径) {
     long 大小 = ftell(文件);
     fclose(文件);
     return 大小;
+}
+
+// ==================== 命令行参数 ====================
+
+static int 全局参数数量 = 0;
+static const char** 全局参数列表 = NULL;
+
+void 设置参数(int argc, const char** argv) {
+    全局参数数量 = argc;
+    全局参数列表 = argv;
+}
+
+int 获取参数数量() {
+    return 全局参数数量;
+}
+
+const char* 获取参数(int 索引) {
+    if (索引 >= 0 && 索引 < 全局参数数量) {
+        return 全局参数列表[索引];
+    }
+    return "";
+}
+
+// ==================== 标准错误输出 ====================
+
+void 输出错误(const char* 消息) {
+    fprintf(stderr, "%s\n", 消息);
+}
+
+void 输出错误值(int 值) {
+    fprintf(stderr, "%d\n", 值);
+}
+
+// ==================== 文件系统操作 ====================
+
+#ifdef _WIN32
+#include <direct.h>
+#define mkdir(path, mode) _mkdir(path)
+#else
+#include <sys/stat.h>
+#include <sys/types.h>
+#endif
+
+int 创建目录(const char* 路径) {
+#ifdef _WIN32
+    // 将UTF-8路径转换为宽字符
+    int 宽长度 = MultiByteToWideChar(CP_UTF8, 0, 路径, -1, NULL, 0);
+    wchar_t* 宽路径 = (wchar_t*)malloc(宽长度 * sizeof(wchar_t));
+    MultiByteToWideChar(CP_UTF8, 0, 路径, -1, 宽路径, 宽长度);
+    int 结果 = _wmkdir(宽路径);
+    free(宽路径);
+    return 结果;
+#else
+    return mkdir(路径, 0755);
+#endif
+}
+
+int 目录存在(const char* 路径) {
+#ifdef _WIN32
+    int 宽长度 = MultiByteToWideChar(CP_UTF8, 0, 路径, -1, NULL, 0);
+    wchar_t* 宽路径 = (wchar_t*)malloc(宽长度 * sizeof(wchar_t));
+    MultiByteToWideChar(CP_UTF8, 0, 路径, -1, 宽路径, 宽长度);
+    DWORD 属性 = GetFileAttributesW(宽路径);
+    free(宽路径);
+    return (属性 != INVALID_FILE_ATTRIBUTES && (属性 & FILE_ATTRIBUTE_DIRECTORY));
+#else
+    struct stat st;
+    if (stat(路径, &st) == 0) {
+        return S_ISDIR(st.st_mode);
+    }
+    return 0;
+#endif
+}
+
+int 删除文件(const char* 路径) {
+#ifdef _WIN32
+    int 宽长度 = MultiByteToWideChar(CP_UTF8, 0, 路径, -1, NULL, 0);
+    wchar_t* 宽路径 = (wchar_t*)malloc(宽长度 * sizeof(wchar_t));
+    MultiByteToWideChar(CP_UTF8, 0, 路径, -1, 宽路径, 宽长度);
+    int 结果 = _wremove(宽路径);
+    free(宽路径);
+    return 结果;
+#else
+    return remove(路径);
+#endif
+}
+
+int 重命名文件(const char* 旧路径, const char* 新路径) {
+#ifdef _WIN32
+    int 旧宽长度 = MultiByteToWideChar(CP_UTF8, 0, 旧路径, -1, NULL, 0);
+    wchar_t* 旧宽路径 = (wchar_t*)malloc(旧宽长度 * sizeof(wchar_t));
+    MultiByteToWideChar(CP_UTF8, 0, 旧路径, -1, 旧宽路径, 旧宽长度);
+
+    int 新宽长度 = MultiByteToWideChar(CP_UTF8, 0, 新路径, -1, NULL, 0);
+    wchar_t* 新宽路径 = (wchar_t*)malloc(新宽长度 * sizeof(wchar_t));
+    MultiByteToWideChar(CP_UTF8, 0, 新路径, -1, 新宽路径, 新宽长度);
+
+    int 结果 = _wrename(旧宽路径, 新宽路径);
+    free(旧宽路径);
+    free(新宽路径);
+    return 结果;
+#else
+    return rename(旧路径, 新路径);
+#endif
+}
+
+// ==================== 目录列表操作 ====================
+
+#ifdef _WIN32
+#include <io.h>
+#else
+#include <dirent.h>
+#endif
+
+// 目录项结构
+typedef struct {
+    char 名称[256];
+    int 是目录;
+    long long 大小;
+} 目录项;
+
+// 列出目录内容，返回目录项数组
+// 注意：返回的是静态数组，每次调用会覆盖
+#define 最大目录项数 1024
+static 目录项 目录项列表[最大目录项数];
+static int 目录项数量 = 0;
+
+int 列出目录(const char* 路径) {
+    目录项数量 = 0;
+    
+#ifdef _WIN32
+    // Windows: 使用 FindFirstFile/FindNextFile
+    char 搜索路径[512];
+    snprintf(搜索路径, sizeof(搜索路径), "%s\\*", 路径);
+    
+    int 宽长度 = MultiByteToWideChar(CP_UTF8, 0, 搜索路径, -1, NULL, 0);
+    wchar_t* 宽路径 = (wchar_t*)malloc(宽长度 * sizeof(wchar_t));
+    MultiByteToWideChar(CP_UTF8, 0, 搜索路径, -1, 宽路径, 宽长度);
+    
+    WIN32_FIND_DATAW 查找数据;
+    HANDLE 句柄 = FindFirstFileW(宽路径, &查找数据);
+    free(宽路径);
+    
+    if (句柄 == INVALID_HANDLE_VALUE) {
+        return 0;
+    }
+    
+    do {
+        // 跳过 . 和 ..
+        if (wcscmp(查找数据.cFileName, L".") == 0 || wcscmp(查找数据.cFileName, L"..") == 0) {
+            continue;
+        }
+        
+        if (目录项数量 >= 最大目录项数) break;
+        
+        // 转换文件名为UTF-8
+        int 名称长度 = WideCharToMultiByte(CP_UTF8, 0, 查找数据.cFileName, -1, NULL, 0, NULL, NULL);
+        WideCharToMultiByte(CP_UTF8, 0, 查找数据.cFileName, -1, 目录项列表[目录项数量].名称, 名称长度, NULL, NULL);
+        
+        目录项列表[目录项数量].是目录 = (查找数据.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) ? 1 : 0;
+        目录项列表[目录项数量].大小 = ((long long)查找数据.nFileSizeHigh << 32) | 查找数据.nFileSizeLow;
+        
+        目录项数量++;
+    } while (FindNextFileW(句柄, &查找数据));
+    
+    FindClose(句柄);
+#else
+    // Linux/macOS: 使用 opendir/readdir
+    DIR* 目录 = opendir(路径);
+    if (!目录) {
+        return 0;
+    }
+    
+    struct dirent* 入口;
+    while ((入口 = readdir(目录)) != NULL) {
+        // 跳过 . 和 ..
+        if (strcmp(入口->d_name, ".") == 0 || strcmp(入口->d_name, "..") == 0) {
+            continue;
+        }
+        
+        if (目录项数量 >= 最大目录项数) break;
+        
+        strncpy(目录项列表[目录项数量].名称, 入口->d_name, 255);
+        目录项列表[目录项数量].名称[255] = '\0';
+        目录项列表[目录项数量].是目录 = (入口->d_type == DT_DIR) ? 1 : 0;
+        目录项列表[目录项数量].大小 = 0;
+        
+        目录项数量++;
+    }
+    
+    closedir(目录);
+#endif
+    
+    return 目录项数量;
+}
+
+// 获取目录项名称
+const char* 获取目录项名称(int 索引) {
+    if (索引 >= 0 && 索引 < 目录项数量) {
+        return 目录项列表[索引].名称;
+    }
+    return "";
+}
+
+// 获取目录项是否为目录
+int 获取目录项是否目录(int 索引) {
+    if (索引 >= 0 && 索引 < 目录项数量) {
+        return 目录项列表[索引].是目录;
+    }
+    return 0;
+}
+
+// 获取目录项大小
+long 获取目录项大小(int 索引) {
+    if (索引 >= 0 && 索引 < 目录项数量) {
+        return 目录项列表[索引].大小;
+    }
+    return 0;
+}
+
+// 删除目录（递归）
+int 删除目录(const char* 路径) {
+#ifdef _WIN32
+    int 宽长度 = MultiByteToWideChar(CP_UTF8, 0, 路径, -1, NULL, 0);
+    wchar_t* 宽路径 = (wchar_t*)malloc(宽长度 * sizeof(wchar_t));
+    MultiByteToWideChar(CP_UTF8, 0, 路径, -1, 宽路径, 宽长度);
+    
+    // 使用 SHFileOperation 递归删除
+    SHFILEOPSTRUCTW 文件操作;
+    memset(&文件操作, 0, sizeof(文件操作));
+    文件操作.wFunc = FO_DELETE;
+    文件操作.pFrom = 宽路径;
+    文件操作.fFlags = FOF_NO_UI | FOF_NOCONFIRMATION;
+    
+    int 结果 = SHFileOperationW(&文件操作);
+    free(宽路径);
+    return 结果;
+#else
+    // 递归删除目录
+    DIR* 目录 = opendir(路径);
+    if (!目录) return -1;
+    
+    struct dirent* 入口;
+    char 子路径[512];
+    
+    while ((入口 = readdir(目录)) != NULL) {
+        if (strcmp(入口->d_name, ".") == 0 || strcmp(入口->d_name, "..") == 0) {
+            continue;
+        }
+        
+        snprintf(子路径, sizeof(子路径), "%s/%s", 路径, 入口->d_name);
+        
+        struct stat st;
+        if (stat(子路径, &st) == 0) {
+            if (S_ISDIR(st.st_mode)) {
+                删除目录(子路径);
+            } else {
+                remove(子路径);
+            }
+        }
+    }
+    
+    closedir(目录);
+    return rmdir(路径);
+#endif
+}
+
+// 复制文件
+int 复制文件(const char* 源路径, const char* 目标路径) {
+    FILE* 源文件 = fopen(源路径, "rb");
+    if (!源文件) return -1;
+    
+    FILE* 目标文件 = fopen(目标路径, "wb");
+    if (!目标文件) {
+        fclose(源文件);
+        return -1;
+    }
+    
+    char 缓冲区[4096];
+    size_t 读取大小;
+    
+    while ((读取大小 = fread(缓冲区, 1, sizeof(缓冲区), 源文件)) > 0) {
+        fwrite(缓冲区, 1, 读取大小, 目标文件);
+    }
+    
+    fclose(源文件);
+    fclose(目标文件);
+    return 0;
+}
+
+// 获取文件扩展名
+const char* 获取文件扩展名(const char* 路径) {
+    const char* 点位置 = strrchr(路径, '.');
+    if (点位置) {
+        return 点位置 + 1;
+    }
+    return "";
+}
+
+// 获取文件名（不含路径）
+const char* 获取文件名(const char* 路径) {
+    const char* 分隔符1 = strrchr(路径, '/');
+    const char* 分隔符2 = strrchr(路径, '\\');
+    const char* 分隔符 = 分隔符1 > 分隔符2 ? 分隔符1 : 分隔符2;
+    if (分隔符) {
+        return 分隔符 + 1;
+    }
+    return 路径;
+}
+
+// 获取目录路径（不含文件名）
+const char* 获取目录路径(const char* 路径) {
+    static char 目录缓冲区[512];
+    strncpy(目录缓冲区, 路径, sizeof(目录缓冲区) - 1);
+    目录缓冲区[sizeof(目录缓冲区) - 1] = '\0';
+    
+    char* 分隔符1 = strrchr(目录缓冲区, '/');
+    char* 分隔符2 = strrchr(目录缓冲区, '\\');
+    char* 分隔符 = 分隔符1 > 分隔符2 ? 分隔符1 : 分隔符2;
+    
+    if (分隔符) {
+        *分隔符 = '\0';
+    } else {
+        strcpy(目录缓冲区, ".");
+    }
+    
+    return 目录缓冲区;
+}
+
+// 连接路径
+const char* 连接路径(const char* 路径1, const char* 路径2) {
+    static char 连接缓冲区[512];
+    snprintf(连接缓冲区, sizeof(连接缓冲区), "%s/%s", 路径1, 路径2);
+    return 连接缓冲区;
+}
+
+// ==================== 字符串流操作 ====================
+
+// 将字符串按行分割，返回行数
+int 分割行数(const char* 文本) {
+    int 行数 = 0;
+    const char* p = 文本;
+    while (*p) {
+        if (*p == '\n') 行数++;
+        p++;
+    }
+    if (p > 文本 && *(p-1) != '\n') 行数++;  // 最后一行没有换行
+    return 行数;
+}
+
+// 获取指定行的内容（从0开始）
+const char* 获取行(const char* 文本, int 行号) {
+    static char 缓冲区[4096];
+    缓冲区[0] = '\0';
+
+    int 当前行 = 0;
+    const char* 开始 = 文本;
+    const char* p = 文本;
+
+    while (*p) {
+        if (*p == '\n') {
+            if (当前行 == 行号) {
+                int 长度 = (int)(p - 开始);
+                if (长度 >= 4096) 长度 = 4095;
+                strncpy(缓冲区, 开始, 长度);
+                缓冲区[长度] = '\0';
+                return 缓冲区;
+            }
+            当前行++;
+            开始 = p + 1;
+        }
+        p++;
+    }
+
+    // 最后一行
+    if (当前行 == 行号 && p > 开始) {
+        int 长度 = (int)(p - 开始);
+        if (长度 >= 4096) 长度 = 4095;
+        strncpy(缓冲区, 开始, 长度);
+        缓冲区[长度] = '\0';
+        return 缓冲区;
+    }
+
+    return "";
+}
+
+// 字符串分割（按分隔符）
+const char** 按分隔符分割(const char* 文本, const char* 分隔符, int* 结果数量) {
+    static const char* 结果[256];
+    *结果数量 = 0;
+
+    char* 复制 = strdup(文本);
+    char* token = strtok(复制, 分隔符);
+    while (token != NULL && *结果数量 < 256) {
+        结果[*结果数量] = strdup(token);
+        (*结果数量)++;
+        token = strtok(NULL, 分隔符);
+    }
+    free(复制);
+    return 结果;
+}
+
+// 去除字符串首尾空白
+const char* 去除空白(const char* 文本) {
+    static char 缓冲区[4096];
+    int 长度 = (int)strlen(文本);
+    if (长度 >= 4096) 长度 = 4095;
+
+    // 跳过开头空白
+    int 开始 = 0;
+    while (开始 < 长度 && (文本[开始] == ' ' || 文本[开始] == '\t' ||
+           文本[开始] == '\n' || 文本[开始] == '\r')) {
+        开始++;
+    }
+
+    // 跳过结尾空白
+    int 结束 = 长度 - 1;
+    while (结束 >= 开始 && (文本[结束] == ' ' || 文本[结束] == '\t' ||
+           文本[结束] == '\n' || 文本[结束] == '\r')) {
+        结束--;
+    }
+
+    int 新长度 = 结束 - 开始 + 1;
+    if (新长度 <= 0) {
+        缓冲区[0] = '\0';
+        return 缓冲区;
+    }
+
+    strncpy(缓冲区, 文本 + 开始, 新长度);
+    缓冲区[新长度] = '\0';
+    return 缓冲区;
+}
+
+// 字符串转小写
+const char* 转小写(const char* 文本) {
+    static char 缓冲区[4096];
+    int i = 0;
+    while (文本[i] && i < 4095) {
+        if (文本[i] >= 'A' && 文本[i] <= 'Z') {
+            缓冲区[i] = 文本[i] + 32;
+        } else {
+            缓冲区[i] = 文本[i];
+        }
+        i++;
+    }
+    缓冲区[i] = '\0';
+    return 缓冲区;
+}
+
+// 字符串转大写
+const char* 转大写(const char* 文本) {
+    static char 缓冲区[4096];
+    int i = 0;
+    while (文本[i] && i < 4095) {
+        if (文本[i] >= 'a' && 文本[i] <= 'z') {
+            缓冲区[i] = 文本[i] - 32;
+        } else {
+            缓冲区[i] = 文本[i];
+        }
+        i++;
+    }
+    缓冲区[i] = '\0';
+    return 缓冲区;
+}
+
+// 检查字符串是否以指定前缀开头
+int 字符串开头(const char* 文本, const char* 前缀) {
+    return strncmp(文本, 前缀, strlen(前缀)) == 0;
+}
+
+// 检查字符串是否以指定后缀结尾
+int 字符串结尾(const char* 文本, const char* 后缀) {
+    int 文本长度 = (int)strlen(文本);
+    int 后缀长度 = (int)strlen(后缀);
+    if (后缀长度 > 文本长度) return 0;
+    return strcmp(文本 + 文本长度 - 后缀长度, 后缀) == 0;
+}
+
+// ==================== 字符操作 ====================
+
+// 获取字符串指定位置字符的码点
+int 字符码(const char* 文本, int 位置) {
+    int 字节位置 = 0;
+    int 当前字符 = 0;
+
+    while (文本[字节位置] != '\0' && 当前字符 < 位置) {
+        unsigned char c = (unsigned char)文本[字节位置];
+        if (c < 0x80) 字节位置 += 1;
+        else if ((c & 0xE0) == 0xC0) 字节位置 += 2;
+        else if ((c & 0xF0) == 0xE0) 字节位置 += 3;
+        else if ((c & 0xF8) == 0xF0) 字节位置 += 4;
+        else 字节位置 += 1;
+        当前字符++;
+    }
+
+    if (文本[字节位置] == '\0') return -1;
+
+    unsigned char c = (unsigned char)文本[字节位置];
+    if (c < 0x80) return c;
+    if ((c & 0xE0) == 0xC0) return ((c & 0x1F) << 6) | (文本[字节位置+1] & 0x3F);
+    if ((c & 0xF0) == 0xE0) return ((c & 0x0F) << 12) | ((文本[字节位置+1] & 0x3F) << 6) | (文本[字节位置+2] & 0x3F);
+    if ((c & 0xF8) == 0xF0) return ((c & 0x07) << 18) | ((文本[字节位置+1] & 0x3F) << 12) | ((文本[字节位置+2] & 0x3F) << 6) | (文本[字节位置+3] & 0x3F);
+    return c;
+}
+
+// 从码点创建UTF-8字符串
+const char* 字符(int 码点) {
+    static char 缓冲区[5];
+    if (码点 < 0x80) {
+        缓冲区[0] = (char)码点;
+        缓冲区[1] = '\0';
+    } else if (码点 < 0x800) {
+        缓冲区[0] = (char)(0xC0 | (码点 >> 6));
+        缓冲区[1] = (char)(0x80 | (码点 & 0x3F));
+        缓冲区[2] = '\0';
+    } else if (码点 < 0x10000) {
+        缓冲区[0] = (char)(0xE0 | (码点 >> 12));
+        缓冲区[1] = (char)(0x80 | ((码点 >> 6) & 0x3F));
+        缓冲区[2] = (char)(0x80 | (码点 & 0x3F));
+        缓冲区[3] = '\0';
+    } else {
+        缓冲区[0] = (char)(0xF0 | (码点 >> 18));
+        缓冲区[1] = (char)(0x80 | ((码点 >> 12) & 0x3F));
+        缓冲区[2] = (char)(0x80 | ((码点 >> 6) & 0x3F));
+        缓冲区[3] = (char)(0x80 | (码点 & 0x3F));
+        缓冲区[4] = '\0';
+    }
+    return 缓冲区;
+}
+
+// ==================== 动态数组 ====================
+
+#define 动态数组初始大小 16
+
+typedef struct {
+    int* 数据;
+    int 大小;
+    int 容量;
+} 动态数组;
+
+动态数组* 创建动态数组() {
+    动态数组* arr = (动态数组*)malloc(sizeof(动态数组));
+    arr->数据 = (int*)malloc(动态数组初始大小 * sizeof(int));
+    arr->大小 = 0;
+    arr->容量 = 动态数组初始大小;
+    return arr;
+}
+
+void 动态数组添加(动态数组* arr, int 值) {
+    if (arr->大小 >= arr->容量) {
+        arr->容量 *= 2;
+        arr->数据 = (int*)realloc(arr->数据, arr->容量 * sizeof(int));
+    }
+    arr->数据[arr->大小++] = 值;
+}
+
+int 动态数组获取(动态数组* arr, int 索引) {
+    if (索引 >= 0 && 索引 < arr->大小) {
+        return arr->数据[索引];
+    }
+    return 0;
+}
+
+void 动态数组设置(动态数组* arr, int 索引, int 值) {
+    if (索引 >= 0 && 索引 < arr->大小) {
+        arr->数据[索引] = 值;
+    }
+}
+
+int 动态数组大小(动态数组* arr) {
+    return arr->大小;
+}
+
+void 动态数组删除(动态数组* arr, int 索引) {
+    if (索引 >= 0 && 索引 < arr->大小) {
+        for (int i = 索引; i < arr->大小 - 1; i++) {
+            arr->数据[i] = arr->数据[i + 1];
+        }
+        arr->大小--;
+    }
+}
+
+void 动态数组插入(动态数组* arr, int 索引, int 值) {
+    if (索引 < 0 || 索引 > arr->大小) return;
+    动态数组添加(arr, 0);  // 扩展
+    for (int i = arr->大小 - 1; i > 索引; i--) {
+        arr->数据[i] = arr->数据[i - 1];
+    }
+    arr->数据[索引] = 值;
+}
+
+void 释放动态数组(动态数组* arr) {
+    free(arr->数据);
+    free(arr);
+}
+
+// 动态字符串数组
+typedef struct {
+    const char** 数据;
+    int 大小;
+    int 容量;
+} 动态字符串数组;
+
+动态字符串数组* 创建动态字符串数组() {
+    动态字符串数组* arr = (动态字符串数组*)malloc(sizeof(动态字符串数组));
+    arr->数据 = (const char**)malloc(动态数组初始大小 * sizeof(const char*));
+    arr->大小 = 0;
+    arr->容量 = 动态数组初始大小;
+    return arr;
+}
+
+void 动态字符串数组添加(动态字符串数组* arr, const char* 值) {
+    if (arr->大小 >= arr->容量) {
+        arr->容量 *= 2;
+        arr->数据 = (const char**)realloc(arr->数据, arr->容量 * sizeof(const char*));
+    }
+    arr->数据[arr->大小++] = strdup(值);
+}
+
+const char* 动态字符串数组获取(动态字符串数组* arr, int 索引) {
+    if (索引 >= 0 && 索引 < arr->大小) {
+        return arr->数据[索引];
+    }
+    return "";
+}
+
+int 动态字符串数组大小(动态字符串数组* arr) {
+    return arr->大小;
+}
+
+void 释放动态字符串数组(动态字符串数组* arr) {
+    for (int i = 0; i < arr->大小; i++) {
+        free((void*)arr->数据[i]);
+    }
+    free(arr->数据);
+    free(arr);
 }
