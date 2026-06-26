@@ -118,6 +118,12 @@ void 代码生成器::生成语句(const 语句& 语句) {
                     if (成员名列表[i] == 成员名) { 成员索引 = static_cast<int>(i); break; }
                 }
                 if (成员索引 < 0) throw std::runtime_error("未定义的成员: " + 成员名);
+                // 检查是否需要加载指针（结构体参数是指针类型）
+                llvm::AllocaInst* alloca = llvm::dyn_cast<llvm::AllocaInst>(对象地址);
+                if (alloca && alloca->getAllocatedType()->isPointerTy()) {
+                    // 结构体参数是指针，需要先加载
+                    对象地址 = 构建器->CreateLoad(llvm::PointerType::get(上下文, 0), 对象地址, 对象名 + "_加载");
+                }
                 llvm::Value* 成员地址 = 构建器->CreateStructGEP(结构体类型, 对象地址, static_cast<unsigned>(成员索引), 成员名);
                 构建器->CreateStore(生成表达式(*赋值.值表达式), 成员地址);
             } else {
@@ -165,6 +171,12 @@ void 代码生成器::生成语句(const 语句& 语句) {
         }
         case 语句类型::如果语句: {
             const auto& 如果 = static_cast<const 如果语句&>(语句);
+            
+            // 处理初始化语句（if (初始化; 条件) 形式）
+            if (如果.初始化) {
+                生成语句(*如果.初始化);
+            }
+            
             llvm::Value* 条件值 = 生成表达式(*如果.条件);
             条件值 = 构建器->CreateICmpNE(条件值, llvm::ConstantInt::get(上下文, llvm::APInt(32, 0)), "ifcond");
             llvm::Function* 当前函数 = 构建器->GetInsertBlock()->getParent();
@@ -180,9 +192,10 @@ void 代码生成器::生成语句(const 语句& 语句) {
             构建器->CreateCondBr(条件值, then块, 否则如果目标);
 
             构建器->SetInsertPoint(then块);
-            符号表实例.进入作用域();
-            for (const auto& 子 : 如果.then块) 生成语句(*子);
-            符号表实例.退出作用域();
+            {
+                作用域守卫 守卫(符号表实例);
+                for (const auto& 子 : 如果.then块) 生成语句(*子);
+            }
             if (构建器->GetInsertBlock()->getTerminator() == nullptr) 构建器->CreateBr(合并块);
 
             for (size_t j = 0; j < 如果.否则如果列表.size(); ++j) {
@@ -193,16 +206,18 @@ void 代码生成器::生成语句(const 语句& 语句) {
                 llvm::BasicBlock* 下一个 = (j + 1 < elif块列表.size()) ? elif块列表[j + 1] : else块;
                 构建器->CreateCondBr(elif条件, elif体块, 下一个);
                 构建器->SetInsertPoint(elif体块);
-                符号表实例.进入作用域();
-                for (const auto& 子 : 如果.否则如果列表[j].主体) 生成语句(*子);
-                符号表实例.退出作用域();
+                {
+                    作用域守卫 守卫(符号表实例);
+                    for (const auto& 子 : 如果.否则如果列表[j].主体) 生成语句(*子);
+                }
                 if (构建器->GetInsertBlock()->getTerminator() == nullptr) 构建器->CreateBr(合并块);
             }
 
             构建器->SetInsertPoint(else块);
-            符号表实例.进入作用域();
-            for (const auto& 子 : 如果.else块) 生成语句(*子);
-            符号表实例.退出作用域();
+            {
+                作用域守卫 守卫(符号表实例);
+                for (const auto& 子 : 如果.else块) 生成语句(*子);
+            }
             if (构建器->GetInsertBlock()->getTerminator() == nullptr) 构建器->CreateBr(合并块);
             构建器->SetInsertPoint(合并块);
             break;
@@ -211,8 +226,9 @@ void 代码生成器::生成语句(const 语句& 语句) {
             const auto& 循环 = static_cast<const 循环语句&>(语句);
             llvm::Function* 当前函数 = 构建器->GetInsertBlock()->getParent();
 
+            std::unique_ptr<作用域守卫> 初始化守卫;
             if (循环.初始化) {
-                符号表实例.进入作用域();
+                初始化守卫 = std::make_unique<作用域守卫>(符号表实例);
                 生成语句(*循环.初始化);
             }
 
@@ -236,9 +252,10 @@ void 代码生成器::生成语句(const 语句& 语句) {
             }
 
             构建器->SetInsertPoint(体块);
-            符号表实例.进入作用域();
-            for (const auto& 子 : 循环.主体) 生成语句(*子);
-            符号表实例.退出作用域();
+            {
+                作用域守卫 守卫(符号表实例);
+                for (const auto& 子 : 循环.主体) 生成语句(*子);
+            }
             if (构建器->GetInsertBlock()->getTerminator() == nullptr) 构建器->CreateBr(步进块);
 
             构建器->SetInsertPoint(步进块);
@@ -251,9 +268,7 @@ void 代码生成器::生成语句(const 语句& 语句) {
             循环退出栈.pop();
             构建器->SetInsertPoint(后块);
 
-            if (循环.初始化) {
-                符号表实例.退出作用域();
-            }
+            初始化守卫.reset();
             break;
         }
         case 语句类型::当循环语句: {
@@ -270,9 +285,10 @@ void 代码生成器::生成语句(const 语句& 语句) {
             条件值 = 构建器->CreateICmpNE(条件值, llvm::ConstantInt::get(上下文, llvm::APInt(32, 0)), "whilecond");
             构建器->CreateCondBr(条件值, 体块, 后块);
             构建器->SetInsertPoint(体块);
-            符号表实例.进入作用域();
-            for (const auto& 子 : 当循环.主体) 生成语句(*子);
-            符号表实例.退出作用域();
+            {
+                作用域守卫 守卫(符号表实例);
+                for (const auto& 子 : 当循环.主体) 生成语句(*子);
+            }
             if (构建器->GetInsertBlock()->getTerminator() == nullptr) 构建器->CreateBr(条件块);
             循环继续栈.pop();
             循环退出栈.pop();
@@ -280,9 +296,39 @@ void 代码生成器::生成语句(const 语句& 语句) {
             break;
         }
         case 语句类型::做循环语句: {
-            // LLVM codegen 暂不支持 do-while（CreateGlobalString 创建新块导致 body 为空）
-            // 请使用 --运行 模式（虚拟机）运行包含做循环的程序
-            throw std::runtime_error("做循环暂不支持编译模式，请使用 --运行 模式");
+            const auto& 做循环 = static_cast<const 做循环语句&>(语句);
+            llvm::Function* 当前函数 = 构建器->GetInsertBlock()->getParent();
+            llvm::BasicBlock* 体块 = llvm::BasicBlock::Create(上下文, "do_body", 当前函数);
+            llvm::BasicBlock* 条件块 = llvm::BasicBlock::Create(上下文, "do_cond", 当前函数);
+            llvm::BasicBlock* 后块 = llvm::BasicBlock::Create(上下文, "do_end");
+
+            构建器->CreateBr(体块);
+            构建器->SetInsertPoint(体块);
+            {
+                作用域守卫 守卫(符号表实例);
+                循环继续栈.push(条件块);
+                循环退出栈.push(后块);
+                for (const auto& 子语句 : 做循环.主体) 生成语句(*子语句);
+            }
+            if (构建器->GetInsertBlock()->getTerminator() == nullptr) 构建器->CreateBr(条件块);
+
+            构建器->SetInsertPoint(条件块);
+            llvm::Value* 条件值 = 生成表达式(*做循环.条件);
+            if (条件值->getType()->isPointerTy()) {
+                条件值 = 构建器->CreatePtrToInt(条件值, llvm::Type::getInt32Ty(上下文));
+            }
+            llvm::Value* 条件结果 = 构建器->CreateICmpNE(条件值, llvm::ConstantInt::get(上下文, llvm::APInt(32, 0)), "do_cond");
+            if (做循环.是当循环) {
+                构建器->CreateCondBr(条件结果, 体块, 后块);
+            } else {
+                构建器->CreateCondBr(条件结果, 后块, 体块);
+            }
+
+            循环继续栈.pop();
+            循环退出栈.pop();
+            当前函数->insert(当前函数->end(), 后块);
+            构建器->SetInsertPoint(后块);
+            break;
         }
         case 语句类型::中断语句: {
             if (循环退出栈.empty()) throw std::runtime_error("'中断'必须在循环内使用");
@@ -350,7 +396,7 @@ void 代码生成器::生成语句(const 语句& 语句) {
             break;
         }
         case 语句类型::代码块: {
-            符号表实例.进入作用域();
+            作用域守卫 守卫(符号表实例);
             for (size_t i = 0; i < static_cast<const 代码块语句&>(语句).语句列表.size(); i++) {
                 const auto& 子 = static_cast<const 代码块语句&>(语句).语句列表[i];
                 生成语句(*子);
@@ -360,7 +406,6 @@ void 代码生成器::生成语句(const 语句& 语句) {
                     break;
                 }
             }
-            符号表实例.退出作用域();
             break;
         }
         case 语句类型::匹配语句: {
@@ -389,14 +434,14 @@ void 代码生成器::生成语句(const 语句& 语句) {
                     构建器->CreateCondBr(比较结果, 执行块, 下一个块);
 
                     构建器->SetInsertPoint(执行块);
-                    符号表实例.进入作用域();
-                    for (const auto& 子 : 分支.主体) 生成语句(*子);
-                    符号表实例.退出作用域();
+                    {
+                        作用域守卫 守卫(符号表实例);
+                        for (const auto& 子 : 分支.主体) 生成语句(*子);
+                    }
                     if (构建器->GetInsertBlock()->getTerminator() == nullptr) 构建器->CreateBr(合并块);
                 } else {
-                    符号表实例.进入作用域();
+                    作用域守卫 守卫(符号表实例);
                     for (const auto& 子 : 分支.主体) 生成语句(*子);
-                    符号表实例.退出作用域();
                     if (构建器->GetInsertBlock()->getTerminator() == nullptr) 构建器->CreateBr(合并块);
                 }
             }
@@ -436,26 +481,27 @@ void 代码生成器::生成语句(const 语句& 语句) {
             构建器->CreateCondBr(条件, 体块, 后块);
 
             构建器->SetInsertPoint(体块);
-            符号表实例.进入作用域();
+            {
+                作用域守卫 守卫(符号表实例);
 
-            if (符号表实例.是字符串数组(遍历.数组表达式->类型 == 表达式类型::变量 ? static_cast<const 变量表达式&>(*遍历.数组表达式).名称 : "")) {
-                llvm::ArrayType* 数组类型 = llvm::ArrayType::get(llvm::PointerType::get(上下文, 0), 数组大小值);
-                llvm::Value* 元素地址 = 构建器->CreateInBoundsGEP(数组类型, 数组地址, {llvm::ConstantInt::get(上下文, llvm::APInt(32, 0)), 当前索引}, "元素地址");
-                llvm::Value* 元素值 = 构建器->CreateLoad(llvm::PointerType::get(上下文, 0), 元素地址, "元素值");
-                llvm::AllocaInst* 循环变量 = 构建器->CreateAlloca(llvm::PointerType::get(上下文, 0), nullptr, 遍历.变量名);
-                构建器->CreateStore(元素值, 循环变量);
-                符号表实例.声明变量(遍历.变量名, 循环变量);
-                符号表实例.设置指针变量(遍历.变量名);
-            } else {
-                llvm::Value* 元素地址 = 构建器->CreateInBoundsGEP(llvm::Type::getInt32Ty(上下文), 数组地址, 当前索引, "元素地址");
-                llvm::Value* 元素值 = 构建器->CreateLoad(llvm::Type::getInt32Ty(上下文), 元素地址, "元素值");
-                llvm::AllocaInst* 循环变量 = 构建器->CreateAlloca(llvm::Type::getInt32Ty(上下文), nullptr, 遍历.变量名);
-                构建器->CreateStore(元素值, 循环变量);
-                符号表实例.声明变量(遍历.变量名, 循环变量);
+                if (符号表实例.是字符串数组(遍历.数组表达式->类型 == 表达式类型::变量 ? static_cast<const 变量表达式&>(*遍历.数组表达式).名称 : "")) {
+                    llvm::ArrayType* 数组类型 = llvm::ArrayType::get(llvm::PointerType::get(上下文, 0), 数组大小值);
+                    llvm::Value* 元素地址 = 构建器->CreateInBoundsGEP(数组类型, 数组地址, {llvm::ConstantInt::get(上下文, llvm::APInt(32, 0)), 当前索引}, "元素地址");
+                    llvm::Value* 元素值 = 构建器->CreateLoad(llvm::PointerType::get(上下文, 0), 元素地址, "元素值");
+                    llvm::AllocaInst* 循环变量 = 构建器->CreateAlloca(llvm::PointerType::get(上下文, 0), nullptr, 遍历.变量名);
+                    构建器->CreateStore(元素值, 循环变量);
+                    符号表实例.声明变量(遍历.变量名, 循环变量);
+                    符号表实例.设置指针变量(遍历.变量名);
+                } else {
+                    llvm::Value* 元素地址 = 构建器->CreateInBoundsGEP(llvm::Type::getInt32Ty(上下文), 数组地址, 当前索引, "元素地址");
+                    llvm::Value* 元素值 = 构建器->CreateLoad(llvm::Type::getInt32Ty(上下文), 元素地址, "元素值");
+                    llvm::AllocaInst* 循环变量 = 构建器->CreateAlloca(llvm::Type::getInt32Ty(上下文), nullptr, 遍历.变量名);
+                    构建器->CreateStore(元素值, 循环变量);
+                    符号表实例.声明变量(遍历.变量名, 循环变量);
+                }
+
+                for (const auto& 子 : 遍历.主体) 生成语句(*子);
             }
-
-            for (const auto& 子 : 遍历.主体) 生成语句(*子);
-            符号表实例.退出作用域();
             if (构建器->GetInsertBlock()->getTerminator() == nullptr) 构建器->CreateBr(步进块);
 
             构建器->SetInsertPoint(步进块);
@@ -488,6 +534,8 @@ void 代码生成器::生成语句(const 语句& 语句) {
         case 语句类型::枚举定义:
             break;
         case 语句类型::导入语句:
+            break;
+        case 语句类型::类型别名:
             break;
     }
 }

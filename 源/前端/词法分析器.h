@@ -86,6 +86,9 @@ enum class 标记类型 {
     假,
     问号,
     问问,
+    刀乐,
+    方法,
+    类型,
     入
 };
 
@@ -113,6 +116,7 @@ private:
     bool 验证后续字节(size_t 总长度) const;
     std::string 读取多字节字符();
     bool 是多字节首字节(uint8_t 字节) const { return (字节 & 0xC0) == 0xC0; }
+    std::string 解析字符串内容(bool 是插值模式);
 
 public:
     词法分析器(const std::string& 文件名);

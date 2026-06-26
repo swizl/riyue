@@ -26,6 +26,7 @@ class 代码生成器 {
     std::unordered_map<std::string, std::vector<std::string>> 结构体成员映射;
     std::unordered_map<std::string, std::vector<std::string>> 结构体成员类型名映射;
     std::unordered_map<std::string, llvm::StructType*> 元组类型映射;
+    std::unordered_map<std::string, std::string> 类型别名映射;
     bool 启用优化 = false;
 
     llvm::Type* 类型名到LLVM类型(const std::string& 类型名);

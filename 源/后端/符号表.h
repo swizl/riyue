@@ -7,6 +7,7 @@
 #include "llvm/IR/Value.h"
 #include "llvm/IR/Function.h"
 #include "../前端/公共.h"
+#include "../前端/抽象语法树.h"
 
 struct 闭包信息 {
     llvm::Function* 函数;
@@ -14,19 +15,32 @@ struct 闭包信息 {
     std::vector<llvm::Value*> 捕获变量地址;
 };
 
+enum class 变量类型种类 {
+    整数,
+    浮点,
+    字符串,
+    布尔,
+    数组,
+    映射,
+    结构体,
+    函数,
+    空
+};
+
+struct 变量类型信息 {
+    变量类型种类 种类 = 变量类型种类::整数;
+    std::string 结构体名;   // 仅结构体使用
+    int 数组大小 = 0;       // 仅数组使用
+    bool 是常量 = false;
+};
+
 class 符号表 {
 private:
     std::vector<std::unordered_map<std::string, llvm::Value*>> 作用域栈;
-    std::unordered_map<std::string, int> 数组大小映射;
+    std::unordered_map<std::string, 变量类型信息> 类型映射;
     std::unordered_map<std::string, 闭包信息> 闭包映射;
-    std::unordered_map<std::string, bool> 浮点变量映射;  // true = 浮点
-    std::unordered_map<std::string, bool> 指针变量映射;  // true = 指针
-    std::unordered_map<std::string, std::string> 结构体变量映射;  // 结构体类型名
-    std::unordered_map<std::string, bool> 映射变量映射;  // true = 映射
-    std::unordered_map<std::string, bool> 字符串数组映射;  // true = 字符串数组
-    std::unordered_map<std::string, bool> 常量集合;  // true = 常量（不可赋值）
-    std::unordered_map<std::string, std::vector<std::string>> 枚举定义映射;  // 枚举名 -> 成员列表
-    std::unordered_map<std::string, std::pair<std::string, int>> 枚举成员映射;  // 枚举名::成员名 -> (枚举名, 值)
+    std::unordered_map<std::string, std::vector<std::string>> 枚举定义映射;
+    std::unordered_map<std::string, std::pair<std::string, int>> 枚举成员映射;
     int 匿名函数计数 = 0;
 
     // 每个作用域中新增的类型标记变量名
@@ -46,12 +60,7 @@ public:
             调试打印("[符号表] 退出作用域，移除 " << 作用域栈.back().size() << " 个变量");
             // 清理该作用域中新增的类型标记
             for (const auto& 名称 : 类型标记作用域栈.back()) {
-                浮点变量映射.erase(名称);
-                指针变量映射.erase(名称);
-                结构体变量映射.erase(名称);
-                映射变量映射.erase(名称);
-                字符串数组映射.erase(名称);
-                常量集合.erase(名称);
+                类型映射.erase(名称);
             }
             作用域栈.pop_back();
             类型标记作用域栈.pop_back();
@@ -59,22 +68,13 @@ public:
     }
 
     void 重置为全局作用域() {
-        // 清理所有作用域的变量和类型标记
         while (作用域栈.size() > 1) {
             for (const auto& 名称 : 类型标记作用域栈.back()) {
-                浮点变量映射.erase(名称);
-                指针变量映射.erase(名称);
-                结构体变量映射.erase(名称);
-                映射变量映射.erase(名称);
-                字符串数组映射.erase(名称);
-                常量集合.erase(名称);
+                类型映射.erase(名称);
             }
             作用域栈.pop_back();
             类型标记作用域栈.pop_back();
         }
-        // 清理全局作用域的变量（保留全局变量声明）
-        // 注意：这里不清除全局变量，因为它们跨函数可见
-        // 但函数局部变量需要清除
     }
 
     void 声明变量(const std::string& 名称, llvm::Value* 值) {
@@ -82,67 +82,84 @@ public:
         调试打印("[符号表] 声明变量: '" << 名称 << "'（作用域深度 " << 作用域栈.size() << "）");
     }
 
+    // 统一类型设置接口
+    void 设置变量类型(const std::string& 名称, 变量类型信息 信息) {
+        if (!类型映射.count(名称)) 类型标记作用域栈.back().push_back(名称);
+        类型映射[名称] = 信息;
+    }
+
+    变量类型信息 获取变量类型(const std::string& 名称) const {
+        auto it = 类型映射.find(名称);
+        if (it != 类型映射.end()) return it->second;
+        return {变量类型种类::整数, "", 0, false};
+    }
+
+    // 便捷接口（保持向后兼容）
     void 设置浮点变量(const std::string& 名称) {
-        if (!浮点变量映射.count(名称)) 类型标记作用域栈.back().push_back(名称);
-        浮点变量映射[名称] = true;
+        设置变量类型(名称, {变量类型种类::浮点, "", 0, false});
     }
 
     bool 是浮点变量(const std::string& 名称) const {
-        return 浮点变量映射.count(名称) > 0 && 浮点变量映射.at(名称);
+        auto it = 类型映射.find(名称);
+        return it != 类型映射.end() && it->second.种类 == 变量类型种类::浮点;
     }
 
     void 设置指针变量(const std::string& 名称) {
-        if (!指针变量映射.count(名称)) 类型标记作用域栈.back().push_back(名称);
-        指针变量映射[名称] = true;
+        设置变量类型(名称, {变量类型种类::字符串, "", 0, false});
     }
 
     bool 是指针变量(const std::string& 名称) const {
-        return 指针变量映射.count(名称) > 0 && 指针变量映射.at(名称);
+        auto it = 类型映射.find(名称);
+        return it != 类型映射.end() && (it->second.种类 == 变量类型种类::字符串 || it->second.种类 == 变量类型种类::函数);
     }
 
     void 设置结构体变量(const std::string& 名称, const std::string& 类型名) {
-        if (!结构体变量映射.count(名称)) 类型标记作用域栈.back().push_back(名称);
-        结构体变量映射[名称] = 类型名;
+        设置变量类型(名称, {变量类型种类::结构体, 类型名, 0, false});
     }
 
     const std::string& 获取结构体类型(const std::string& 名称) const {
         static std::string 空;
-        auto it = 结构体变量映射.find(名称);
-        return (it != 结构体变量映射.end()) ? it->second : 空;
+        auto it = 类型映射.find(名称);
+        if (it != 类型映射.end() && it->second.种类 == 变量类型种类::结构体) return it->second.结构体名;
+        return 空;
     }
 
     void 设置映射变量(const std::string& 名称) {
-        if (!映射变量映射.count(名称)) 类型标记作用域栈.back().push_back(名称);
-        映射变量映射[名称] = true;
+        设置变量类型(名称, {变量类型种类::映射, "", 0, false});
     }
 
     bool 是映射变量(const std::string& 名称) const {
-        return 映射变量映射.count(名称) > 0 && 映射变量映射.at(名称);
+        auto it = 类型映射.find(名称);
+        return it != 类型映射.end() && it->second.种类 == 变量类型种类::映射;
     }
 
     void 设置字符串数组(const std::string& 名称) {
-        if (!字符串数组映射.count(名称)) 类型标记作用域栈.back().push_back(名称);
-        字符串数组映射[名称] = true;
+        设置变量类型(名称, {变量类型种类::数组, "", 0, false});
     }
 
     bool 是字符串数组(const std::string& 名称) const {
-        return 字符串数组映射.count(名称) > 0 && 字符串数组映射.at(名称);
+        auto it = 类型映射.find(名称);
+        return it != 类型映射.end() && it->second.种类 == 变量类型种类::数组;
     }
 
     void 声明常量(const std::string& 名称) {
-        if (!常量集合.count(名称)) 类型标记作用域栈.back().push_back(名称);
-        常量集合[名称] = true;
+        auto 信息 = 获取变量类型(名称);
+        信息.是常量 = true;
+        设置变量类型(名称, 信息);
     }
 
     bool 是常量(const std::string& 名称) const {
-        return 常量集合.count(名称) > 0 && 常量集合.at(名称);
+        auto it = 类型映射.find(名称);
+        return it != 类型映射.end() && it->second.是常量;
     }
 
-    void 声明枚举(const std::string& 名称, const std::vector<std::string>& 成员列表) {
-        枚举定义映射[名称] = 成员列表;
-        for (int i = 0; i < static_cast<int>(成员列表.size()); i++) {
-            枚举成员映射[名称 + "::" + 成员列表[i]] = {名称, i};
+    void 声明枚举(const std::string& 名称, const std::vector<枚举成员>& 成员列表) {
+        std::vector<std::string> 成员名列表;
+        for (const auto& 成员 : 成员列表) {
+            成员名列表.push_back(成员.名称);
+            枚举成员映射[名称 + "::" + 成员.名称] = {名称, 成员.值};
         }
+        枚举定义映射[名称] = 成员名列表;
         调试打印("[符号表] 声明枚举: '" << 名称 << "' 成员数: " << 成员列表.size());
     }
 
@@ -195,22 +212,25 @@ public:
 
     void 声明数组(const std::string& 名称, llvm::Value* 值, int 大小) {
         声明变量(名称, 值);
-        数组大小映射[名称] = 大小;
+        设置变量类型(名称, {变量类型种类::数组, "", 大小, false});
     }
 
     int 获取数组大小(const std::string& 名称) const {
-        auto it = 数组大小映射.find(名称);
-        return (it != 数组大小映射.end()) ? it->second : 0;
+        auto it = 类型映射.find(名称);
+        if (it != 类型映射.end() && it->second.种类 == 变量类型种类::数组) return it->second.数组大小;
+        return 0;
     }
 
     bool 是数组(const std::string& 名称) const {
-        return 数组大小映射.count(名称) > 0;
+        auto it = 类型映射.find(名称);
+        return it != 类型映射.end() && it->second.种类 == 变量类型种类::数组;
     }
 
     void 声明函数指针(const std::string& 名称, llvm::Function* 函数,
                     const std::vector<std::string>& 捕获名 = {},
                     const std::vector<llvm::Value*>& 捕获地址 = {}) {
         声明变量(名称, 函数);
+        设置变量类型(名称, {变量类型种类::函数, "", 0, false});
         闭包信息 信息;
         信息.函数 = 函数;
         信息.捕获变量名 = 捕获名;
@@ -235,6 +255,16 @@ public:
     std::string 生成匿名函数名() {
         return "lambda_" + std::to_string(匿名函数计数++);
     }
+};
+
+class 作用域守卫 {
+private:
+    符号表& 表;
+public:
+    作用域守卫(符号表& t) : 表(t) { 表.进入作用域(); }
+    ~作用域守卫() { 表.退出作用域(); }
+    作用域守卫(const 作用域守卫&) = delete;
+    作用域守卫& operator=(const 作用域守卫&) = delete;
 };
 
 #endif // 符号表_H

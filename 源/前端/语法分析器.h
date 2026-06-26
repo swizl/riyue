@@ -31,6 +31,9 @@ private:
     std::unique_ptr<表达式> 解析空值合并表达式();
     std::unique_ptr<表达式> 解析条件表达式();
 
+    std::vector<函数参数> 解析参数列表(const std::string& 默认类型 = "", bool 支持默认值 = false, bool 支持变长 = false);
+    std::vector<返回值描述> 解析返回值列表();
+
 public:
     std::unique_ptr<表达式> 解析表达式();
     std::unique_ptr<语句> 解析语句();

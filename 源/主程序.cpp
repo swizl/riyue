@@ -108,7 +108,8 @@ static std::unique_ptr<class 语句> 解析单条输入(const std::string& 输�
 
 int 运行REPL() {
     SetConsoleOutputCP(65001);
-    std::cout << "日月交互模式 (输入 '退出' 退出)" << std::endl;
+    std::cout << "日月交互模式 v1.0" << std::endl;
+    std::cout << "输入 '帮助' 查看可用命令" << std::endl;
 
     std::vector<std::string> 输入历史;
     std::string 缓冲区;
@@ -124,7 +125,50 @@ int 运行REPL() {
         std::string 行;
         if (!std::getline(std::cin, 行)) break;
 
-        if (缓冲区.empty() && (行 == "退出" || 行 == "exit" || 行 == "quit")) break;
+        // 处理特殊命令
+        if (缓冲区.empty()) {
+            if (行 == "退出" || 行 == "exit" || 行 == "quit") break;
+            
+            if (行 == "帮助" || 行 == "help") {
+                std::cout << "可用命令:" << std::endl;
+                std::cout << "  帮助     - 显示此帮助信息" << std::endl;
+                std::cout << "  历史     - 显示输入历史" << std::endl;
+                std::cout << "  清屏     - 清除屏幕" << std::endl;
+                std::cout << "  变量     - 显示当前变量" << std::endl;
+                std::cout << "  退出     - 退出REPL" << std::endl;
+                std::cout << std::endl;
+                std::cout << "支持的语法:" << std::endl;
+                std::cout << "  42 = x;          - 变量声明" << std::endl;
+                std::cout << "  (x)打印;         - 打印表达式" << std::endl;
+                std::cout << "  函数 名 {}       - 函数定义" << std::endl;
+                std::cout << "  如果 (条件) {}   - 条件语句" << std::endl;
+                std::cout << "  循环 (i: 0, 10) {} - 循环语句" << std::endl;
+                continue;
+            }
+            
+            if (行 == "历史" || 行 == "history") {
+                std::cout << "输入历史:" << std::endl;
+                for (size_t i = 0; i < 输入历史.size(); i++) {
+                    std::cout << "  " << (i + 1) << ": " << 输入历史[i] << std::endl;
+                }
+                continue;
+            }
+            
+            if (行 == "清屏" || 行 == "clear") {
+                #ifdef _WIN32
+                system("cls");
+                #else
+                system("clear");
+                #endif
+                continue;
+            }
+            
+            if (行 == "变量" || 行 == "vars") {
+                std::cout << "变量功能需要在执行后查看" << std::endl;
+                continue;
+            }
+        }
+
         if (行.empty() && 缓冲区.empty()) continue;
 
         if (!缓冲区.empty()) 缓冲区 += "\n";

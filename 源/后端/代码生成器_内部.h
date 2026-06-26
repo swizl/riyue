@@ -2,6 +2,8 @@
 #define 代码生成器_内部_H
 
 #include "代码生成器.h"
+#include "LLVM辅助.h"
+#include "C运行时声明.h"
 #include "../前端/公共.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/Support/FileSystem.h"

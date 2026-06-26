@@ -6,7 +6,7 @@
 #include <string>
 #include <unordered_map>
 
-enum class 表达式类型 { 整数, 浮点数, 布尔值, 字符, 字符串, 变量, 二元运算, 一元运算, 函数调用, 数组字面量, 下标访问, 匿名函数, 结构体实例, 成员访问, 映射字面量, 枚举成员, 元组字面量, 元组访问, 分片访问, 自增自减, 管道调用, 条件表达式, 空值合并 };
+enum class 表达式类型 { 整数, 浮点数, 布尔值, 字符, 字符串, 变量, 二元运算, 一元运算, 函数调用, 数组字面量, 下标访问, 匿名函数, 结构体实例, 成员访问, 映射字面量, 枚举成员, 元组字面量, 元组访问, 分片访问, 自增自减, 管道调用, 条件表达式, 空值合并, 数组推导, 方法调用 };
 enum class 二元操作符 { 加法, 减法, 乘法, 除法, 取模, 等于, 不等于, 小于, 大于, 小于等于, 大于等于, 逻辑与, 逻辑或, 左移, 右移, 位与, 位或, 位异或 };
 enum class 一元操作符 { 逻辑非, 取负 };
 
@@ -86,6 +86,21 @@ public:
         : 表达式(表达式类型::数组字面量), 元素列表(std::move(元素)) {}
 };
 
+class 数组推导表达式 : public 表达式 {
+public:
+    std::unique_ptr<表达式> 表达式体;
+    std::string 变量名;
+    bool 是范围;
+    std::unique_ptr<表达式> 开始值;
+    std::unique_ptr<表达式> 结束值;
+    std::unique_ptr<表达式> 步长值;
+    std::string 数组名;
+    std::unique_ptr<表达式> 过滤条件;
+
+    数组推导表达式(std::unique_ptr<表达式> 体, std::string 变量)
+        : 表达式(表达式类型::数组推导), 表达式体(std::move(体)), 变量名(std::move(变量)), 是范围(false) {}
+};
+
 class 下标访问表达式 : public 表达式 {
 public:
     std::string 数组名;
@@ -130,6 +145,15 @@ public:
     std::string 成员名;
     成员访问表达式(std::string 对象, std::string 成员)
         : 表达式(表达式类型::成员访问), 对象名(std::move(对象)), 成员名(std::move(成员)) {}
+};
+
+class 方法调用表达式 : public 表达式 {
+public:
+    std::string 对象名;
+    std::string 方法名;
+    std::vector<std::unique_ptr<表达式>> 参数列表;
+    方法调用表达式(std::string 对象, std::string 方法, std::vector<std::unique_ptr<表达式>> 参数)
+        : 表达式(表达式类型::方法调用), 对象名(std::move(对象)), 方法名(std::move(方法)), 参数列表(std::move(参数)) {}
 };
 
 class 映射字面量表达式 : public 表达式 {
@@ -203,7 +227,7 @@ public:
         : 表达式(表达式类型::空值合并), 左表达式(std::move(左)), 右表达式(std::move(右)) {}
 };
 
-enum class 语句类型 { 变量声明, 常量声明, 赋值语句, 下标赋值语句, 解构赋值, 复合赋值, 如果语句, 循环语句, 当循环语句, 做循环语句, 中断语句, 继续语句, 打印语句, 返回语句, 表达式语句, 代码块, 匹配语句, 遍历语句, 结构体定义, 枚举定义, 导入语句 };
+enum class 语句类型 { 变量声明, 常量声明, 赋值语句, 下标赋值语句, 解构赋值, 复合赋值, 如果语句, 循环语句, 当循环语句, 做循环语句, 中断语句, 继续语句, 打印语句, 返回语句, 表达式语句, 代码块, 匹配语句, 遍历语句, 结构体定义, 枚举定义, 导入语句, 类型别名 };
 
 class 语句 {
 public:
@@ -262,6 +286,7 @@ struct 否则如果分支 {
 
 class 如果语句 : public 语句 {
 public:
+    std::unique_ptr<语句> 初始化;  // 可选：条件中的变量声明
     std::unique_ptr<表达式> 条件;
     std::vector<std::unique_ptr<语句>> then块;
     std::vector<否则如果分支> 否则如果列表;
@@ -269,6 +294,10 @@ public:
     如果语句(std::unique_ptr<表达式> cond, std::vector<std::unique_ptr<语句>> then,
              std::vector<否则如果分支> elifs, std::vector<std::unique_ptr<语句>> else_)
         : 语句(语句类型::如果语句), 条件(std::move(cond)), then块(std::move(then)),
+          否则如果列表(std::move(elifs)), else块(std::move(else_)) {}
+    如果语句(std::unique_ptr<语句> init, std::unique_ptr<表达式> cond, std::vector<std::unique_ptr<语句>> then,
+             std::vector<否则如果分支> elifs, std::vector<std::unique_ptr<语句>> else_)
+        : 语句(语句类型::如果语句), 初始化(std::move(init)), 条件(std::move(cond)), then块(std::move(then)),
           否则如果列表(std::move(elifs)), else块(std::move(else_)) {}
 };
 
@@ -376,12 +405,20 @@ struct 结构体成员 {
     std::string 类型;
 };
 
+struct 结构体方法 {
+    std::string 名称;
+    std::vector<函数参数> 参数列表;
+    std::vector<返回值描述> 返回值列表;
+    std::vector<std::unique_ptr<语句>> 主体;
+};
+
 class 结构体定义语句 : public 语句 {
 public:
     std::string 名称;
     std::vector<结构体成员> 成员列表;
-    结构体定义语句(std::string 名, std::vector<结构体成员> 成员)
-        : 语句(语句类型::结构体定义), 名称(std::move(名)), 成员列表(std::move(成员)) {}
+    std::vector<结构体方法> 方法列表;
+    结构体定义语句(std::string 名, std::vector<结构体成员> 成员, std::vector<结构体方法> 方法 = {})
+        : 语句(语句类型::结构体定义), 名称(std::move(名)), 成员列表(std::move(成员)), 方法列表(std::move(方法)) {}
 };
 
 class 导入语句 : public 语句 {
@@ -391,12 +428,25 @@ public:
         : 语句(语句类型::导入语句), 模块名(std::move(名)) {}
 };
 
+struct 枚举成员 {
+    std::string 名称;
+    int 值;
+};
+
 class 枚举定义语句 : public 语句 {
 public:
     std::string 名称;
-    std::vector<std::string> 成员列表;
-    枚举定义语句(std::string 名, std::vector<std::string> 成员)
+    std::vector<枚举成员> 成员列表;
+    枚举定义语句(std::string 名, std::vector<枚举成员> 成员)
         : 语句(语句类型::枚举定义), 名称(std::move(名)), 成员列表(std::move(成员)) {}
+};
+
+class 类型别名语句 : public 语句 {
+public:
+    std::string 别名;
+    std::string 原始类型;
+    类型别名语句(std::string 别, std::string 原)
+        : 语句(语句类型::类型别名), 别名(std::move(别)), 原始类型(std::move(原)) {}
 };
 
 struct 全局变量声明 {
@@ -435,7 +485,9 @@ struct 程序 {
     std::vector<std::unique_ptr<全局变量声明>> 全局变量;
     std::vector<std::unique_ptr<函数>> 函数列表;
     std::vector<std::pair<std::string, std::vector<结构体成员>>> 结构体定义列表;
-    std::vector<std::pair<std::string, std::vector<std::string>>> 枚举定义列表;
+    std::vector<std::pair<std::string, std::vector<枚举成员>>> 枚举定义列表;
+    std::vector<std::unique_ptr<函数>> 方法列表;  // 结构体方法（已转换为普通函数）
+    std::vector<std::pair<std::string, std::string>> 类型别名列表;  // 别名 -> 原始类型
 };
 
 #endif

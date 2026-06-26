@@ -1,4 +1,5 @@
 #include "代码生成器_内部.h"
+#include "../共享/内置函数表.h"
 
 llvm::Value* 代码生成器::生成表达式(const 表达式& 表达式) {
     switch (表达式.类型) {
@@ -107,26 +108,7 @@ llvm::Value* 代码生成器::生成表达式(const 表达式& 表达式) {
             // 字符串拼接
             if (二元.操作符 == 二元操作符::加法 &&
                 左->getType()->isPointerTy() && 右->getType()->isPointerTy()) {
-                llvm::Type* i8Ptr = llvm::PointerType::get(上下文, 0);
-                llvm::FunctionType* sprintf类型 = llvm::FunctionType::get(
-                    llvm::Type::getInt32Ty(上下文), {i8Ptr, i8Ptr}, true);
-                llvm::FunctionType* malloc类型 = llvm::FunctionType::get(
-                    i8Ptr, {llvm::Type::getInt64Ty(上下文)}, false);
-                llvm::FunctionType* strlen类型 = llvm::FunctionType::get(
-                    llvm::Type::getInt64Ty(上下文), {i8Ptr}, false);
-                模块->getOrInsertFunction("sprintf", sprintf类型);
-                模块->getOrInsertFunction("malloc", malloc类型);
-                模块->getOrInsertFunction("strlen", strlen类型);
-
-                llvm::Value* 左长度 = 构建器->CreateCall(模块->getFunction("strlen"), {左}, "左长度");
-                llvm::Value* 右长度 = 构建器->CreateCall(模块->getFunction("strlen"), {右}, "右长度");
-                llvm::Value* 总长度 = 构建器->CreateAdd(左长度, 右长度, "总长度");
-                llvm::Value* 缓冲区大小 = 构建器->CreateAdd(总长度, llvm::ConstantInt::get(上下文, llvm::APInt(64, 1)), "缓冲区大小");
-
-                llvm::Value* 缓冲区 = 构建器->CreateCall(模块->getFunction("malloc"), {缓冲区大小}, "拼接缓冲区");
-                构建器->CreateCall(模块->getFunction("sprintf"),
-                    {缓冲区, 构建器->CreateGlobalString("%s%s"), 左, 右});
-                return 缓冲区;
+                return 拼接字符串(*构建器, 上下文, 模块.get(), 左, 右);
             }
 
             // 字符串比较
@@ -280,40 +262,11 @@ llvm::Value* 代码生成器::生成表达式(const 表达式& 表达式) {
                 return 构建器->CreateLoad(llvm::Type::getInt32Ty(上下文), 临时存储, "读取结果");
             }
             if (调用.函数名 == "读取行") {
-                llvm::FunctionType* fgets类型 = llvm::FunctionType::get(
-                    llvm::PointerType::get(上下文, 0),
-                    {llvm::PointerType::get(上下文, 0), llvm::Type::getInt32Ty(上下文), llvm::PointerType::get(上下文, 0)}, false);
-                auto fgets调用 = 模块->getOrInsertFunction("fgets", fgets类型);
-                llvm::FunctionType* malloc类型 = llvm::FunctionType::get(
-                    llvm::PointerType::get(上下文, 0),
-                    {llvm::Type::getInt64Ty(上下文)}, false);
-                模块->getOrInsertFunction("malloc", malloc类型);
-                llvm::FunctionType* strlen类型 = llvm::FunctionType::get(
-                    llvm::Type::getInt64Ty(上下文),
-                    {llvm::PointerType::get(上下文, 0)}, false);
-                模块->getOrInsertFunction("strlen", strlen类型);
                 llvm::Value* 句柄 = 调用.参数列表.size() > 0 ? 生成表达式(*调用.参数列表[0]) : llvm::ConstantInt::get(上下文, llvm::APInt(32, 0));
                 llvm::Value* 零 = llvm::ConstantInt::get(上下文, llvm::APInt(32, 0));
                 llvm::Value* 槽地址 = 构建器->CreateInBoundsGEP(文件表类型, 文件表指针, {零, 句柄}, "槽地址");
                 llvm::Value* 文件指针 = 构建器->CreateLoad(llvm::PointerType::get(上下文, 0), 槽地址, "文件指针");
-                llvm::Value* 缓冲区 = 构建器->CreateCall(模块->getFunction("malloc"),
-                    {llvm::ConstantInt::get(上下文, llvm::APInt(64, 4096))}, "读取行缓冲区");
-                构建器->CreateCall(fgets调用, {缓冲区,
-                    llvm::ConstantInt::get(上下文, llvm::APInt(32, 4096)), 文件指针});
-                llvm::Value* 长度 = 构建器->CreateCall(模块->getFunction("strlen"), {缓冲区}, "缓冲区长度");
-                llvm::Value* 长度大于零 = 构建器->CreateICmpUGT(长度, llvm::ConstantInt::get(上下文, llvm::APInt(64, 0)), "长度大于零");
-                llvm::Value* 最后位置 = 构建器->CreateSub(长度, llvm::ConstantInt::get(上下文, llvm::APInt(64, 1)), "最后位置");
-                llvm::Value* 安全最后位置 = 构建器->CreateSelect(长度大于零, 最后位置, llvm::ConstantInt::get(上下文, llvm::APInt(64, 0)), "安全最后位置");
-                llvm::Value* 最后字符地址 = 构建器->CreateInBoundsGEP(llvm::Type::getInt8Ty(上下文), 缓冲区, 安全最后位置, "最后字符地址");
-                llvm::Value* 最后字符 = 构建器->CreateLoad(llvm::Type::getInt8Ty(上下文), 最后字符地址, "最后字符");
-                llvm::Value* 是换行 = 构建器->CreateICmpEQ(最后字符,
-                    llvm::ConstantInt::get(上下文, llvm::APInt(8, '\n')), "是换行");
-                llvm::Value* 应替换 = 构建器->CreateAnd(长度大于零, 是换行, "应替换");
-                llvm::Value* 空终止 = llvm::ConstantInt::get(llvm::Type::getInt8Ty(上下文), 0);
-                llvm::Value* 原始字节 = 构建器->CreateLoad(llvm::Type::getInt8Ty(上下文), 最后字符地址, "原始字节");
-                llvm::Value* 最终字节 = 构建器->CreateSelect(应替换, 空终止, 原始字节, "最终字节");
-                构建器->CreateStore(最终字节, 最后字符地址);
-                return 缓冲区;
+                return 读取行并剥离换行(*构建器, 上下文, 模块.get(), 文件指针);
             }
 
             // 字符串操作内置函数
@@ -323,48 +276,17 @@ llvm::Value* 代码生成器::生成表达式(const 表达式& 表达式) {
                 return len;
             }
             if (调用.函数名 == "拼接") {
-                llvm::FunctionType* sprintf类型 = llvm::FunctionType::get(
-                    llvm::Type::getInt32Ty(上下文),
-                    {llvm::PointerType::get(上下文, 0), llvm::PointerType::get(上下文, 0)}, true);
-                模块->getOrInsertFunction("sprintf", sprintf类型);
-                llvm::FunctionType* malloc类型 = llvm::FunctionType::get(
-                    llvm::PointerType::get(上下文, 0),
-                    {llvm::Type::getInt64Ty(上下文)}, false);
-                模块->getOrInsertFunction("malloc", malloc类型);
-                llvm::FunctionType* strlen类型 = llvm::FunctionType::get(
-                    llvm::Type::getInt64Ty(上下文),
-                    {llvm::PointerType::get(上下文, 0)}, false);
-                模块->getOrInsertFunction("strlen", strlen类型);
                 llvm::Value* str1 = 生成表达式(*调用.参数列表[0]);
                 llvm::Value* str2 = 生成表达式(*调用.参数列表[1]);
-                llvm::Value* 左长度 = 构建器->CreateCall(模块->getFunction("strlen"), {str1}, "左长度");
-                llvm::Value* 右长度 = 构建器->CreateCall(模块->getFunction("strlen"), {str2}, "右长度");
-                llvm::Value* 总长度 = 构建器->CreateAdd(左长度, 右长度, "总长度");
-                llvm::Value* 缓冲区大小 = 构建器->CreateAdd(总长度, llvm::ConstantInt::get(上下文, llvm::APInt(64, 1)), "缓冲区大小");
-                llvm::Value* 缓冲区 = 构建器->CreateCall(模块->getFunction("malloc"), {缓冲区大小}, "拼接缓冲区");
-                构建器->CreateCall(模块->getFunction("sprintf"), {缓冲区, 构建器->CreateGlobalString("%s%s"), str1, str2});
-                return 缓冲区;
+                return 拼接字符串(*构建器, 上下文, 模块.get(), str1, str2);
             }
             if (调用.函数名 == "转字符串") {
                 llvm::Value* 值 = 生成表达式(*调用.参数列表[0]);
-                if (值->getType()->isPointerTy()) {
-                    return 值;
-                }
-                llvm::FunctionType* sprintf类型 = llvm::FunctionType::get(
-                    llvm::Type::getInt32Ty(上下文),
-                    {llvm::PointerType::get(上下文, 0), llvm::PointerType::get(上下文, 0)}, true);
-                模块->getOrInsertFunction("sprintf", sprintf类型);
-                llvm::FunctionType* malloc类型 = llvm::FunctionType::get(
-                    llvm::PointerType::get(上下文, 0),
-                    {llvm::Type::getInt64Ty(上下文)}, false);
-                模块->getOrInsertFunction("malloc", malloc类型);
+                if (值->getType()->isPointerTy()) return 值;
                 llvm::Value* 缓冲区 = 构建器->CreateCall(模块->getFunction("malloc"),
                     {llvm::ConstantInt::get(上下文, llvm::APInt(64, 64))}, "转字符串缓冲区");
-                if (值->getType()->isDoubleTy()) {
-                    构建器->CreateCall(模块->getFunction("sprintf"), {缓冲区, 构建器->CreateGlobalString("%.6g"), 值});
-                } else {
-                    构建器->CreateCall(模块->getFunction("sprintf"), {缓冲区, 构建器->CreateGlobalString("%d"), 值});
-                }
+                构建器->CreateCall(模块->getFunction("sprintf"), {缓冲区,
+                    构建器->CreateGlobalString(值->getType()->isDoubleTy() ? "%.6g" : "%d"), 值});
                 return 缓冲区;
             }
             // 反射函数：类型名
@@ -468,116 +390,36 @@ llvm::Value* 代码生成器::生成表达式(const 表达式& 表达式) {
             if (调用.函数名 == "最小值") {
                 llvm::Value* 左 = 生成表达式(*调用.参数列表[0]);
                 llvm::Value* 右 = 生成表达式(*调用.参数列表[1]);
-                if (左->getType()->isDoubleTy() || 右->getType()->isDoubleTy()) {
-                    if (左->getType()->isIntegerTy()) 左 = 构建器->CreateSIToFP(左, llvm::Type::getDoubleTy(上下文));
-                    if (右->getType()->isIntegerTy()) 右 = 构建器->CreateSIToFP(右, llvm::Type::getDoubleTy(上下文));
-                    llvm::Value* 比较 = 构建器->CreateFCmpOLT(左, 右, "小于");
-                    return 构建器->CreateSelect(比较, 左, 右, "最小值");
-                }
-                llvm::Value* 比较 = 构建器->CreateICmpSLT(左, 右, "小于");
-                return 构建器->CreateSelect(比较, 左, 右, "最小值");
+                return 生成极值选择(*构建器, 上下文, 左, 右, true);
             }
             if (调用.函数名 == "最大值") {
                 llvm::Value* 左 = 生成表达式(*调用.参数列表[0]);
                 llvm::Value* 右 = 生成表达式(*调用.参数列表[1]);
-                if (左->getType()->isDoubleTy() || 右->getType()->isDoubleTy()) {
-                    if (左->getType()->isIntegerTy()) 左 = 构建器->CreateSIToFP(左, llvm::Type::getDoubleTy(上下文));
-                    if (右->getType()->isIntegerTy()) 右 = 构建器->CreateSIToFP(右, llvm::Type::getDoubleTy(上下文));
-                    llvm::Value* 比较 = 构建器->CreateFCmpOGT(左, 右, "大于");
-                    return 构建器->CreateSelect(比较, 左, 右, "最大值");
-                }
-                llvm::Value* 比较 = 构建器->CreateICmpSGT(左, 右, "大于");
-                return 构建器->CreateSelect(比较, 左, 右, "最大值");
+                return 生成极值选择(*构建器, 上下文, 左, 右, false);
             }
             if (调用.函数名 == "平方根") {
-                llvm::Value* val = 生成表达式(*调用.参数列表[0]);
-                if (!val->getType()->isDoubleTy()) val = 构建器->CreateSIToFP(val, llvm::Type::getDoubleTy(上下文));
-                llvm::FunctionType* sqrt类型 = llvm::FunctionType::get(
-                    llvm::Type::getDoubleTy(上下文), {llvm::Type::getDoubleTy(上下文)}, false);
-                模块->getOrInsertFunction("sqrt", sqrt类型);
-                return 构建器->CreateCall(模块->getFunction("sqrt"), {val}, "平方根结果");
+                return 调用数学函数1(*构建器, 上下文, 模块.get(), "sqrt", "平方根", 生成表达式(*调用.参数列表[0]));
             }
             if (调用.函数名 == "四舍五入") {
-                llvm::Value* val = 生成表达式(*调用.参数列表[0]);
-                if (!val->getType()->isDoubleTy()) val = 构建器->CreateSIToFP(val, llvm::Type::getDoubleTy(上下文));
-                llvm::FunctionType* round类型 = llvm::FunctionType::get(
-                    llvm::Type::getDoubleTy(上下文), {llvm::Type::getDoubleTy(上下文)}, false);
-                模块->getOrInsertFunction("round", round类型);
-                llvm::Value* rounded = 构建器->CreateCall(模块->getFunction("round"), {val}, "四舍五入结果");
-                return 构建器->CreateFPToSI(rounded, llvm::Type::getInt32Ty(上下文), "四舍五入整数");
+                llvm::Value* val = 调用数学函数1(*构建器, 上下文, 模块.get(), "round", "四舍五入", 生成表达式(*调用.参数列表[0]));
+                return 构建器->CreateFPToSI(val, llvm::Type::getInt32Ty(上下文), "四舍五入整数");
             }
             if (调用.函数名 == "幂运算") {
-                llvm::Value* base = 生成表达式(*调用.参数列表[0]);
-                llvm::Value* exp = 生成表达式(*调用.参数列表[1]);
-                if (!base->getType()->isDoubleTy()) base = 构建器->CreateSIToFP(base, llvm::Type::getDoubleTy(上下文));
-                if (!exp->getType()->isDoubleTy()) exp = 构建器->CreateSIToFP(exp, llvm::Type::getDoubleTy(上下文));
-                llvm::FunctionType* pow类型 = llvm::FunctionType::get(
-                    llvm::Type::getDoubleTy(上下文), {llvm::Type::getDoubleTy(上下文), llvm::Type::getDoubleTy(上下文)}, false);
-                模块->getOrInsertFunction("pow", pow类型);
-                return 构建器->CreateCall(模块->getFunction("pow"), {base, exp}, "幂运算结果");
+                return 调用数学函数2(*构建器, 上下文, 模块.get(), "pow", "幂运算", 生成表达式(*调用.参数列表[0]), 生成表达式(*调用.参数列表[1]));
             }
             if (调用.函数名 == "正弦") {
-                llvm::Value* val = 生成表达式(*调用.参数列表[0]);
-                if (!val->getType()->isDoubleTy()) val = 构建器->CreateSIToFP(val, llvm::Type::getDoubleTy(上下文));
-                llvm::FunctionType* sin类型 = llvm::FunctionType::get(
-                    llvm::Type::getDoubleTy(上下文), {llvm::Type::getDoubleTy(上下文)}, false);
-                模块->getOrInsertFunction("sin", sin类型);
-                return 构建器->CreateCall(模块->getFunction("sin"), {val}, "正弦结果");
+                return 调用数学函数1(*构建器, 上下文, 模块.get(), "sin", "正弦", 生成表达式(*调用.参数列表[0]));
             }
             if (调用.函数名 == "余弦") {
-                llvm::Value* val = 生成表达式(*调用.参数列表[0]);
-                if (!val->getType()->isDoubleTy()) val = 构建器->CreateSIToFP(val, llvm::Type::getDoubleTy(上下文));
-                llvm::FunctionType* cos类型 = llvm::FunctionType::get(
-                    llvm::Type::getDoubleTy(上下文), {llvm::Type::getDoubleTy(上下文)}, false);
-                模块->getOrInsertFunction("cos", cos类型);
-                return 构建器->CreateCall(模块->getFunction("cos"), {val}, "余弦结果");
+                return 调用数学函数1(*构建器, 上下文, 模块.get(), "cos", "余弦", 生成表达式(*调用.参数列表[0]));
             }
             if (调用.函数名 == "正切") {
-                llvm::Value* val = 生成表达式(*调用.参数列表[0]);
-                if (!val->getType()->isDoubleTy()) val = 构建器->CreateSIToFP(val, llvm::Type::getDoubleTy(上下文));
-                llvm::FunctionType* tan类型 = llvm::FunctionType::get(
-                    llvm::Type::getDoubleTy(上下文), {llvm::Type::getDoubleTy(上下文)}, false);
-                模块->getOrInsertFunction("tan", tan类型);
-                return 构建器->CreateCall(模块->getFunction("tan"), {val}, "正切结果");
+                return 调用数学函数1(*构建器, 上下文, 模块.get(), "tan", "正切", 生成表达式(*调用.参数列表[0]));
             }
 
             // 输入函数
             if (调用.函数名 == "输入") {
-                llvm::FunctionType* fgets类型 = llvm::FunctionType::get(
-                    llvm::PointerType::get(上下文, 0),
-                    {llvm::PointerType::get(上下文, 0), llvm::Type::getInt32Ty(上下文), llvm::PointerType::get(上下文, 0)}, false);
-                模块->getOrInsertFunction("fgets", fgets类型);
-                llvm::FunctionType* malloc类型 = llvm::FunctionType::get(
-                    llvm::PointerType::get(上下文, 0), {llvm::Type::getInt64Ty(上下文)}, false);
-                模块->getOrInsertFunction("malloc", malloc类型);
-                llvm::FunctionType* strlen类型 = llvm::FunctionType::get(
-                    llvm::Type::getInt64Ty(上下文), {llvm::PointerType::get(上下文, 0)}, false);
-                模块->getOrInsertFunction("strlen", strlen类型);
-                llvm::Value* stdinPtr = 模块->getNamedGlobal("stdin");
-                if (!stdinPtr) {
-                    auto* stdinGV = new llvm::GlobalVariable(*模块, llvm::PointerType::get(上下文, 0),
-                        false, llvm::GlobalValue::ExternalLinkage, nullptr, "stdin");
-                    stdinGV->setDLLStorageClass(llvm::GlobalValue::DLLImportStorageClass);
-                    stdinPtr = stdinGV;
-                }
-                stdinPtr = 构建器->CreateLoad(llvm::PointerType::get(上下文, 0), stdinPtr, "stdin_val");
-                llvm::Value* 缓冲区 = 构建器->CreateCall(模块->getFunction("malloc"),
-                    {llvm::ConstantInt::get(上下文, llvm::APInt(64, 4096))}, "输入缓冲区");
-                构建器->CreateCall(模块->getFunction("fgets"), {缓冲区,
-                    llvm::ConstantInt::get(上下文, llvm::APInt(32, 4096)), stdinPtr});
-                llvm::Value* 长度 = 构建器->CreateCall(模块->getFunction("strlen"), {缓冲区}, "缓冲区长度");
-                llvm::Value* 长度大于零 = 构建器->CreateICmpUGT(长度, llvm::ConstantInt::get(上下文, llvm::APInt(64, 0)));
-                llvm::Value* 最后位置 = 构建器->CreateSub(长度, llvm::ConstantInt::get(上下文, llvm::APInt(64, 1)));
-                llvm::Value* 安全位置 = 构建器->CreateSelect(长度大于零, 最后位置, llvm::ConstantInt::get(上下文, llvm::APInt(64, 0)));
-                llvm::Value* 最后字符地址 = 构建器->CreateInBoundsGEP(llvm::Type::getInt8Ty(上下文), 缓冲区, 安全位置);
-                llvm::Value* 最后字符 = 构建器->CreateLoad(llvm::Type::getInt8Ty(上下文), 最后字符地址);
-                llvm::Value* 是换行 = 构建器->CreateICmpEQ(最后字符, llvm::ConstantInt::get(上下文, llvm::APInt(8, '\n')));
-                llvm::Value* 应替换 = 构建器->CreateAnd(长度大于零, 是换行);
-                llvm::Value* 空终止 = llvm::ConstantInt::get(llvm::Type::getInt8Ty(上下文), 0);
-                llvm::Value* 原始字节 = 构建器->CreateLoad(llvm::Type::getInt8Ty(上下文), 最后字符地址, "原始字节");
-                llvm::Value* 最终字节 = 构建器->CreateSelect(应替换, 空终止, 原始字节, "最终字节");
-                构建器->CreateStore(最终字节, 最后字符地址);
-                return 缓冲区;
+                return 读取标准输入行(*构建器, 上下文, 模块.get());
             }
 
             // 随机数函数
@@ -744,9 +586,10 @@ llvm::Value* 代码生成器::生成表达式(const 表达式& 表达式) {
             if (调用.函数名 == "分割") {
                 llvm::Value* 字符串 = 生成表达式(*调用.参数列表[0]);
                 llvm::Value* 分隔符 = 生成表达式(*调用.参数列表[1]);
+                llvm::Type* ptrTy = llvm::PointerType::get(上下文, 0);
                 llvm::FunctionType* 分割类型 = llvm::FunctionType::get(
-                    llvm::PointerType::get(llvm::PointerType::get(上下文, 0), 0),
-                    {llvm::PointerType::get(上下文, 0), llvm::PointerType::get(上下文, 0), llvm::PointerType::get(上下文, 0)}, false);
+                    ptrTy,
+                    {ptrTy, ptrTy, ptrTy}, false);
                 模块->getOrInsertFunction("字符串分割", 分割类型);
                 // 需要一个输出参数来接收数量
                 llvm::AllocaInst* 数量地址 = 构建器->CreateAlloca(llvm::Type::getInt32Ty(上下文), nullptr, "分割数量");
@@ -757,9 +600,10 @@ llvm::Value* 代码生成器::生成表达式(const 表达式& 表达式) {
                 llvm::Value* 数组地址 = 生成表达式(*调用.参数列表[0]);
                 llvm::Value* 大小 = 生成表达式(*调用.参数列表[1]);
                 llvm::Value* 分隔符 = 生成表达式(*调用.参数列表[2]);
+                llvm::Type* ptrTy = llvm::PointerType::get(上下文, 0);
                 llvm::FunctionType* 连接类型 = llvm::FunctionType::get(
-                    llvm::PointerType::get(上下文, 0),
-                    {llvm::PointerType::get(llvm::PointerType::get(上下文, 0), 0), llvm::Type::getInt32Ty(上下文), llvm::PointerType::get(上下文, 0)}, false);
+                    ptrTy,
+                    {ptrTy, llvm::Type::getInt32Ty(上下文), ptrTy}, false);
                 模块->getOrInsertFunction("字符串连接", 连接类型);
                 return 构建器->CreateCall(模块->getFunction("字符串连接"), {数组地址, 大小, 分隔符});
             }
@@ -775,120 +619,17 @@ llvm::Value* 代码生成器::生成表达式(const 表达式& 表达式) {
                 return 构建器->CreateCall(模块->getFunction("字符串格式化"), {模板, 参数1, 参数2, 参数3});
             }
 
-            // 日期时间函数
-            if (调用.函数名 == "获取时间戳") {
-                llvm::FunctionType* 函数类型 = llvm::FunctionType::get(
-                    llvm::Type::getInt64Ty(上下文), {}, false);
-                模块->getOrInsertFunction("获取时间戳", 函数类型);
-                return 构建器->CreateCall(模块->getFunction("获取时间戳"), {});
-            }
-            if (调用.函数名 == "获取年份") {
-                llvm::FunctionType* 函数类型 = llvm::FunctionType::get(
-                    llvm::Type::getInt32Ty(上下文), {}, false);
-                模块->getOrInsertFunction("获取年份", 函数类型);
-                return 构建器->CreateCall(模块->getFunction("获取年份"), {});
-            }
-            if (调用.函数名 == "获取月份") {
-                llvm::FunctionType* 函数类型 = llvm::FunctionType::get(
-                    llvm::Type::getInt32Ty(上下文), {}, false);
-                模块->getOrInsertFunction("获取月份", 函数类型);
-                return 构建器->CreateCall(模块->getFunction("获取月份"), {});
-            }
-            if (调用.函数名 == "获取日") {
-                llvm::FunctionType* 函数类型 = llvm::FunctionType::get(
-                    llvm::Type::getInt32Ty(上下文), {}, false);
-                模块->getOrInsertFunction("获取日", 函数类型);
-                return 构建器->CreateCall(模块->getFunction("获取日"), {});
-            }
-            if (调用.函数名 == "获取小时") {
-                llvm::FunctionType* 函数类型 = llvm::FunctionType::get(
-                    llvm::Type::getInt32Ty(上下文), {}, false);
-                模块->getOrInsertFunction("获取小时", 函数类型);
-                return 构建器->CreateCall(模块->getFunction("获取小时"), {});
-            }
-            if (调用.函数名 == "获取分钟") {
-                llvm::FunctionType* 函数类型 = llvm::FunctionType::get(
-                    llvm::Type::getInt32Ty(上下文), {}, false);
-                模块->getOrInsertFunction("获取分钟", 函数类型);
-                return 构建器->CreateCall(模块->getFunction("获取分钟"), {});
-            }
-            if (调用.函数名 == "获取秒") {
-                llvm::FunctionType* 函数类型 = llvm::FunctionType::get(
-                    llvm::Type::getInt32Ty(上下文), {}, false);
-                模块->getOrInsertFunction("获取秒", 函数类型);
-                return 构建器->CreateCall(模块->getFunction("获取秒"), {});
-            }
-            if (调用.函数名 == "获取星期") {
-                llvm::FunctionType* 函数类型 = llvm::FunctionType::get(
-                    llvm::Type::getInt32Ty(上下文), {}, false);
-                模块->getOrInsertFunction("获取星期", 函数类型);
-                return 构建器->CreateCall(模块->getFunction("获取星期"), {});
-            }
-            if (调用.函数名 == "获取日期时间") {
-                llvm::FunctionType* 函数类型 = llvm::FunctionType::get(
-                    llvm::PointerType::get(上下文, 0), {}, false);
-                模块->getOrInsertFunction("获取日期时间", 函数类型);
-                return 构建器->CreateCall(模块->getFunction("获取日期时间"), {});
-            }
-            if (调用.函数名 == "获取日期") {
-                llvm::FunctionType* 函数类型 = llvm::FunctionType::get(
-                    llvm::PointerType::get(上下文, 0), {}, false);
-                模块->getOrInsertFunction("获取日期", 函数类型);
-                return 构建器->CreateCall(模块->getFunction("获取日期"), {});
-            }
-            if (调用.函数名 == "获取时间") {
-                llvm::FunctionType* 函数类型 = llvm::FunctionType::get(
-                    llvm::PointerType::get(上下文, 0), {}, false);
-                模块->getOrInsertFunction("获取时间", 函数类型);
-                return 构建器->CreateCall(模块->getFunction("获取时间"), {});
+            // 表驱动分发：先尝试查表处理简单内置函数
+            {
+                llvm::Value* 内置结果;
+                std::vector<llvm::Value*> 参数值;
+                for (const auto& 参数 : 调用.参数列表) 参数值.push_back(生成表达式(*参数));
+                if (尝试调用内置函数(*构建器, 上下文, *模块, 调用.函数名, 参数值, 内置结果))
+                    return 内置结果;
             }
 
-            // JSON函数
-            if (调用.函数名 == "JSON获取字符串") {
-                llvm::Value* JSON = 生成表达式(*调用.参数列表[0]);
-                llvm::Value* 键 = 生成表达式(*调用.参数列表[1]);
-                llvm::FunctionType* 函数类型 = llvm::FunctionType::get(
-                    llvm::PointerType::get(上下文, 0),
-                    {llvm::PointerType::get(上下文, 0), llvm::PointerType::get(上下文, 0)}, false);
-                模块->getOrInsertFunction("JSON获取字符串", 函数类型);
-                return 构建器->CreateCall(模块->getFunction("JSON获取字符串"), {JSON, 键});
-            }
-            if (调用.函数名 == "JSON获取整数") {
-                llvm::Value* JSON = 生成表达式(*调用.参数列表[0]);
-                llvm::Value* 键 = 生成表达式(*调用.参数列表[1]);
-                llvm::FunctionType* 函数类型 = llvm::FunctionType::get(
-                    llvm::Type::getInt32Ty(上下文),
-                    {llvm::PointerType::get(上下文, 0), llvm::PointerType::get(上下文, 0)}, false);
-                模块->getOrInsertFunction("JSON获取整数", 函数类型);
-                return 构建器->CreateCall(模块->getFunction("JSON获取整数"), {JSON, 键});
-            }
-            if (调用.函数名 == "JSON获取浮点") {
-                llvm::Value* JSON = 生成表达式(*调用.参数列表[0]);
-                llvm::Value* 键 = 生成表达式(*调用.参数列表[1]);
-                llvm::FunctionType* 函数类型 = llvm::FunctionType::get(
-                    llvm::Type::getDoubleTy(上下文),
-                    {llvm::PointerType::get(上下文, 0), llvm::PointerType::get(上下文, 0)}, false);
-                模块->getOrInsertFunction("JSON获取浮点", 函数类型);
-                return 构建器->CreateCall(模块->getFunction("JSON获取浮点"), {JSON, 键});
-            }
-            if (调用.函数名 == "JSON获取布尔") {
-                llvm::Value* JSON = 生成表达式(*调用.参数列表[0]);
-                llvm::Value* 键 = 生成表达式(*调用.参数列表[1]);
-                llvm::FunctionType* 函数类型 = llvm::FunctionType::get(
-                    llvm::Type::getInt32Ty(上下文),
-                    {llvm::PointerType::get(上下文, 0), llvm::PointerType::get(上下文, 0)}, false);
-                模块->getOrInsertFunction("JSON获取布尔", 函数类型);
-                return 构建器->CreateCall(模块->getFunction("JSON获取布尔"), {JSON, 键});
-            }
-            if (调用.函数名 == "JSON存在") {
-                llvm::Value* JSON = 生成表达式(*调用.参数列表[0]);
-                llvm::Value* 键 = 生成表达式(*调用.参数列表[1]);
-                llvm::FunctionType* 函数类型 = llvm::FunctionType::get(
-                    llvm::Type::getInt32Ty(上下文),
-                    {llvm::PointerType::get(上下文, 0), llvm::PointerType::get(上下文, 0)}, false);
-                模块->getOrInsertFunction("JSON存在", 函数类型);
-                return 构建器->CreateCall(模块->getFunction("JSON存在"), {JSON, 键});
-            }
+            // 以下为需要特殊处理的内置函数
+
             if (调用.函数名 == "JSON创建字符串") {
                 llvm::Value* 键 = 生成表达式(*调用.参数列表[0]);
                 llvm::Value* 值 = 生成表达式(*调用.参数列表[1]);
@@ -908,307 +649,11 @@ llvm::Value* 代码生成器::生成表达式(const 表达式& 表达式) {
                 return 构建器->CreateCall(模块->getFunction("JSON创建整数"), {键, 值});
             }
 
-            // 加密函数
-            if (调用.函数名 == "简单哈希") {
-                llvm::Value* 输入 = 生成表达式(*调用.参数列表[0]);
-                llvm::FunctionType* 函数类型 = llvm::FunctionType::get(
-                    llvm::Type::getInt64Ty(上下文),
-                    {llvm::PointerType::get(上下文, 0)}, false);
-                模块->getOrInsertFunction("简单哈希", 函数类型);
-                return 构建器->CreateCall(模块->getFunction("简单哈希"), {输入});
-            }
-            if (调用.函数名 == "简单加密") {
-                llvm::Value* 输入 = 生成表达式(*调用.参数列表[0]);
-                llvm::Value* 密钥 = 生成表达式(*调用.参数列表[1]);
-                llvm::FunctionType* 函数类型 = llvm::FunctionType::get(
-                    llvm::PointerType::get(上下文, 0),
-                    {llvm::PointerType::get(上下文, 0), llvm::Type::getInt32Ty(上下文)}, false);
-                模块->getOrInsertFunction("简单加密", 函数类型);
-                return 构建器->CreateCall(模块->getFunction("简单加密"), {输入, 密钥});
-            }
-            if (调用.函数名 == "简单解密") {
-                llvm::Value* 输入 = 生成表达式(*调用.参数列表[0]);
-                llvm::Value* 密钥 = 生成表达式(*调用.参数列表[1]);
-                llvm::FunctionType* 函数类型 = llvm::FunctionType::get(
-                    llvm::PointerType::get(上下文, 0),
-                    {llvm::PointerType::get(上下文, 0), llvm::Type::getInt32Ty(上下文)}, false);
-                模块->getOrInsertFunction("简单解密", 函数类型);
-                return 构建器->CreateCall(模块->getFunction("简单解密"), {输入, 密钥});
-            }
-            if (调用.函数名 == "随机数") {
-                llvm::Value* 最小值 = 生成表达式(*调用.参数列表[0]);
-                llvm::Value* 最大值 = 生成表达式(*调用.参数列表[1]);
-                llvm::FunctionType* 函数类型 = llvm::FunctionType::get(
-                    llvm::Type::getInt32Ty(上下文),
-                    {llvm::Type::getInt32Ty(上下文), llvm::Type::getInt32Ty(上下文)}, false);
-                模块->getOrInsertFunction("随机数", 函数类型);
-                return 构建器->CreateCall(模块->getFunction("随机数"), {最小值, 最大值});
-            }
-            if (调用.函数名 == "随机浮点") {
-                llvm::FunctionType* 函数类型 = llvm::FunctionType::get(
-                    llvm::Type::getDoubleTy(上下文), {}, false);
-                模块->getOrInsertFunction("随机浮点", 函数类型);
-                return 构建器->CreateCall(模块->getFunction("随机浮点"), {});
-            }
-
-            // 计时函数
-            if (调用.函数名 == "开始计时") {
-                llvm::FunctionType* 函数类型 = llvm::FunctionType::get(
-                    llvm::Type::getVoidTy(上下文), {}, false);
-                模块->getOrInsertFunction("开始计时", 函数类型);
-                return 构建器->CreateCall(模块->getFunction("开始计时"), {});
-            }
             if (调用.函数名 == "结束计时") {
                 llvm::FunctionType* 函数类型 = llvm::FunctionType::get(
                     llvm::Type::getDoubleTy(上下文), {}, false);
                 模块->getOrInsertFunction("结束计时", 函数类型);
                 return 构建器->CreateCall(模块->getFunction("结束计时"), {});
-            }
-
-            // 系统函数
-            if (调用.函数名 == "获取当前目录") {
-                llvm::FunctionType* 函数类型 = llvm::FunctionType::get(
-                    llvm::PointerType::get(上下文, 0), {}, false);
-                模块->getOrInsertFunction("获取当前目录", 函数类型);
-                return 构建器->CreateCall(模块->getFunction("获取当前目录"), {});
-            }
-            if (调用.函数名 == "文件存在") {
-                llvm::Value* 路径 = 生成表达式(*调用.参数列表[0]);
-                llvm::FunctionType* 函数类型 = llvm::FunctionType::get(
-                    llvm::Type::getInt32Ty(上下文),
-                    {llvm::PointerType::get(上下文, 0)}, false);
-                模块->getOrInsertFunction("文件存在", 函数类型);
-                return 构建器->CreateCall(模块->getFunction("文件存在"), {路径});
-            }
-            if (调用.函数名 == "获取参数数量") {
-                llvm::FunctionType* 函数类型 = llvm::FunctionType::get(
-                    llvm::Type::getInt32Ty(上下文), {}, false);
-                模块->getOrInsertFunction("获取参数数量", 函数类型);
-                return 构建器->CreateCall(模块->getFunction("获取参数数量"), {});
-            }
-            if (调用.函数名 == "获取参数") {
-                llvm::Value* 索引 = 生成表达式(*调用.参数列表[0]);
-                llvm::FunctionType* 函数类型 = llvm::FunctionType::get(
-                    llvm::PointerType::get(上下文, 0),
-                    {llvm::Type::getInt32Ty(上下文)}, false);
-                模块->getOrInsertFunction("获取参数", 函数类型);
-                return 构建器->CreateCall(模块->getFunction("获取参数"), {索引});
-            }
-            if (调用.函数名 == "输出错误") {
-                llvm::Value* 消息 = 生成表达式(*调用.参数列表[0]);
-                llvm::FunctionType* 函数类型 = llvm::FunctionType::get(
-                    llvm::Type::getVoidTy(上下文),
-                    {llvm::PointerType::get(上下文, 0)}, false);
-                模块->getOrInsertFunction("输出错误", 函数类型);
-                return 构建器->CreateCall(模块->getFunction("输出错误"), {消息});
-            }
-            if (调用.函数名 == "创建目录") {
-                llvm::Value* 路径 = 生成表达式(*调用.参数列表[0]);
-                llvm::FunctionType* 函数类型 = llvm::FunctionType::get(
-                    llvm::Type::getInt32Ty(上下文),
-                    {llvm::PointerType::get(上下文, 0)}, false);
-                模块->getOrInsertFunction("创建目录", 函数类型);
-                return 构建器->CreateCall(模块->getFunction("创建目录"), {路径});
-            }
-            if (调用.函数名 == "目录存在") {
-                llvm::Value* 路径 = 生成表达式(*调用.参数列表[0]);
-                llvm::FunctionType* 函数类型 = llvm::FunctionType::get(
-                    llvm::Type::getInt32Ty(上下文),
-                    {llvm::PointerType::get(上下文, 0)}, false);
-                模块->getOrInsertFunction("目录存在", 函数类型);
-                return 构建器->CreateCall(模块->getFunction("目录存在"), {路径});
-            }
-            if (调用.函数名 == "删除文件") {
-                llvm::Value* 路径 = 生成表达式(*调用.参数列表[0]);
-                llvm::FunctionType* 函数类型 = llvm::FunctionType::get(
-                    llvm::Type::getInt32Ty(上下文),
-                    {llvm::PointerType::get(上下文, 0)}, false);
-                模块->getOrInsertFunction("删除文件", 函数类型);
-                return 构建器->CreateCall(模块->getFunction("删除文件"), {路径});
-            }
-            if (调用.函数名 == "列出目录") {
-                llvm::Value* 路径 = 生成表达式(*调用.参数列表[0]);
-                llvm::FunctionType* 函数类型 = llvm::FunctionType::get(
-                    llvm::Type::getInt32Ty(上下文),
-                    {llvm::PointerType::get(上下文, 0)}, false);
-                模块->getOrInsertFunction("列出目录", 函数类型);
-                return 构建器->CreateCall(模块->getFunction("列出目录"), {路径});
-            }
-            if (调用.函数名 == "获取目录项名称") {
-                llvm::Value* 索引 = 生成表达式(*调用.参数列表[0]);
-                llvm::FunctionType* 函数类型 = llvm::FunctionType::get(
-                    llvm::PointerType::get(上下文, 0),
-                    {llvm::Type::getInt32Ty(上下文)}, false);
-                模块->getOrInsertFunction("获取目录项名称", 函数类型);
-                return 构建器->CreateCall(模块->getFunction("获取目录项名称"), {索引});
-            }
-            if (调用.函数名 == "获取目录项是否目录") {
-                llvm::Value* 索引 = 生成表达式(*调用.参数列表[0]);
-                llvm::FunctionType* 函数类型 = llvm::FunctionType::get(
-                    llvm::Type::getInt32Ty(上下文),
-                    {llvm::Type::getInt32Ty(上下文)}, false);
-                模块->getOrInsertFunction("获取目录项是否目录", 函数类型);
-                return 构建器->CreateCall(模块->getFunction("获取目录项是否目录"), {索引});
-            }
-            if (调用.函数名 == "获取目录项大小") {
-                llvm::Value* 索引 = 生成表达式(*调用.参数列表[0]);
-                llvm::FunctionType* 函数类型 = llvm::FunctionType::get(
-                    llvm::Type::getInt64Ty(上下文),
-                    {llvm::Type::getInt32Ty(上下文)}, false);
-                模块->getOrInsertFunction("获取目录项大小", 函数类型);
-                return 构建器->CreateCall(模块->getFunction("获取目录项大小"), {索引});
-            }
-            if (调用.函数名 == "递归遍历目录") {
-                llvm::Value* 路径 = 生成表达式(*调用.参数列表[0]);
-                llvm::Value* 深度 = 生成表达式(*调用.参数列表[1]);
-                llvm::FunctionType* 函数类型 = llvm::FunctionType::get(
-                    llvm::Type::getInt32Ty(上下文),
-                    {llvm::PointerType::get(上下文, 0), llvm::Type::getInt32Ty(上下文)}, false);
-                模块->getOrInsertFunction("递归遍历目录", 函数类型);
-                return 构建器->CreateCall(模块->getFunction("递归遍历目录"), {路径, 深度});
-            }
-            if (调用.函数名 == "删除目录") {
-                llvm::Value* 路径 = 生成表达式(*调用.参数列表[0]);
-                llvm::FunctionType* 函数类型 = llvm::FunctionType::get(
-                    llvm::Type::getInt32Ty(上下文),
-                    {llvm::PointerType::get(上下文, 0)}, false);
-                模块->getOrInsertFunction("删除目录", 函数类型);
-                return 构建器->CreateCall(模块->getFunction("删除目录"), {路径});
-            }
-            if (调用.函数名 == "复制文件") {
-                llvm::Value* 源路径 = 生成表达式(*调用.参数列表[0]);
-                llvm::Value* 目标路径 = 生成表达式(*调用.参数列表[1]);
-                llvm::FunctionType* 函数类型 = llvm::FunctionType::get(
-                    llvm::Type::getInt32Ty(上下文),
-                    {llvm::PointerType::get(上下文, 0), llvm::PointerType::get(上下文, 0)}, false);
-                模块->getOrInsertFunction("复制文件", 函数类型);
-                return 构建器->CreateCall(模块->getFunction("复制文件"), {源路径, 目标路径});
-            }
-            if (调用.函数名 == "获取文件扩展名") {
-                llvm::Value* 路径 = 生成表达式(*调用.参数列表[0]);
-                llvm::FunctionType* 函数类型 = llvm::FunctionType::get(
-                    llvm::PointerType::get(上下文, 0),
-                    {llvm::PointerType::get(上下文, 0)}, false);
-                模块->getOrInsertFunction("获取文件扩展名", 函数类型);
-                return 构建器->CreateCall(模块->getFunction("获取文件扩展名"), {路径});
-            }
-            if (调用.函数名 == "获取文件名") {
-                llvm::Value* 路径 = 生成表达式(*调用.参数列表[0]);
-                llvm::FunctionType* 函数类型 = llvm::FunctionType::get(
-                    llvm::PointerType::get(上下文, 0),
-                    {llvm::PointerType::get(上下文, 0)}, false);
-                模块->getOrInsertFunction("获取文件名", 函数类型);
-                return 构建器->CreateCall(模块->getFunction("获取文件名"), {路径});
-            }
-            if (调用.函数名 == "获取目录路径") {
-                llvm::Value* 路径 = 生成表达式(*调用.参数列表[0]);
-                llvm::FunctionType* 函数类型 = llvm::FunctionType::get(
-                    llvm::PointerType::get(上下文, 0),
-                    {llvm::PointerType::get(上下文, 0)}, false);
-                模块->getOrInsertFunction("获取目录路径", 函数类型);
-                return 构建器->CreateCall(模块->getFunction("获取目录路径"), {路径});
-            }
-            if (调用.函数名 == "连接路径") {
-                llvm::Value* 路径1 = 生成表达式(*调用.参数列表[0]);
-                llvm::Value* 路径2 = 生成表达式(*调用.参数列表[1]);
-                llvm::FunctionType* 函数类型 = llvm::FunctionType::get(
-                    llvm::PointerType::get(上下文, 0),
-                    {llvm::PointerType::get(上下文, 0), llvm::PointerType::get(上下文, 0)}, false);
-                模块->getOrInsertFunction("连接路径", 函数类型);
-                return 构建器->CreateCall(模块->getFunction("连接路径"), {路径1, 路径2});
-            }
-            if (调用.函数名 == "获取文件大小") {
-                llvm::Value* 路径 = 生成表达式(*调用.参数列表[0]);
-                llvm::FunctionType* 函数类型 = llvm::FunctionType::get(
-                    llvm::Type::getInt64Ty(上下文),
-                    {llvm::PointerType::get(上下文, 0)}, false);
-                模块->getOrInsertFunction("获取文件大小", 函数类型);
-                return 构建器->CreateCall(模块->getFunction("获取文件大小"), {路径});
-            }
-            if (调用.函数名 == "重命名文件") {
-                llvm::Value* 旧路径 = 生成表达式(*调用.参数列表[0]);
-                llvm::Value* 新路径 = 生成表达式(*调用.参数列表[1]);
-                llvm::FunctionType* 函数类型 = llvm::FunctionType::get(
-                    llvm::Type::getInt32Ty(上下文),
-                    {llvm::PointerType::get(上下文, 0), llvm::PointerType::get(上下文, 0)}, false);
-                模块->getOrInsertFunction("重命名文件", 函数类型);
-                return 构建器->CreateCall(模块->getFunction("重命名文件"), {旧路径, 新路径});
-            }
-            if (调用.函数名 == "分割行数") {
-                llvm::Value* 文本 = 生成表达式(*调用.参数列表[0]);
-                llvm::FunctionType* 函数类型 = llvm::FunctionType::get(
-                    llvm::Type::getInt32Ty(上下文),
-                    {llvm::PointerType::get(上下文, 0)}, false);
-                模块->getOrInsertFunction("分割行数", 函数类型);
-                return 构建器->CreateCall(模块->getFunction("分割行数"), {文本});
-            }
-            if (调用.函数名 == "获取行") {
-                llvm::Value* 文本 = 生成表达式(*调用.参数列表[0]);
-                llvm::Value* 行号 = 生成表达式(*调用.参数列表[1]);
-                llvm::FunctionType* 函数类型 = llvm::FunctionType::get(
-                    llvm::PointerType::get(上下文, 0),
-                    {llvm::PointerType::get(上下文, 0), llvm::Type::getInt32Ty(上下文)}, false);
-                模块->getOrInsertFunction("获取行", 函数类型);
-                return 构建器->CreateCall(模块->getFunction("获取行"), {文本, 行号});
-            }
-            if (调用.函数名 == "去除空白") {
-                llvm::Value* 文本 = 生成表达式(*调用.参数列表[0]);
-                llvm::FunctionType* 函数类型 = llvm::FunctionType::get(
-                    llvm::PointerType::get(上下文, 0),
-                    {llvm::PointerType::get(上下文, 0)}, false);
-                模块->getOrInsertFunction("去除空白", 函数类型);
-                return 构建器->CreateCall(模块->getFunction("去除空白"), {文本});
-            }
-            if (调用.函数名 == "转小写") {
-                llvm::Value* 文本 = 生成表达式(*调用.参数列表[0]);
-                llvm::FunctionType* 函数类型 = llvm::FunctionType::get(
-                    llvm::PointerType::get(上下文, 0),
-                    {llvm::PointerType::get(上下文, 0)}, false);
-                模块->getOrInsertFunction("转小写", 函数类型);
-                return 构建器->CreateCall(模块->getFunction("转小写"), {文本});
-            }
-            if (调用.函数名 == "转大写") {
-                llvm::Value* 文本 = 生成表达式(*调用.参数列表[0]);
-                llvm::FunctionType* 函数类型 = llvm::FunctionType::get(
-                    llvm::PointerType::get(上下文, 0),
-                    {llvm::PointerType::get(上下文, 0)}, false);
-                模块->getOrInsertFunction("转大写", 函数类型);
-                return 构建器->CreateCall(模块->getFunction("转大写"), {文本});
-            }
-            if (调用.函数名 == "字符串开头") {
-                llvm::Value* 文本 = 生成表达式(*调用.参数列表[0]);
-                llvm::Value* 前缀 = 生成表达式(*调用.参数列表[1]);
-                llvm::FunctionType* 函数类型 = llvm::FunctionType::get(
-                    llvm::Type::getInt32Ty(上下文),
-                    {llvm::PointerType::get(上下文, 0), llvm::PointerType::get(上下文, 0)}, false);
-                模块->getOrInsertFunction("字符串开头", 函数类型);
-                return 构建器->CreateCall(模块->getFunction("字符串开头"), {文本, 前缀});
-            }
-            if (调用.函数名 == "字符串结尾") {
-                llvm::Value* 文本 = 生成表达式(*调用.参数列表[0]);
-                llvm::Value* 后缀 = 生成表达式(*调用.参数列表[1]);
-                llvm::FunctionType* 函数类型 = llvm::FunctionType::get(
-                    llvm::Type::getInt32Ty(上下文),
-                    {llvm::PointerType::get(上下文, 0), llvm::PointerType::get(上下文, 0)}, false);
-                模块->getOrInsertFunction("字符串结尾", 函数类型);
-                return 构建器->CreateCall(模块->getFunction("字符串结尾"), {文本, 后缀});
-            }
-            if (调用.函数名 == "字符码") {
-                llvm::Value* 文本 = 生成表达式(*调用.参数列表[0]);
-                llvm::Value* 位置 = 生成表达式(*调用.参数列表[1]);
-                llvm::FunctionType* 函数类型 = llvm::FunctionType::get(
-                    llvm::Type::getInt32Ty(上下文),
-                    {llvm::PointerType::get(上下文, 0), llvm::Type::getInt32Ty(上下文)}, false);
-                模块->getOrInsertFunction("字符码", 函数类型);
-                return 构建器->CreateCall(模块->getFunction("字符码"), {文本, 位置});
-            }
-            if (调用.函数名 == "字符") {
-                llvm::Value* 码点 = 生成表达式(*调用.参数列表[0]);
-                llvm::FunctionType* 函数类型 = llvm::FunctionType::get(
-                    llvm::PointerType::get(上下文, 0),
-                    {llvm::Type::getInt32Ty(上下文)}, false);
-                模块->getOrInsertFunction("字符", 函数类型);
-                return 构建器->CreateCall(模块->getFunction("字符"), {码点});
             }
 
             // 动态数组函数
@@ -1217,146 +662,6 @@ llvm::Value* 代码生成器::生成表达式(const 表达式& 表达式) {
                     llvm::PointerType::get(上下文, 0), {}, false);
                 模块->getOrInsertFunction("创建动态数组", 函数类型);
                 return 构建器->CreateCall(模块->getFunction("创建动态数组"), {});
-            }
-            if (调用.函数名 == "动态数组添加") {
-                llvm::Value* 数组 = 生成表达式(*调用.参数列表[0]);
-                llvm::Value* 值 = 生成表达式(*调用.参数列表[1]);
-                llvm::FunctionType* 函数类型 = llvm::FunctionType::get(
-                    llvm::Type::getVoidTy(上下文),
-                    {llvm::PointerType::get(上下文, 0), llvm::Type::getInt32Ty(上下文)}, false);
-                模块->getOrInsertFunction("动态数组添加", 函数类型);
-                return 构建器->CreateCall(模块->getFunction("动态数组添加"), {数组, 值});
-            }
-            if (调用.函数名 == "动态数组获取") {
-                llvm::Value* 数组 = 生成表达式(*调用.参数列表[0]);
-                llvm::Value* 索引 = 生成表达式(*调用.参数列表[1]);
-                llvm::FunctionType* 函数类型 = llvm::FunctionType::get(
-                    llvm::Type::getInt32Ty(上下文),
-                    {llvm::PointerType::get(上下文, 0), llvm::Type::getInt32Ty(上下文)}, false);
-                模块->getOrInsertFunction("动态数组获取", 函数类型);
-                return 构建器->CreateCall(模块->getFunction("动态数组获取"), {数组, 索引});
-            }
-            if (调用.函数名 == "动态数组设置") {
-                llvm::Value* 数组 = 生成表达式(*调用.参数列表[0]);
-                llvm::Value* 索引 = 生成表达式(*调用.参数列表[1]);
-                llvm::Value* 值 = 生成表达式(*调用.参数列表[2]);
-                llvm::FunctionType* 函数类型 = llvm::FunctionType::get(
-                    llvm::Type::getVoidTy(上下文),
-                    {llvm::PointerType::get(上下文, 0), llvm::Type::getInt32Ty(上下文), llvm::Type::getInt32Ty(上下文)}, false);
-                模块->getOrInsertFunction("动态数组设置", 函数类型);
-                return 构建器->CreateCall(模块->getFunction("动态数组设置"), {数组, 索引, 值});
-            }
-            if (调用.函数名 == "动态数组大小" || 调用.函数名 == "求大小") {
-                llvm::Value* 数组 = 生成表达式(*调用.参数列表[0]);
-                llvm::FunctionType* 函数类型 = llvm::FunctionType::get(
-                    llvm::Type::getInt32Ty(上下文),
-                    {llvm::PointerType::get(上下文, 0)}, false);
-                模块->getOrInsertFunction("动态数组大小", 函数类型);
-                return 构建器->CreateCall(模块->getFunction("动态数组大小"), {数组});
-            }
-            if (调用.函数名 == "动态数组删除") {
-                llvm::Value* 数组 = 生成表达式(*调用.参数列表[0]);
-                llvm::Value* 索引 = 生成表达式(*调用.参数列表[1]);
-                llvm::FunctionType* 函数类型 = llvm::FunctionType::get(
-                    llvm::Type::getVoidTy(上下文),
-                    {llvm::PointerType::get(上下文, 0), llvm::Type::getInt32Ty(上下文)}, false);
-                模块->getOrInsertFunction("动态数组删除", 函数类型);
-                return 构建器->CreateCall(模块->getFunction("动态数组删除"), {数组, 索引});
-            }
-            if (调用.函数名 == "动态数组插入") {
-                llvm::Value* 数组 = 生成表达式(*调用.参数列表[0]);
-                llvm::Value* 索引 = 生成表达式(*调用.参数列表[1]);
-                llvm::Value* 值 = 生成表达式(*调用.参数列表[2]);
-                llvm::FunctionType* 函数类型 = llvm::FunctionType::get(
-                    llvm::Type::getVoidTy(上下文),
-                    {llvm::PointerType::get(上下文, 0), llvm::Type::getInt32Ty(上下文), llvm::Type::getInt32Ty(上下文)}, false);
-                模块->getOrInsertFunction("动态数组插入", 函数类型);
-                return 构建器->CreateCall(模块->getFunction("动态数组插入"), {数组, 索引, 值});
-            }
-
-            // 数学扩展函数
-            if (调用.函数名 == "幂运算") {
-                llvm::Value* 底数 = 生成表达式(*调用.参数列表[0]);
-                llvm::Value* 指数 = 生成表达式(*调用.参数列表[1]);
-                if (底数->getType()->isIntegerTy()) 底数 = 构建器->CreateSIToFP(底数, llvm::Type::getDoubleTy(上下文));
-                if (指数->getType()->isIntegerTy()) 指数 = 构建器->CreateSIToFP(指数, llvm::Type::getDoubleTy(上下文));
-                llvm::FunctionType* 函数类型 = llvm::FunctionType::get(
-                    llvm::Type::getDoubleTy(上下文),
-                    {llvm::Type::getDoubleTy(上下文), llvm::Type::getDoubleTy(上下文)}, false);
-                模块->getOrInsertFunction("幂运算", 函数类型);
-                return 构建器->CreateCall(模块->getFunction("幂运算"), {底数, 指数});
-            }
-            if (调用.函数名 == "平方根") {
-                llvm::Value* 数 = 生成表达式(*调用.参数列表[0]);
-                if (数->getType()->isIntegerTy()) 数 = 构建器->CreateSIToFP(数, llvm::Type::getDoubleTy(上下文));
-                llvm::FunctionType* 函数类型 = llvm::FunctionType::get(
-                    llvm::Type::getDoubleTy(上下文),
-                    {llvm::Type::getDoubleTy(上下文)}, false);
-                模块->getOrInsertFunction("平方根", 函数类型);
-                return 构建器->CreateCall(模块->getFunction("平方根"), {数});
-            }
-            if (调用.函数名 == "正弦") {
-                llvm::Value* 弧度 = 生成表达式(*调用.参数列表[0]);
-                if (弧度->getType()->isIntegerTy()) 弧度 = 构建器->CreateSIToFP(弧度, llvm::Type::getDoubleTy(上下文));
-                llvm::FunctionType* 函数类型 = llvm::FunctionType::get(
-                    llvm::Type::getDoubleTy(上下文),
-                    {llvm::Type::getDoubleTy(上下文)}, false);
-                模块->getOrInsertFunction("正弦", 函数类型);
-                return 构建器->CreateCall(模块->getFunction("正弦"), {弧度});
-            }
-            if (调用.函数名 == "余弦") {
-                llvm::Value* 弧度 = 生成表达式(*调用.参数列表[0]);
-                if (弧度->getType()->isIntegerTy()) 弧度 = 构建器->CreateSIToFP(弧度, llvm::Type::getDoubleTy(上下文));
-                llvm::FunctionType* 函数类型 = llvm::FunctionType::get(
-                    llvm::Type::getDoubleTy(上下文),
-                    {llvm::Type::getDoubleTy(上下文)}, false);
-                模块->getOrInsertFunction("余弦", 函数类型);
-                return 构建器->CreateCall(模块->getFunction("余弦"), {弧度});
-            }
-            if (调用.函数名 == "正切") {
-                llvm::Value* 弧度 = 生成表达式(*调用.参数列表[0]);
-                if (弧度->getType()->isIntegerTy()) 弧度 = 构建器->CreateSIToFP(弧度, llvm::Type::getDoubleTy(上下文));
-                llvm::FunctionType* 函数类型 = llvm::FunctionType::get(
-                    llvm::Type::getDoubleTy(上下文),
-                    {llvm::Type::getDoubleTy(上下文)}, false);
-                模块->getOrInsertFunction("正切", 函数类型);
-                return 构建器->CreateCall(模块->getFunction("正切"), {弧度});
-            }
-            if (调用.函数名 == "角度转弧度") {
-                llvm::Value* 角度 = 生成表达式(*调用.参数列表[0]);
-                if (角度->getType()->isIntegerTy()) 角度 = 构建器->CreateSIToFP(角度, llvm::Type::getDoubleTy(上下文));
-                llvm::FunctionType* 函数类型 = llvm::FunctionType::get(
-                    llvm::Type::getDoubleTy(上下文),
-                    {llvm::Type::getDoubleTy(上下文)}, false);
-                模块->getOrInsertFunction("角度转弧度", 函数类型);
-                return 构建器->CreateCall(模块->getFunction("角度转弧度"), {角度});
-            }
-            if (调用.函数名 == "弧度转角度") {
-                llvm::Value* 弧度 = 生成表达式(*调用.参数列表[0]);
-                if (弧度->getType()->isIntegerTy()) 弧度 = 构建器->CreateSIToFP(弧度, llvm::Type::getDoubleTy(上下文));
-                llvm::FunctionType* 函数类型 = llvm::FunctionType::get(
-                    llvm::Type::getDoubleTy(上下文),
-                    {llvm::Type::getDoubleTy(上下文)}, false);
-                模块->getOrInsertFunction("弧度转角度", 函数类型);
-                return 构建器->CreateCall(模块->getFunction("弧度转角度"), {弧度});
-            }
-            if (调用.函数名 == "自然对数") {
-                llvm::Value* 数 = 生成表达式(*调用.参数列表[0]);
-                if (数->getType()->isIntegerTy()) 数 = 构建器->CreateSIToFP(数, llvm::Type::getDoubleTy(上下文));
-                llvm::FunctionType* 函数类型 = llvm::FunctionType::get(
-                    llvm::Type::getDoubleTy(上下文),
-                    {llvm::Type::getDoubleTy(上下文)}, false);
-                模块->getOrInsertFunction("自然对数", 函数类型);
-                return 构建器->CreateCall(模块->getFunction("自然对数"), {数});
-            }
-            if (调用.函数名 == "常用对数") {
-                llvm::Value* 数 = 生成表达式(*调用.参数列表[0]);
-                if (数->getType()->isIntegerTy()) 数 = 构建器->CreateSIToFP(数, llvm::Type::getDoubleTy(上下文));
-                llvm::FunctionType* 函数类型 = llvm::FunctionType::get(
-                    llvm::Type::getDoubleTy(上下文),
-                    {llvm::Type::getDoubleTy(上下文)}, false);
-                模块->getOrInsertFunction("常用对数", 函数类型);
-                return 构建器->CreateCall(模块->getFunction("常用对数"), {数});
             }
 
             // 内置函数：打印
@@ -1520,7 +825,6 @@ llvm::Value* 代码生成器::生成表达式(const 表达式& 表达式) {
             }
 
             std::vector<llvm::Value*> 参数值;
-            size_t 参数索引 = 0;
             size_t 固定参数计数 = 0;
             for (const auto& 参数 : 调用.参数列表) {
                 llvm::Value* 值 = 生成表达式(*参数);
@@ -1529,7 +833,6 @@ llvm::Value* 代码生成器::生成表达式(const 表达式& 表达式) {
                     break;
                 }
                 参数值.push_back(值);
-                参数索引++;
                 固定参数计数++;
             }
 
@@ -1542,7 +845,6 @@ llvm::Value* 代码生成器::生成表达式(const 表达式& 表达式) {
                     }
                     llvm::Value* 默认值 = 生成表达式(*参数定义.默认值);
                     参数值.push_back(默认值);
-                    参数索引++;
                 }
             }
 
@@ -1713,6 +1015,81 @@ llvm::Value* 代码生成器::生成表达式(const 表达式& 表达式) {
             }
             return 分配;
         }
+        case 表达式类型::数组推导: {
+            const auto& 推导 = static_cast<const 数组推导表达式&>(表达式);
+            static int 推导计数 = 0;
+            int 当前推导 = 推导计数++;
+
+            llvm::Value* 分配大小 = llvm::ConstantInt::get(上下文, llvm::APInt(64, 1024 * 4));
+            llvm::Value* 数组指针 = 构建器->CreateCall(模块->getFunction("malloc"), {分配大小}, "推导数组");
+            数组指针 = 构建器->CreateBitCast(数组指针, llvm::PointerType::get(上下文, 0));
+
+            llvm::AllocaInst* 计数器 = 构建器->CreateAlloca(llvm::Type::getInt32Ty(上下文), nullptr, "计数器");
+            构建器->CreateStore(llvm::ConstantInt::get(上下文, llvm::APInt(32, 0)), 计数器);
+
+            llvm::AllocaInst* 循环变量 = 构建器->CreateAlloca(llvm::Type::getInt32Ty(上下文), nullptr, 推导.变量名);
+
+            llvm::Function* 当前函数 = 构建器->GetInsertBlock()->getParent();
+            std::string 前缀 = ".推导" + std::to_string(当前推导);
+
+            llvm::BasicBlock* 循环头 = llvm::BasicBlock::Create(上下文, 前缀 + ".头", 当前函数);
+            llvm::BasicBlock* 循环体 = llvm::BasicBlock::Create(上下文, 前缀 + ".体", 当前函数);
+            llvm::BasicBlock* 存储块 = 推导.过滤条件 ?
+                llvm::BasicBlock::Create(上下文, 前缀 + ".存储", 当前函数) : nullptr;
+            llvm::BasicBlock* 步进块 = llvm::BasicBlock::Create(上下文, 前缀 + ".步进", 当前函数);
+            llvm::BasicBlock* 合并块 = llvm::BasicBlock::Create(上下文, 前缀 + ".合并", 当前函数);
+
+            if (推导.是范围) {
+                llvm::Value* 开始 = 生成表达式(*推导.开始值);
+                llvm::Value* 结束 = 生成表达式(*推导.结束值);
+                llvm::Value* 步长 = 推导.步长值 ?
+                    生成表达式(*推导.步长值) :
+                    llvm::ConstantInt::get(上下文, llvm::APInt(32, 1));
+
+                构建器->CreateStore(开始, 循环变量);
+                构建器->CreateBr(循环头);
+
+                // 循环头：检查条件
+                构建器->SetInsertPoint(循环头);
+                llvm::Value* 当前值 = 构建器->CreateLoad(llvm::Type::getInt32Ty(上下文), 循环变量);
+                llvm::Value* 条件 = 构建器->CreateICmpSLT(当前值, 结束, "条件");
+                构建器->CreateCondBr(条件, 循环体, 合并块);
+
+                // 循环体：计算表达式
+                构建器->SetInsertPoint(循环体);
+                符号表实例.声明变量(推导.变量名, 循环变量);
+                符号表实例.设置变量类型(推导.变量名, {变量类型种类::整数, "", 0, false});
+                llvm::Value* 表达式值 = 生成表达式(*推导.表达式体);
+
+                if (推导.过滤条件) {
+                    llvm::Value* 条件值 = 生成表达式(*推导.过滤条件);
+                    构建器->CreateCondBr(条件值, 存储块, 步进块);
+                    构建器->SetInsertPoint(存储块);
+                }
+
+                // 存储
+                llvm::Value* 当前计数 = 构建器->CreateLoad(llvm::Type::getInt32Ty(上下文), 计数器);
+                llvm::Value* 元素地址 = 构建器->CreateInBoundsGEP(llvm::Type::getInt32Ty(上下文), 数组指针, {当前计数});
+                构建器->CreateStore(表达式值, 元素地址);
+                llvm::Value* 新计数 = 构建器->CreateAdd(当前计数, llvm::ConstantInt::get(上下文, llvm::APInt(32, 1)));
+                构建器->CreateStore(新计数, 计数器);
+                构建器->CreateBr(步进块);
+
+                // 步进
+                构建器->SetInsertPoint(步进块);
+                当前值 = 构建器->CreateLoad(llvm::Type::getInt32Ty(上下文), 循环变量);
+                llvm::Value* 新值 = 构建器->CreateAdd(当前值, 步长);
+                构建器->CreateStore(新值, 循环变量);
+                构建器->CreateBr(循环头);
+
+                // 合并
+                构建器->SetInsertPoint(合并块);
+                return 数组指针;
+            } else {
+                // 数组推导暂不支持
+                throw std::runtime_error("数组推导暂不支持数组迭代，仅支持范围推导");
+            }
+        }
         case 表达式类型::映射字面量: {
             const auto& 映射 = static_cast<const 映射字面量表达式&>(表达式);
             int 大小 = static_cast<int>(映射.键值对列表.size());
@@ -1810,9 +1187,35 @@ llvm::Value* 代码生成器::生成表达式(const 表达式& 表达式) {
                 if (成员名列表[i] == 访问.成员名) { 成员索引 = static_cast<int>(i); break; }
             }
             if (成员索引 < 0) throw std::runtime_error("未定义的成员: " + 访问.成员名);
+            // 检查是否需要加载指针（结构体参数是指针类型）
+            llvm::AllocaInst* alloca = llvm::dyn_cast<llvm::AllocaInst>(对象地址);
+            if (alloca && alloca->getAllocatedType()->isPointerTy()) {
+                // 结构体参数是指针，需要先加载
+                对象地址 = 构建器->CreateLoad(llvm::PointerType::get(上下文, 0), 对象地址, 访问.对象名 + "_加载");
+            }
             llvm::Value* 成员地址 = 构建器->CreateStructGEP(结构体类型, 对象地址, static_cast<unsigned>(成员索引), 访问.成员名);
             llvm::Type* 成员LLVM类型 = 结构体类型->getElementType(static_cast<unsigned>(成员索引));
             return 构建器->CreateLoad(成员LLVM类型, 成员地址, 访问.成员名);
+        }
+        case 表达式类型::方法调用: {
+            const auto& 调用 = static_cast<const 方法调用表达式&>(表达式);
+            // 查找对象的结构体类型
+            const std::string& 结构体名 = 符号表实例.获取结构体类型(调用.对象名);
+            if (结构体名.empty()) throw std::runtime_error("变量不是结构体: " + 调用.对象名);
+            // 构造函数名: 结构体名_方法名
+            std::string 函数名 = 结构体名 + "_" + 调用.方法名;
+            // 查找函数
+            llvm::Function* 函数 = 模块->getFunction(函数名);
+            if (!函数) throw std::runtime_error("未定义的方法: " + 函数名);
+            // 构造参数列表（对象作为第一个参数）
+            std::vector<llvm::Value*> 参数值;
+            llvm::Value* 对象地址 = 符号表实例.获取变量值(调用.对象名);
+            if (!对象地址) throw std::runtime_error("未定义的变量: " + 调用.对象名);
+            参数值.push_back(对象地址);
+            for (const auto& 参数 : 调用.参数列表) {
+                参数值.push_back(生成表达式(*参数));
+            }
+            return 构建器->CreateCall(函数, 参数值, "方法调用");
         }
         case 表达式类型::枚举成员: {
             const auto& 枚举成员 = static_cast<const 枚举成员表达式&>(表达式);
