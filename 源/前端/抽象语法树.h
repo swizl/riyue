@@ -227,7 +227,7 @@ public:
         : 表达式(表达式类型::空值合并), 左表达式(std::move(左)), 右表达式(std::move(右)) {}
 };
 
-enum class 语句类型 { 变量声明, 常量声明, 赋值语句, 下标赋值语句, 解构赋值, 复合赋值, 如果语句, 循环语句, 当循环语句, 做循环语句, 中断语句, 继续语句, 打印语句, 返回语句, 表达式语句, 代码块, 匹配语句, 遍历语句, 结构体定义, 枚举定义, 导入语句, 类型别名 };
+enum class 语句类型 { 变量声明, 常量声明, 赋值语句, 下标赋值语句, 解构赋值, 复合赋值, 如果语句, 循环语句, 当循环语句, 做循环语句, 中断语句, 继续语句, 打印语句, 返回语句, 表达式语句, 代码块, 匹配语句, 遍历语句, 结构体定义, 枚举定义, 导入语句, 类型别名, 尝试语句, 抛出语句, 让出语句 };
 
 class 语句 {
 public:
@@ -449,6 +449,32 @@ public:
         : 语句(语句类型::类型别名), 别名(std::move(别)), 原始类型(std::move(原)) {}
 };
 
+class 尝试语句 : public 语句 {
+public:
+    std::vector<std::unique_ptr<语句>> 尝试主体;
+    std::string 异常变量名;
+    std::vector<std::unique_ptr<语句>> 捕获主体;
+    std::vector<std::unique_ptr<语句>> 最终主体;
+    尝试语句(std::vector<std::unique_ptr<语句>> 试体, std::string 变量名,
+             std::vector<std::unique_ptr<语句>> 捕体, std::vector<std::unique_ptr<语句>> 终体)
+        : 语句(语句类型::尝试语句), 尝试主体(std::move(试体)), 异常变量名(std::move(变量名)),
+          捕获主体(std::move(捕体)), 最终主体(std::move(终体)) {}
+};
+
+class 抛出语句 : public 语句 {
+public:
+    std::unique_ptr<表达式> 异常值;
+    抛出语句(std::unique_ptr<表达式> 值)
+        : 语句(语句类型::抛出语句), 异常值(std::move(值)) {}
+};
+
+class 让出语句 : public 语句 {
+public:
+    std::unique_ptr<表达式> 值表达式;
+    让出语句(std::unique_ptr<表达式> 值)
+        : 语句(语句类型::让出语句), 值表达式(std::move(值)) {}
+};
+
 struct 全局变量声明 {
     std::string 变量名;
     std::unique_ptr<表达式> 初始值;
@@ -473,12 +499,13 @@ public:
     std::string 名称;
     std::vector<std::string> 类型参数列表;
     std::vector<函数参数> 参数列表;
-    std::vector<返回值描述> 返回值列表;  // 支持多返回值
+    std::vector<返回值描述> 返回值列表;
     std::vector<std::unique_ptr<语句>> 主体;
+    bool 是否协程 = false;
     函数(std::string 名, std::vector<std::string> 类型参数, std::vector<函数参数> 参数, std::vector<返回值描述> 返回值,
-         std::vector<std::unique_ptr<语句>> body)
+         std::vector<std::unique_ptr<语句>> body, bool 协程 = false)
         : 名称(std::move(名)), 类型参数列表(std::move(类型参数)), 参数列表(std::move(参数)), 返回值列表(std::move(返回值)),
-          主体(std::move(body)) {}
+          主体(std::move(body)), 是否协程(协程) {}
 };
 
 struct 程序 {

@@ -70,6 +70,16 @@ std::string 操作码名称(操作码 码) {
         case 操作码::获取目录项是否目录运算: return "获取目录项是否目录运算";
         case 操作码::获取目录项大小运算: return "获取目录项大小运算";
         case 操作码::递归遍历目录运算: return "递归遍历目录运算";
+        case 操作码::设置异常处理: return "设置异常处理";
+        case 操作码::清除异常处理: return "清除异常处理";
+        case 操作码::抛出异常: return "抛出异常";
+        case 操作码::创建协程: return "创建协程";
+        case 操作码::让出协程: return "让出协程";
+        case 操作码::恢复协程: return "恢复协程";
+        case 操作码::创建通道运算: return "创建通道运算";
+        case 操作码::发送通道运算: return "发送通道运算";
+        case 操作码::接收通道运算: return "接收通道运算";
+        case 操作码::关闭通道运算: return "关闭通道运算";
         default: return "未知";
     }
 }

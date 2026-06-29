@@ -254,6 +254,10 @@ void 代码生成器::生成(const 程序& 程序) {
         if (入口函数) {
             llvm::FunctionType* main类型 = llvm::FunctionType::get(llvm::Type::getInt32Ty(上下文), false);
             llvm::Function* main函数 = llvm::Function::Create(main类型, llvm::Function::ExternalLinkage, "main", *模块);
+            llvm::Function* 人格函数 = 模块->getFunction("__gxx_personality_seh0");
+            if (人格函数) {
+                main函数->setPersonalityFn(llvm::ConstantExpr::getBitCast(人格函数, llvm::PointerType::get(上下文, 0)));
+            }
             llvm::BasicBlock* 入口块 = llvm::BasicBlock::Create(上下文, "entry", main函数);
             构建器->SetInsertPoint(入口块);
             构建器->CreateCall(入口函数);
@@ -280,6 +284,11 @@ void 代码生成器::生成函数(const 函数& 函数) {
         llvm::Type* 返回LLVM类型 = 计算返回类型(上下文, 函数.返回值列表, [this](const std::string& t) { return 类型名到LLVM类型(t); });
         llvm::FunctionType* 函数类型 = llvm::FunctionType::get(返回LLVM类型, 参数类型, false);
         llvm函数 = llvm::Function::Create(函数类型, llvm::Function::ExternalLinkage, 函数.名称, *模块);
+    }
+
+    llvm::Function* 人格函数 = 模块->getFunction("__gxx_personality_seh0");
+    if (人格函数) {
+        llvm函数->setPersonalityFn(llvm::ConstantExpr::getBitCast(人格函数, llvm::PointerType::get(上下文, 0)));
     }
 
     llvm::BasicBlock* 入口块 = llvm::BasicBlock::Create(上下文, "entry", llvm函数);
@@ -427,6 +436,6 @@ void 代码生成器::生成可执行文件() {
     ir文件.close();
     std::string llc命令 = "llc " + 输出文件名 + ".ll -o " + 输出文件名 + ".s";
     if (执行命令(llc命令) != 0) throw std::runtime_error("llc编译失败");
-    std::string 链接命令 = "clang " + 输出文件名 + ".s " + "源/运行时/运行时辅助.c" + " -o " + 输出文件名 + " -lws2_32 -lm";
+    std::string 链接命令 = "clang++ " + 输出文件名 + ".s " + "源/运行时/运行时辅助.o" + " -o " + 输出文件名 + " -lws2_32 -lm -lstdc++";
     if (执行命令(链接命令) != 0) throw std::runtime_error("链接失败");
 }

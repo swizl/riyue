@@ -29,6 +29,15 @@ class 代码生成器 {
     std::unordered_map<std::string, std::string> 类型别名映射;
     bool 启用优化 = false;
 
+    llvm::BasicBlock* 当前异常处理块 = nullptr;
+    std::string 当前异常变量名;
+
+    llvm::Value* 创建调用(llvm::Function* 函数, llvm::ArrayRef<llvm::Value*> 参数, const std::string& 名称 = "");
+    llvm::Value* 创建调用(llvm::FunctionCallee 函数, llvm::ArrayRef<llvm::Value*> 参数, const std::string& 名称 = "");
+    llvm::Value* 创建调用无返回(llvm::Function* 函数, llvm::ArrayRef<llvm::Value*> 参数);
+    llvm::Value* 创建调用无返回(llvm::FunctionCallee 函数, llvm::ArrayRef<llvm::Value*> 参数);
+    llvm::Value* 创建间接调用(llvm::FunctionType* 类型, llvm::Value* 指针, llvm::ArrayRef<llvm::Value*> 参数, const std::string& 名称 = "");
+
     llvm::Type* 类型名到LLVM类型(const std::string& 类型名);
 
     void 收集自由变量(const 表达式& 表达式, std::vector<std::string>& 自由变量, const std::vector<std::string>& 局部变量);

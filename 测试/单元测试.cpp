@@ -1,4 +1,4 @@
-﻿#include "前端/词法分析器.h"
+#include "前端/词法分析器.h"
 #include "前端/语法分析器.h"
 #include "前端/公共.h"
 #include <iostream>
@@ -443,6 +443,55 @@ void 测试语法分析器() {
         auto& 打印2 = dynamic_cast<打印语句&>(*主.主体[1]);
         auto& 调用2 = dynamic_cast<函数调用表达式&>(*打印2.值表达式);
         断言(调用2.函数名 == "是整数", "函数名为是整数");
+    }
+
+    // 测试 try/catch 解析
+    {
+        std::string 源码 = "函数 主(): 空 { 尝试 { (1)打印; } 捕获 (错误) { (错误)打印; } }";
+        语法分析器 分析器(源码.c_str(), 源码.size());
+        auto 程序 = 分析器.解析程序();
+        断言(程序 != nullptr, "try/catch解析");
+        auto& 主 = *程序->函数列表[0];
+        auto& 尝试 = dynamic_cast<const 尝试语句&>(*主.主体[0]);
+        断言(尝试.异常变量名 == "错误", "catch变量名");
+        断言(!尝试.捕获主体.empty(), "catch主体非空");
+        断言(尝试.最终主体.empty(), "finally主体为空");
+    }
+
+    // 测试 try/catch/finally 解析
+    {
+        std::string 源码 = "函数 主(): 空 { 尝试 { (1)打印; } 捕获 (错误) { (错误)打印; } 最终 { (0)打印; } }";
+        语法分析器 分析器(源码.c_str(), 源码.size());
+        auto 程序 = 分析器.解析程序();
+        断言(程序 != nullptr, "try/catch/finally解析");
+        auto& 主 = *程序->函数列表[0];
+        auto& 尝试 = dynamic_cast<const 尝试语句&>(*主.主体[0]);
+        断言(!尝试.捕获主体.empty(), "catch主体非空");
+        断言(!尝试.最终主体.empty(), "finally主体非空");
+    }
+
+    // 测试 try/finally 解析（无catch）
+    {
+        std::string 源码 = "函数 主(): 空 { 尝试 { (1)打印; } 最终 { (0)打印; } }";
+        语法分析器 分析器(源码.c_str(), 源码.size());
+        auto 程序 = 分析器.解析程序();
+        断言(程序 != nullptr, "try/finally解析");
+        auto& 主 = *程序->函数列表[0];
+        auto& 尝试 = dynamic_cast<const 尝试语句&>(*主.主体[0]);
+        断言(尝试.捕获主体.empty(), "catch主体为空");
+        断言(!尝试.最终主体.empty(), "finally主体非空");
+    }
+
+    // 测试 throw 解析
+    {
+        std::string 源码 = "函数 主(): 空 { 尝试 { (42)抛出; } 捕获 (错误) { (错误)打印; } }";
+        语法分析器 分析器(源码.c_str(), 源码.size());
+        auto 程序 = 分析器.解析程序();
+        断言(程序 != nullptr, "throw解析");
+        auto& 主 = *程序->函数列表[0];
+        auto& 尝试 = dynamic_cast<const 尝试语句&>(*主.主体[0]);
+        auto& 抛出 = dynamic_cast<const 抛出语句&>(*尝试.尝试主体[0]);
+        断言(抛出.异常值 != nullptr, "throw表达式非空");
     }
 }
 

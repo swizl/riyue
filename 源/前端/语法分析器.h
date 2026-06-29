@@ -37,7 +37,7 @@ private:
 public:
     std::unique_ptr<表达式> 解析表达式();
     std::unique_ptr<语句> 解析语句();
-    std::unique_ptr<函数> 解析函数();
+    std::unique_ptr<函数> 解析函数(bool 是否协程 = false);
     std::vector<std::unique_ptr<语句>> 解析代码块();
 
 public:

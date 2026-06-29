@@ -1407,6 +1407,37 @@ const char* 动态字符串数组获取(动态字符串数组* arr, int 索引) 
     return "";
 }
 
+void 动态字符串数组设置(动态字符串数组* arr, int 索引, const char* 值) {
+    if (索引 >= 0 && 索引 < arr->大小) {
+        free((void*)arr->数据[索引]);
+        arr->数据[索引] = strdup(值);
+    }
+}
+
+void 动态字符串数组删除(动态字符串数组* arr, int 索引) {
+    if (索引 >= 0 && 索引 < arr->大小) {
+        free((void*)arr->数据[索引]);
+        for (int i = 索引; i < arr->大小 - 1; i++) {
+            arr->数据[i] = arr->数据[i + 1];
+        }
+        arr->大小--;
+    }
+}
+
+void 动态字符串数组插入(动态字符串数组* arr, int 索引, const char* 值) {
+    if (索引 >= 0 && 索引 <= arr->大小) {
+        if (arr->大小 >= arr->容量) {
+            arr->容量 *= 2;
+            arr->数据 = (const char**)realloc(arr->数据, arr->容量 * sizeof(const char*));
+        }
+        for (int i = arr->大小; i > 索引; i--) {
+            arr->数据[i] = arr->数据[i - 1];
+        }
+        arr->数据[索引] = strdup(值);
+        arr->大小++;
+    }
+}
+
 int 动态字符串数组大小(动态字符串数组* arr) {
     return arr->大小;
 }
@@ -1417,4 +1448,91 @@ void 释放动态字符串数组(动态字符串数组* arr) {
     }
     free(arr->数据);
     free(arr);
+}
+
+// 通道实现
+typedef struct {
+    int* 数据;
+    int 大小;
+    int 容量;
+    int 头;
+    int 尾;
+    int 计数;
+    int 已关闭;
+} 通道数据;
+
+通道数据* 创建通道函数(int 容量) {
+    通道数据* ch = (通道数据*)malloc(sizeof(通道数据));
+    ch->容量 = 容量 > 0 ? 容量 : 1;
+    ch->数据 = (int*)malloc(sizeof(int) * ch->容量);
+    ch->大小 = ch->容量;
+    ch->头 = 0;
+    ch->尾 = 0;
+    ch->计数 = 0;
+    ch->已关闭 = 0;
+    return ch;
+}
+
+// 返回: 0=成功, -1=通道已关闭, -2=通道已满
+int 发送到通道函数(通道数据* ch, int 值) {
+    if (ch->已关闭) return -1;
+    if (ch->计数 >= ch->容量) return -2;
+    ch->数据[ch->尾] = 值;
+    ch->尾 = (ch->尾 + 1) % ch->容量;
+    ch->计数++;
+    return 0;
+}
+
+// 返回: 接收到的值, 如果通道已关闭且为空返回0
+int 从通道接收函数(通道数据* ch) {
+    if (ch->计数 <= 0) return 0;
+    int 值 = ch->数据[ch->头];
+    ch->头 = (ch->头 + 1) % ch->容量;
+    ch->计数--;
+    return 值;
+}
+
+// 返回: 通道是否为空
+int 通道是否为空(通道数据* ch) {
+    return ch->计数 <= 0;
+}
+
+// 返回: 通道是否已关闭
+int 通道是否已关闭(通道数据* ch) {
+    return ch->已关闭;
+}
+
+void 关闭通道函数(通道数据* ch) {
+    ch->已关闭 = 1;
+}
+
+void 释放通道函数(通道数据* ch) {
+    free(ch->数据);
+    free(ch);
+}
+
+// 调试器支持
+static int 调试器已启用 = 0;
+static int 调试器单步模式 = 0;
+
+void 设置调试器(int 启用) {
+    调试器已启用 = 启用;
+}
+
+void 设置单步模式(int 启用) {
+    调试器单步模式 = 启用;
+}
+
+int 是调试器启用() {
+    return 调试器已启用;
+}
+
+int 是单步模式() {
+    return 调试器单步模式;
+}
+
+void 断点命中(const char* 文件, int 行号, const char* 函数名) {
+    if (!调试器已启用) return;
+    printf("[调试器] 断点: %s (行 %d, 函数 %s)\n", 文件, 行号, 函数名);
+    调试器单步模式 = 1;
 }

@@ -41,6 +41,23 @@ struct C运行时函数 {
         声明("fabs", f64, {f64});
         声明("log", f64, {f64});
         声明("log10", f64, {f64});
+
+        声明("__gxx_personality_seh0", i32, {}, true);
+        声明("__cxa_allocate_exception", i8Ptr, {i64});
+        声明("__cxa_throw", llvm::Type::getVoidTy(上下文), {i8Ptr, i8Ptr, i8Ptr}, false);
+        声明("__cxa_begin_catch", i8Ptr, {i8Ptr});
+        声明("__cxa_end_catch", llvm::Type::getVoidTy(上下文), {});
+        声明("_Unwind_Resume", llvm::Type::getVoidTy(上下文), {i8Ptr});
+
+        声明("创建通道函数", i8Ptr, {i32});
+        声明("发送到通道函数", i32, {i8Ptr, i32});
+        声明("从通道接收函数", i32, {i8Ptr});
+        声明("通道是否为空", i32, {i8Ptr});
+        声明("通道是否已关闭", i32, {i8Ptr});
+        声明("关闭通道函数", llvm::Type::getVoidTy(上下文), {i8Ptr});
+
+        声明("断点命中", llvm::Type::getVoidTy(上下文), {i8Ptr, i32, i8Ptr});
+        声明("设置调试器", llvm::Type::getVoidTy(上下文), {i32});
     }
 };
 

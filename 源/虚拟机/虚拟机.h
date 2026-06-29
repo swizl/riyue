@@ -9,6 +9,9 @@
 #include <cmath>
 #include <algorithm>
 #include <cstdint>
+#include <deque>
+#include <condition_variable>
+#include <mutex>
 
 // 运行时函数声明
 extern "C" {
@@ -48,21 +51,44 @@ extern "C" {
     int 递归遍历目录(const char* 路径, int 深度);
 }
 
+struct 调用帧 {
+    int 函数索引;
+    size_t 返回地址 = 0;
+    uint8_t 返回寄存器 = 0;
+    std::vector<值> 寄存器;
+    size_t 指令指针 = 0;
+};
+
+struct 协程状态 {
+    调用帧 帧;
+    enum 状态 { 运行中, 已暂停, 已完成 } 当前状态 = 已暂停;
+    值 最后让出值;
+};
+
+struct 通道结构 {
+    std::deque<值> 缓冲区;
+    int 容量;
+    bool 已关闭 = false;
+    std::mutex 互斥锁;
+    std::condition_variable 有数据;
+    std::condition_variable 有空间;
+
+    通道结构(int cap) : 容量(cap) {}
+};
+
 class 虚拟机 {
     字节码 程序;
-
-    struct 调用帧 {
-        int 函数索引;
-        size_t 返回地址;
-        uint8_t 返回寄存器;
-        std::vector<值> 寄存器;
-        size_t 指令指针;
-    };
 
     std::vector<值> 全局变量;
     std::stack<调用帧> 调用栈;
     调用帧* 当前帧 = nullptr;
     值 返回值;
+
+    struct 异常处理器 {
+        size_t catch地址;
+        size_t 帧指针;
+    };
+    std::vector<异常处理器> 异常处理栈;
 
     值& 读寄存器(uint8_t reg) { return 当前帧->寄存器[reg]; }
     void 写寄存器(uint8_t reg, 值 v) { 当前帧->寄存器[reg] = std::move(v); }
@@ -107,47 +133,13 @@ class 虚拟机 {
         return 0.0;
     }
 
-    void 执行当前帧();
+    void 执行当前帧(size_t 目标栈深度);
 
 public:
     void 加载(const 字节码& 码) { 程序 = 码; }
     void 加载文件(const std::string& 文件名) { 程序 = 字节码::读取(文件名); }
 
-    int 执行() {
-        if (程序.入口函数索引 < 0) throw std::runtime_error("无入口函数");
-
-        全局变量.resize(256);
-
-        int 初始化索引 = -1;
-        for (size_t i = 0; i < 程序.函数表.size(); i++) {
-            if (程序.函数表[i].名称 == "__初始化全局变量") {
-                初始化索引 = static_cast<int>(i);
-                break;
-            }
-        }
-
-        if (初始化索引 >= 0) {
-            调用帧 初始化帧;
-            初始化帧.函数索引 = 初始化索引;
-            初始化帧.指令指针 = 0;
-            初始化帧.寄存器.resize(程序.函数表[初始化索引].最大寄存器);
-            调用栈.push(std::move(初始化帧));
-            当前帧 = &调用栈.top();
-            执行当前帧();
-            调用栈.pop();
-        }
-
-        const auto& 入口函数 = 程序.函数表[程序.入口函数索引];
-        调用帧 入口帧;
-        入口帧.函数索引 = 程序.入口函数索引;
-        入口帧.指令指针 = 0;
-        入口帧.寄存器.resize(入口函数.最大寄存器);
-        调用栈.push(std::move(入口帧));
-        当前帧 = &调用栈.top();
-        执行当前帧();
-
-        return 转整数(返回值);
-    }
+    int 执行();
 };
 
 #endif

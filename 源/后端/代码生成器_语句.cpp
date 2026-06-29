@@ -6,6 +6,56 @@ static bool 是终止语句(const 语句& 语句) {
            语句.类型 == 语句类型::继续语句;
 }
 
+llvm::Value* 代码生成器::创建调用(llvm::Function* 函数, llvm::ArrayRef<llvm::Value*> 参数, const std::string& 名称) {
+    if (当前异常处理块 && 函数) {
+        llvm::BasicBlock* 正常块 = llvm::BasicBlock::Create(上下文, "invoke_ok", 构建器->GetInsertBlock()->getParent());
+        auto 结果 = 构建器->CreateInvoke(函数->getFunctionType(), 函数, 正常块, 当前异常处理块, 参数, 名称);
+        构建器->SetInsertPoint(正常块);
+        return 结果;
+    }
+    return 构建器->CreateCall(函数, 参数, 名称);
+}
+
+llvm::Value* 代码生成器::创建调用(llvm::FunctionCallee 函数, llvm::ArrayRef<llvm::Value*> 参数, const std::string& 名称) {
+    if (当前异常处理块) {
+        llvm::BasicBlock* 正常块 = llvm::BasicBlock::Create(上下文, "invoke_ok", 构建器->GetInsertBlock()->getParent());
+        auto 结果 = 构建器->CreateInvoke(函数, 正常块, 当前异常处理块, 参数, 名称);
+        构建器->SetInsertPoint(正常块);
+        return 结果;
+    }
+    return 构建器->CreateCall(函数, 参数, 名称);
+}
+
+llvm::Value* 代码生成器::创建调用无返回(llvm::Function* 函数, llvm::ArrayRef<llvm::Value*> 参数) {
+    if (当前异常处理块 && 函数) {
+        llvm::BasicBlock* 正常块 = llvm::BasicBlock::Create(上下文, "invoke_ok", 构建器->GetInsertBlock()->getParent());
+        auto 结果 = 构建器->CreateInvoke(函数->getFunctionType(), 函数, 正常块, 当前异常处理块, 参数);
+        构建器->SetInsertPoint(正常块);
+        return 结果;
+    }
+    return 构建器->CreateCall(函数, 参数);
+}
+
+llvm::Value* 代码生成器::创建调用无返回(llvm::FunctionCallee 函数, llvm::ArrayRef<llvm::Value*> 参数) {
+    if (当前异常处理块) {
+        llvm::BasicBlock* 正常块 = llvm::BasicBlock::Create(上下文, "invoke_ok", 构建器->GetInsertBlock()->getParent());
+        auto 结果 = 构建器->CreateInvoke(函数, 正常块, 当前异常处理块, 参数);
+        构建器->SetInsertPoint(正常块);
+        return 结果;
+    }
+    return 构建器->CreateCall(函数, 参数);
+}
+
+llvm::Value* 代码生成器::创建间接调用(llvm::FunctionType* 类型, llvm::Value* 指针, llvm::ArrayRef<llvm::Value*> 参数, const std::string& 名称) {
+    if (当前异常处理块) {
+        llvm::BasicBlock* 正常块 = llvm::BasicBlock::Create(上下文, "invoke_ok", 构建器->GetInsertBlock()->getParent());
+        auto 结果 = 构建器->CreateInvoke(类型, 指针, 正常块, 当前异常处理块, 参数, 名称);
+        构建器->SetInsertPoint(正常块);
+        return 结果;
+    }
+    return 构建器->CreateCall(类型, 指针, 参数, 名称);
+}
+
 void 代码生成器::生成语句(const 语句& 语句) {
     if (构建器->GetInsertBlock()->getTerminator() != nullptr) return;
 
@@ -72,6 +122,9 @@ void 代码生成器::生成语句(const 语句& 语句) {
                 }
             } else {
                 llvm::Value* 初始值 = 生成表达式(*初始值表达式);
+                if (!初始值 || 初始值->getType()->isVoidTy()) {
+                    初始值 = llvm::ConstantInt::get(上下文, llvm::APInt(32, 0));
+                }
                 bool 是浮点 = 初始值->getType()->isDoubleTy();
                 bool 是指针 = 初始值->getType()->isPointerTy();
 
@@ -129,7 +182,11 @@ void 代码生成器::生成语句(const 语句& 语句) {
             } else {
                 llvm::Value* 变量地址 = 符号表实例.获取变量值(赋值.变量名);
                 if (!变量地址) throw std::runtime_error("未定义的变量: " + 赋值.变量名);
-                构建器->CreateStore(生成表达式(*赋值.值表达式), 变量地址);
+                llvm::Value* 赋值结果 = 生成表达式(*赋值.值表达式);
+                if (!赋值结果 || 赋值结果->getType()->isVoidTy()) {
+                    赋值结果 = llvm::ConstantInt::get(上下文, llvm::APInt(32, 0));
+                }
+                构建器->CreateStore(赋值结果, 变量地址);
             }
             break;
         }
@@ -353,15 +410,15 @@ void 代码生成器::生成语句(const 语句& 语句) {
             llvm::FunctionType* printf类型 = llvm::FunctionType::get(llvm::Type::getInt32Ty(上下文), {llvm::PointerType::get(上下文, 0)}, true);
             模块->getOrInsertFunction("printf", printf类型);
             if (打印.值表达式->类型 == 表达式类型::字符串) {
-                构建器->CreateCall(模块->getFunction("printf"), {构建器->CreateGlobalString("%s\n"), 打印值});
+                创建调用无返回(模块->getFunction("printf"), {构建器->CreateGlobalString("%s\n"), 打印值});
             } else if (打印值->getType()->isDoubleTy() || 打印值->getType()->isFloatTy()) {
-                构建器->CreateCall(模块->getFunction("printf"), {构建器->CreateGlobalString("%.6g\n"), 打印值});
+                创建调用无返回(模块->getFunction("printf"), {构建器->CreateGlobalString("%.6g\n"), 打印值});
             } else if (打印值->getType()->isPointerTy()) {
-                构建器->CreateCall(模块->getFunction("printf"), {构建器->CreateGlobalString("%s\n"), 打印值});
+                创建调用无返回(模块->getFunction("printf"), {构建器->CreateGlobalString("%s\n"), 打印值});
             } else if (打印.值表达式->类型 == 表达式类型::下标访问 && 符号表实例.是映射变量(static_cast<const 下标访问表达式&>(*打印.值表达式).数组名)) {
-                构建器->CreateCall(模块->getFunction("printf"), {构建器->CreateGlobalString("%s\n"), 打印值});
+                创建调用无返回(模块->getFunction("printf"), {构建器->CreateGlobalString("%s\n"), 打印值});
             } else {
-                构建器->CreateCall(模块->getFunction("printf"), {构建器->CreateGlobalString("%d\n"), 打印值});
+                创建调用无返回(模块->getFunction("printf"), {构建器->CreateGlobalString("%d\n"), 打印值});
             }
             break;
         }
@@ -537,5 +594,124 @@ void 代码生成器::生成语句(const 语句& 语句) {
             break;
         case 语句类型::类型别名:
             break;
+        case 语句类型::抛出语句: {
+            const auto& 抛出 = static_cast<const 抛出语句&>(语句);
+            llvm::Value* 异常值 = 生成表达式(*抛出.异常值);
+            llvm::Value* 异常对象 = 创建调用(模块->getFunction("__cxa_allocate_exception"),
+                                                        {llvm::ConstantInt::get(llvm::Type::getInt64Ty(上下文), 8)}, "exc_alloc");
+            llvm::Value* 存储值 = 异常值;
+            if (异常值->getType()->isIntegerTy(32)) {
+                存储值 = 构建器->CreateSExt(异常值, llvm::Type::getInt64Ty(上下文));
+            } else if (异常值->getType()->isPointerTy()) {
+                存储值 = 构建器->CreatePtrToInt(异常值, llvm::Type::getInt64Ty(上下文));
+            }
+            构建器->CreateStore(存储值, 构建器->CreateBitCast(异常对象, llvm::PointerType::get(上下文, 0)));
+            llvm::Function* throw函数 = 模块->getFunction("__cxa_throw");
+            llvm::BasicBlock* 正常块 = llvm::BasicBlock::Create(上下文, "throw_ok", 构建器->GetInsertBlock()->getParent());
+            llvm::BasicBlock* 异常块 = 当前异常处理块 ? 当前异常处理块 : llvm::BasicBlock::Create(上下文, "throw_unwind", 构建器->GetInsertBlock()->getParent());
+            std::vector<llvm::Value*> throw参数 = {异常对象, llvm::Constant::getNullValue(llvm::PointerType::get(上下文, 0)),
+                                                     llvm::Constant::getNullValue(llvm::PointerType::get(上下文, 0))};
+            构建器->CreateInvoke(throw函数->getFunctionType(), throw函数, 正常块, 异常块, throw参数);
+            构建器->SetInsertPoint(正常块);
+            构建器->CreateUnreachable();
+            break;
+        }
+        case 语句类型::尝试语句: {
+            const auto& 尝试 = static_cast<const 尝试语句&>(语句);
+            llvm::Function* 当前函数 = 构建器->GetInsertBlock()->getParent();
+
+            llvm::Function* 人格函数 = 模块->getFunction("__gxx_personality_seh0");
+            llvm::Function* 开始捕获函数 = 模块->getFunction("__cxa_begin_catch");
+            llvm::Function* 结束捕获函数 = 模块->getFunction("__cxa_end_catch");
+            llvm::Function* 恢复函数 = 模块->getFunction("_Unwind_Resume");
+
+            llvm::BasicBlock* 合并块 = llvm::BasicBlock::Create(上下文, "try_merge", 当前函数);
+            llvm::BasicBlock* 清理块 = llvm::BasicBlock::Create(上下文, "try_cleanup", 当前函数);
+            llvm::BasicBlock* 捕获块 = nullptr;
+
+            llvm::BasicBlock* 最终正常块 = nullptr;
+            llvm::BasicBlock* 最终异常块 = nullptr;
+            if (!尝试.最终主体.empty()) {
+                最终正常块 = llvm::BasicBlock::Create(上下文, "finally_ok", 当前函数);
+                最终异常块 = llvm::BasicBlock::Create(上下文, "finally_ex", 当前函数);
+            }
+
+            if (!尝试.捕获主体.empty()) {
+                捕获块 = llvm::BasicBlock::Create(上下文, "catch", 当前函数);
+            }
+
+            llvm::BasicBlock* 旧异常处理块 = 当前异常处理块;
+            当前异常处理块 = 清理块;
+
+            for (const auto& 子 : 尝试.尝试主体) 生成语句(*子);
+
+            当前异常处理块 = 旧异常处理块;
+
+            if (构建器->GetInsertBlock()->getTerminator() == nullptr) {
+                if (最终正常块) {
+                    构建器->CreateBr(最终正常块);
+                } else {
+                    构建器->CreateBr(合并块);
+                }
+            }
+
+            构建器->SetInsertPoint(清理块);
+            llvm::LandingPadInst* 着陆垫 = 构建器->CreateLandingPad(
+                llvm::StructType::get(llvm::PointerType::get(上下文, 0), llvm::Type::getInt32Ty(上下文)), 1, "landingpad");
+            着陆垫->addClause(llvm::Constant::getNullValue(llvm::PointerType::get(上下文, 0)));
+            llvm::Value* 异常指针 = 构建器->CreateExtractValue(着陆垫, 0, "exc_ptr");
+            llvm::Value* 选择器 = 构建器->CreateExtractValue(着陆垫, 1, "sel");
+
+            if (捕获块) {
+                构建器->CreateBr(捕获块);
+
+                构建器->SetInsertPoint(捕获块);
+                llvm::Value* 捕获值 = 构建器->CreateCall(开始捕获函数, {异常指针}, "catch_val");
+                llvm::Value* 异常i64 = 构建器->CreateLoad(llvm::Type::getInt64Ty(上下文),
+                    构建器->CreateBitCast(捕获值, llvm::PointerType::get(上下文, 0)), "exc_i64");
+                llvm::Value* 异常整数 = 构建器->CreateTrunc(异常i64, llvm::Type::getInt32Ty(上下文));
+                {
+                    作用域守卫 守卫(符号表实例);
+                    llvm::AllocaInst* 变量地址 = 构建器->CreateAlloca(llvm::Type::getInt32Ty(上下文));
+                    符号表实例.声明变量(尝试.异常变量名, 变量地址);
+                    构建器->CreateStore(异常整数, 变量地址);
+                    for (const auto& 子 : 尝试.捕获主体) 生成语句(*子);
+                }
+                if (构建器->GetInsertBlock()->getTerminator() == nullptr) {
+                    构建器->CreateCall(结束捕获函数);
+                    if (最终正常块) {
+                        构建器->CreateBr(最终正常块);
+                    } else {
+                        构建器->CreateBr(合并块);
+                    }
+                }
+            } else {
+                if (!尝试.最终主体.empty()) {
+                    构建器->CreateBr(最终异常块);
+                } else {
+                    构建器->CreateCall(恢复函数, {异常指针});
+                    构建器->CreateUnreachable();
+                }
+            }
+
+            if (最终正常块) {
+                构建器->SetInsertPoint(最终正常块);
+                for (const auto& 子 : 尝试.最终主体) 生成语句(*子);
+                if (构建器->GetInsertBlock()->getTerminator() == nullptr)
+                    构建器->CreateBr(合并块);
+            }
+
+            if (最终异常块) {
+                构建器->SetInsertPoint(最终异常块);
+                for (const auto& 子 : 尝试.最终主体) 生成语句(*子);
+                if (构建器->GetInsertBlock()->getTerminator() == nullptr) {
+                    构建器->CreateCall(恢复函数, {异常指针});
+                    构建器->CreateUnreachable();
+                }
+            }
+
+            构建器->SetInsertPoint(合并块);
+            break;
+        }
     }
 }

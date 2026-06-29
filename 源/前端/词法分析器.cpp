@@ -81,6 +81,12 @@ std::string 标记类型转字符串(标记类型 类型) {
         case 标记类型::方法: return "方法";
         case 标记类型::类型: return "类型";
         case 标记类型::入: return "入";
+        case 标记类型::尝试: return "尝试";
+        case 标记类型::捕获: return "捕获";
+        case 标记类型::抛出: return "抛出";
+        case 标记类型::最终: return "最终";
+        case 标记类型::协程: return "协程";
+        case 标记类型::让出: return "让出";
         default: return "未知";
     }
 }
