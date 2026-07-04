@@ -102,7 +102,8 @@ struct 标记 {
     标记类型 类型;
     std::string 值;
     int 行号;
-    标记(标记类型 t, std::string v, int ln) : 类型(t), 值(v), 行号(ln) {}
+    int 列号;
+    标记(标记类型 t, std::string v, int ln, int col = 0) : 类型(t), 值(v), 行号(ln), 列号(col) {}
 };
 
 std::string 标记类型转字符串(标记类型 类型);
@@ -112,6 +113,7 @@ private:
     std::string 源代码;
     size_t 位置 = 0;
     int 当前行 = 1;
+    int 当前列 = 1;
 
     char 字节(size_t 偏移 = 0) const;
     void 前进字节(size_t 步长);
@@ -126,7 +128,7 @@ private:
 
 public:
     词法分析器(const std::string& 文件名);
-    词法分析器(const char* 源码, size_t 长度) : 位置(0), 当前行(1) {
+    词法分析器(const char* 源码, size_t 长度) : 位置(0), 当前行(1), 当前列(1) {
         源代码.assign(源码, 长度);
     }
     bool 已到文件尾() const { return 位置 >= 源代码.size(); }

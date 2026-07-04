@@ -1,4 +1,5 @@
 #include "LLVM辅助.h"
+#include "符号表.h"
 
 llvm::Value* 确保浮点(llvm::IRBuilder<>& 构建器, llvm::LLVMContext& 上下文, llvm::Value* 值) {
     if (值->getType()->isIntegerTy()) {
@@ -113,4 +114,71 @@ llvm::Value* 生成极值选择(llvm::IRBuilder<>& 构建器, llvm::LLVMContext&
     }
     llvm::Value* 比较 = 是最小 ? 构建器.CreateICmpSLT(左, 右, "小于") : 构建器.CreateICmpSGT(左, 右, "大于");
     return 构建器.CreateSelect(比较, 左, 右, 是最小 ? "最小值" : "最大值");
+}
+
+llvm::Value* 短路逻辑运算(llvm::IRBuilder<>& 构建器, llvm::LLVMContext& 上下文,
+    llvm::Value* 左值, std::function<llvm::Value*()> 生成右值, bool 是与操作) {
+    // 转换为 i32
+    if (左值->getType()->isIntegerTy(1)) 左值 = 构建器.CreateZExt(左值, llvm::Type::getInt32Ty(上下文));
+    llvm::Value* 左条件 = 构建器.CreateICmpNE(左值, llvm::ConstantInt::get(上下文, llvm::APInt(32, 0)),
+        是与操作 ? "landtmp" : "lortmp");
+
+    llvm::Function* 当前函数 = 构建器.GetInsertBlock()->getParent();
+    llvm::BasicBlock* 右块 = llvm::BasicBlock::Create(上下文, 是与操作 ? "land_rhs" : "lor_rhs", 当前函数);
+    llvm::BasicBlock* 合并块 = llvm::BasicBlock::Create(上下文, 是与操作 ? "land_merge" : "lor_merge");
+
+    // AND: 左真→右块, 左假→合并(假)
+    // OR:  左真→合并(真), 左假→右块
+    if (是与操作) {
+        构建器.CreateCondBr(左条件, 右块, 合并块);
+    } else {
+        构建器.CreateCondBr(左条件, 合并块, 右块);
+    }
+
+    llvm::BasicBlock* 左块 = 构建器.GetInsertBlock();
+    构建器.SetInsertPoint(右块);
+    llvm::Value* 右值 = 生成右值();
+    if (右值->getType()->isIntegerTy(1)) 右值 = 构建器.CreateZExt(右值, llvm::Type::getInt32Ty(上下文));
+    llvm::Value* 右条件 = 构建器.CreateICmpNE(右值, llvm::ConstantInt::get(上下文, llvm::APInt(32, 0)),
+        是与操作 ? "landtmp2" : "lortmp2");
+    右块 = 构建器.GetInsertBlock();
+    构建器.CreateBr(合并块);
+    当前函数->insert(当前函数->end(), 合并块);
+    构建器.SetInsertPoint(合并块);
+
+    llvm::PHINode* phi = 构建器.CreatePHI(llvm::Type::getInt1Ty(上下文), 2, 是与操作 ? "land" : "lor");
+    phi->addIncoming(llvm::ConstantInt::get(上下文, 是与操作 ? llvm::APInt(1, 0) : llvm::APInt(1, 1)), 左块);
+    phi->addIncoming(右条件, 右块);
+    return 构建器.CreateZExt(phi, llvm::Type::getInt32Ty(上下文), 是与操作 ? "landext" : "lorext");
+}
+
+llvm::Value* 查找结构体成员地址(llvm::IRBuilder<>& 构建器, llvm::LLVMContext& 上下文,
+    const std::string& 对象名, const std::string& 成员名,
+    符号表& 符号表实例,
+    std::unordered_map<std::string, llvm::StructType*>& 结构体类型映射,
+    std::unordered_map<std::string, std::vector<std::string>>& 结构体成员映射) {
+    llvm::Value* 对象地址 = 符号表实例.获取变量值(对象名);
+    if (!对象地址) throw std::runtime_error("未定义的变量: " + 对象名);
+
+    const std::string& 结构体名 = 符号表实例.获取结构体类型(对象名);
+    if (结构体名.empty()) throw std::runtime_error("变量不是结构体: " + 对象名);
+
+    auto it = 结构体类型映射.find(结构体名);
+    if (it == 结构体类型映射.end()) throw std::runtime_error("未定义的结构体: " + 结构体名);
+
+    llvm::StructType* 结构体类型 = it->second;
+    const auto& 成员名列表 = 结构体成员映射[结构体名];
+    int 成员索引 = -1;
+    for (size_t i = 0; i < 成员名列表.size(); i++) {
+        if (成员名列表[i] == 成员名) { 成员索引 = static_cast<int>(i); break; }
+    }
+    if (成员索引 < 0) throw std::runtime_error("未定义的成员: " + 成员名);
+
+    // 检查是否需要加载指针（结构体参数是指针类型）
+    llvm::AllocaInst* alloca = llvm::dyn_cast<llvm::AllocaInst>(对象地址);
+    if (alloca && alloca->getAllocatedType()->isPointerTy()) {
+        对象地址 = 构建器.CreateLoad(llvm::PointerType::get(上下文, 0), 对象地址, 对象名 + "_加载");
+    }
+
+    return 构建器.CreateStructGEP(结构体类型, 对象地址, static_cast<unsigned>(成员索引), 成员名);
 }

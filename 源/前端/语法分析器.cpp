@@ -9,8 +9,21 @@ void 语法分析器::前进() {
 
 void 语法分析器::期望类型(标记类型 类型, const std::string& 信息) {
     if (_当前标记.类型 != 类型) {
+        if (_诊断) {
+            _诊断->报告错误带上下文(_当前标记.行号, _当前标记.列号, (int)_当前标记.值.size(),
+                信息 + "，得到 '" + _当前标记.值 + "'");
+            _诊断->输出所有();
+        }
         throw std::runtime_error(信息 + "（行 " + std::to_string(_当前标记.行号) + "，得到 '" + _当前标记.值 + "'）");
     }
+}
+
+[[noreturn]] void 语法分析器::报告错误(const std::string& 消息) {
+    if (_诊断) {
+        _诊断->报告错误带上下文(_当前标记.行号, _当前标记.列号, (int)_当前标记.值.size(), 消息);
+        _诊断->输出所有();
+    }
+    throw std::runtime_error(消息 + "（行 " + std::to_string(_当前标记.行号) + "）");
 }
 
 void 语法分析器::期望(标记类型 类型, const std::string& 信息) {
@@ -855,6 +868,12 @@ std::vector<std::unique_ptr<语句>> 语法分析器::解析代码块() {
 
 std::unique_ptr<语句> 语法分析器::解析语句() {
     标记 当前 = _当前标记;
+    int 起始行号 = 当前.行号;
+
+    auto 设置行号 = [&起始行号](std::unique_ptr<语句> s) -> std::unique_ptr<语句> {
+        if (s) s->行号 = 起始行号;
+        return s;
+    };
 
     // 新语法：值 = 变量名; (值在左，变量在右)
     // 先解析一个表达式，然后检查是否跟着 = 标识符 ;
@@ -895,9 +914,19 @@ std::unique_ptr<语句> 语法分析器::解析语句() {
                     }
                     期望(标记类型::右括号, "解构赋值后应有')'");
                     期望(标记类型::分号, "赋值后应有';'");
-                    return std::make_unique<解构赋值语句>(std::move(变量名列表), std::move(值表达式));
+                    return 设置行号(std::make_unique<解构赋值语句>(std::move(变量名列表), std::move(值表达式)));
                 }
                 
+                // 检查是否为常量声明 值 = 常量 名
+                if (_当前标记.类型 == 标记类型::常量) {
+                    前进();
+                    期望类型(标记类型::标识符, "常量名应为标识符");
+                    std::string 常量名 = _当前标记.值;
+                    前进();
+                    期望(标记类型::分号, "常量声明后应有';'");
+                    return 设置行号(std::make_unique<常量声明>(常量名, std::move(值表达式)));
+                }
+
                 // 期望标识符（变量名）
                 期望类型(标记类型::标识符, "赋值目标应为变量名");
                 std::string 变量名 = _当前标记.值;
@@ -910,7 +939,7 @@ std::unique_ptr<语句> 语法分析器::解析语句() {
                     std::string 成员名 = _当前标记.值;
                     前进();
                     期望(标记类型::分号, "赋值后应有';'");
-                    return std::make_unique<赋值语句>(变量名 + "." + 成员名, std::move(值表达式));
+                    return 设置行号(std::make_unique<赋值语句>(变量名 + "." + 成员名, std::move(值表达式)));
                 }
 
                 // 检查是否为下标赋值 值 = 变量名[索引]
@@ -919,14 +948,16 @@ std::unique_ptr<语句> 语法分析器::解析语句() {
                     auto 索引 = 解析表达式();
                     期望(标记类型::右方括号, "下标后应有']'");
                     期望(标记类型::分号, "赋值后应有';'");
-                    return std::make_unique<下标赋值语句>(变量名, std::move(索引), std::move(值表达式));
+                    return 设置行号(std::make_unique<下标赋值语句>(变量名, std::move(索引), std::move(值表达式)));
                 }
 
                 // 可选的类型注解
+                std::string 类型标注;
                 if (_当前标记.类型 == 标记类型::冒号) {
                     前进();
                     if (_当前标记.类型 == 标记类型::整数类型 || _当前标记.类型 == 标记类型::浮点类型 ||
                         _当前标记.类型 == 标记类型::布尔类型 || _当前标记.类型 == 标记类型::标识符) {
+                        类型标注 = _当前标记.值;
                         前进();
                     }
                 }
@@ -934,17 +965,23 @@ std::unique_ptr<语句> 语法分析器::解析语句() {
                 期望(标记类型::分号, "赋值后应有';'");
                 // 需要在代码生成阶段判断是声明还是赋值
                 // 这里使用变量声明，代码生成器会处理已存在的情况
-                return std::make_unique<变量声明>(变量名, std::move(值表达式));
+                return 设置行号(std::make_unique<变量声明>(变量名, std::move(值表达式), 类型标注));
             }
             // 如果不是赋值，检查是否为 (值)抛出 形式
             if (_当前标记.类型 == 标记类型::抛出) {
                 前进();
                 期望(标记类型::分号, "抛出表达式后应有';'");
-                return std::make_unique<抛出语句>(std::move(值表达式));
+                return 设置行号(std::make_unique<抛出语句>(std::move(值表达式)));
+            }
+            // 如果不是赋值，检查是否为 (值)让出 形式
+            if (_当前标记.类型 == 标记类型::让出) {
+                前进();
+                期望(标记类型::分号, "让出表达式后应有';'");
+                return 设置行号(std::make_unique<让出语句>(std::move(值表达式)));
             }
             // 如果不是赋值，则作为表达式语句
             期望(标记类型::分号, "表达式后应有';'");
-            return std::make_unique<表达式语句>(std::move(值表达式));
+            return 设置行号(std::make_unique<表达式语句>(std::move(值表达式)));
         } catch (...) {
             // 回溯并尝试原来的解析方式
             _词法分析器.设置位置(保存位置);
@@ -963,7 +1000,7 @@ std::unique_ptr<语句> 语法分析器::解析语句() {
             期望(标记类型::等于, "下标后应有'='");
             auto 值 = 解析表达式();
             期望(标记类型::分号, "赋值后应有';'");
-            return std::make_unique<下标赋值语句>(变量名, std::move(索引), std::move(值));
+                    return 设置行号(std::make_unique<下标赋值语句>(变量名, std::move(索引), std::move(值)));
         }
         if (_当前标记.类型 == 标记类型::句号) {
             // 成员赋值: 对象.成员 = 值
@@ -975,13 +1012,13 @@ std::unique_ptr<语句> 语法分析器::解析语句() {
             auto 值 = 解析表达式();
             期望(标记类型::分号, "赋值后应有';'");
             // 将成员赋值转换为：对象[成员索引] = 值 (由代码生成器处理)
-            return std::make_unique<赋值语句>(变量名 + "." + 成员名, std::move(值));
+                    return 设置行号(std::make_unique<赋值语句>(变量名 + "." + 成员名, std::move(值)));
         }
         if (_当前标记.类型 == 标记类型::等于) {
             前进();
             auto 值 = 解析表达式();
             期望(标记类型::分号, "赋值后应有';'");
-            return std::make_unique<赋值语句>(变量名, std::move(值));
+                    return 设置行号(std::make_unique<赋值语句>(变量名, std::move(值)));
         }
         if (_当前标记.类型 == 标记类型::加等于 || _当前标记.类型 == 标记类型::减等于 ||
             _当前标记.类型 == 标记类型::乘等于 || _当前标记.类型 == 标记类型::除等于 ||
@@ -1007,7 +1044,7 @@ std::unique_ptr<语句> 语法分析器::解析语句() {
             auto 变量引用 = std::make_unique<变量表达式>(变量名);
             auto 二元 = std::make_unique<二元运算表达式>(op, std::move(变量引用), std::move(右值));
             期望(标记类型::分号, "赋值后应有';'");
-            return std::make_unique<赋值语句>(变量名, std::move(二元));
+                return 设置行号(std::make_unique<赋值语句>(变量名, std::move(二元)));
         }
         // 自增自减语句: 变量+| 或 变量-|
         if (_当前标记.类型 == 标记类型::自增 || _当前标记.类型 == 标记类型::自减) {
@@ -1015,7 +1052,7 @@ std::unique_ptr<语句> 语法分析器::解析语句() {
             前进();
             期望(标记类型::分号, "自增自减后应有';'");
             auto 表达式 = std::make_unique<自增自减表达式>(变量名, 是自增);
-            return std::make_unique<表达式语句>(std::move(表达式));
+                return 设置行号(std::make_unique<表达式语句>(std::move(表达式)));
         }
         throw std::runtime_error("标识符 '" + 变量名 + "' 后应有 '='（行 " + std::to_string(当前.行号) + "）");
     }
@@ -1063,7 +1100,7 @@ std::unique_ptr<语句> 语法分析器::解析语句() {
                 else块 = 解析代码块();
             }
             auto 初始化 = std::make_unique<变量声明>(变量名, std::move(第一个表达式));
-            return std::make_unique<如果语句>(std::move(初始化), std::move(条件), std::move(then块), std::move(否则如果列表), std::move(else块));
+            return 设置行号(std::make_unique<如果语句>(std::move(初始化), std::move(条件), std::move(then块), std::move(否则如果列表), std::move(else块)));
         } else {
             // if (条件) 形式
             期望(标记类型::右括号, "如果条件后应有')'");
@@ -1087,7 +1124,7 @@ std::unique_ptr<语句> 语法分析器::解析语句() {
                 前进();
                 else块 = 解析代码块();
             }
-            return std::make_unique<如果语句>(std::move(第一个表达式), std::move(then块), std::move(否则如果列表), std::move(else块));
+            return 设置行号(std::make_unique<如果语句>(std::move(第一个表达式), std::move(then块), std::move(否则如果列表), std::move(else块)));
         }
     }
 
@@ -1136,7 +1173,7 @@ std::unique_ptr<语句> 语法分析器::解析语句() {
                         步进 = std::make_unique<复合赋值语句>(循环变量, 二元操作符::加法, std::move(一));
                     }
                     
-                    return std::make_unique<循环语句>(std::move(初始化), std::move(条件), std::move(步进), std::move(主体));
+                    return 设置行号(std::make_unique<循环语句>(std::move(初始化), std::move(条件), std::move(步进), std::move(主体)));
                 } else {
                     // 回溯，尝试解析为普通for循环
                     _词法分析器.设置位置(保存位置);
@@ -1200,11 +1237,11 @@ std::unique_ptr<语句> 语法分析器::解析语句() {
             }
             期望(标记类型::右括号, "循环步进后应有')'");
             auto 主体 = 解析代码块();
-            return std::make_unique<循环语句>(std::move(初始化), std::move(条件), std::move(步进), std::move(主体));
+            return 设置行号(std::make_unique<循环语句>(std::move(初始化), std::move(条件), std::move(步进), std::move(主体)));
         } else {
             // 无限循环: 循环 { ... }
             auto 主体 = 解析代码块();
-            return std::make_unique<循环语句>(std::move(主体));
+            return 设置行号(std::make_unique<循环语句>(std::move(主体)));
         }
     }
 
@@ -1214,7 +1251,7 @@ std::unique_ptr<语句> 语法分析器::解析语句() {
         auto 条件 = 解析表达式();
         期望(标记类型::右括号, "当条件后应有')'");
         auto 主体 = 解析代码块();
-        return std::make_unique<当循环语句>(std::move(条件), std::move(主体));
+        return 设置行号(std::make_unique<当循环语句>(std::move(条件), std::move(主体)));
     }
 
     if (当前.类型 == 标记类型::做) {
@@ -1226,7 +1263,7 @@ std::unique_ptr<语句> 语法分析器::解析语句() {
             auto 条件 = 解析表达式();
             期望(标记类型::右括号, "当条件后应有')'");
             期望(标记类型::分号, "做-当循环后应有';'");
-            return std::make_unique<做循环语句>(std::move(条件), std::move(主体), true);
+            return 设置行号(std::make_unique<做循环语句>(std::move(条件), std::move(主体), true));
         }
         if (_当前标记.类型 == 标记类型::到) {
             前进();
@@ -1234,7 +1271,7 @@ std::unique_ptr<语句> 语法分析器::解析语句() {
             auto 条件 = 解析表达式();
             期望(标记类型::右括号, "到条件后应有')'");
             期望(标记类型::分号, "做-到循环后应有';'");
-            return std::make_unique<做循环语句>(std::move(条件), std::move(主体), false);
+            return 设置行号(std::make_unique<做循环语句>(std::move(条件), std::move(主体), false));
         }
         throw std::runtime_error("做后应有'当'或'到'");
     }
@@ -1242,24 +1279,24 @@ std::unique_ptr<语句> 语法分析器::解析语句() {
     if (当前.类型 == 标记类型::中断) {
         前进();
         期望(标记类型::分号, "中断后应有';'");
-        return std::make_unique<中断语句>();
+        return 设置行号(std::make_unique<中断语句>());
     }
 
     if (当前.类型 == 标记类型::继续) {
         前进();
         期望(标记类型::分号, "继续后应有';'");
-        return std::make_unique<继续语句>();
+        return 设置行号(std::make_unique<继续语句>());
     }
 
     if (当前.类型 == 标记类型::返回) {
         前进();
         if (_当前标记.类型 == 标记类型::分号) {
             前进();
-            return std::make_unique<返回语句>(nullptr);
+            return 设置行号(std::make_unique<返回语句>(nullptr));
         }
         auto 值 = 解析表达式();
         期望(标记类型::分号, "返回后应有';'");
-        return std::make_unique<返回语句>(std::move(值));
+        return 设置行号(std::make_unique<返回语句>(std::move(值)));
     }
 
     if (当前.类型 == 标记类型::匹配) {
@@ -1287,7 +1324,7 @@ std::unique_ptr<语句> 语法分析器::解析语句() {
             分支列表.push_back(std::move(分支));
         }
         期望(标记类型::右花括号, "匹配后应有'}'");
-        return std::make_unique<匹配语句>(std::move(表达式值), std::move(分支列表));
+        return 设置行号(std::make_unique<匹配语句>(std::move(表达式值), std::move(分支列表)));
     }
 
     if (当前.类型 == 标记类型::遍历) {
@@ -1300,7 +1337,7 @@ std::unique_ptr<语句> 语法分析器::解析语句() {
         auto 数组表达式 = 解析表达式();
         期望(标记类型::右括号, "遍历后应有')'");
         auto 主体 = 解析代码块();
-        return std::make_unique<遍历语句>(变量名, std::move(数组表达式), std::move(主体));
+        return 设置行号(std::make_unique<遍历语句>(变量名, std::move(数组表达式), std::move(主体)));
     }
 
     if (当前.类型 == 标记类型::尝试) {
@@ -1330,22 +1367,22 @@ std::unique_ptr<语句> 语法分析器::解析语句() {
             throw std::runtime_error("尝试语句至少需要一个捕获或最终块（行 " + std::to_string(当前.行号) + "）");
         }
 
-        return std::make_unique<尝试语句>(std::move(尝试主体), std::move(异常变量名),
-                                          std::move(捕获主体), std::move(最终主体));
+        return 设置行号(std::make_unique<尝试语句>(std::move(尝试主体), std::move(异常变量名),
+                                          std::move(捕获主体), std::move(最终主体)));
     }
 
     if (当前.类型 == 标记类型::抛出) {
         前进();
         auto 异常值 = 解析表达式();
         期望(标记类型::分号, "抛出表达式后应有';'");
-        return std::make_unique<抛出语句>(std::move(异常值));
+        return 设置行号(std::make_unique<抛出语句>(std::move(异常值)));
     }
 
     if (当前.类型 == 标记类型::让出) {
         前进();
         auto 值表达式 = 解析表达式();
         期望(标记类型::分号, "让出表达式后应有';'");
-        return std::make_unique<让出语句>(std::move(值表达式));
+        return 设置行号(std::make_unique<让出语句>(std::move(值表达式)));
     }
 
     if (当前.类型 == 标记类型::结构体) {
@@ -1391,12 +1428,12 @@ std::unique_ptr<语句> 语法分析器::解析语句() {
             }
         }
         期望(标记类型::右花括号, "结构体定义应以'}'结束");
-        return std::make_unique<结构体定义语句>(名称, std::move(成员列表), std::move(方法列表));
+        return 设置行号(std::make_unique<结构体定义语句>(名称, std::move(成员列表), std::move(方法列表)));
     }
 
     if (当前.类型 == 标记类型::左花括号) {
         auto 语句列表 = 解析代码块();
-        return std::make_unique<代码块语句>(std::move(语句列表));
+        return 设置行号(std::make_unique<代码块语句>(std::move(语句列表)));
     }
 
     throw std::runtime_error("语句中意外标记 '" + 当前.值 + "'（行 " + std::to_string(当前.行号) + "）");
@@ -1413,17 +1450,41 @@ std::unique_ptr<函数> 语法分析器::解析函数(bool 是否协程) {
     // 参数和返回值的()都可以省略
     std::vector<函数参数> 参数列表;
     std::vector<std::string> 类型参数列表;
+    std::vector<类型约束> 约束列表;
 
     if (_当前标记.类型 == 标记类型::小于) {
         前进();
         if (_当前标记.类型 == 标记类型::标识符) {
-            类型参数列表.push_back(_当前标记.值);
+            std::string 类型参数名 = _当前标记.值;
+            类型参数列表.push_back(类型参数名);
             前进();
+            // 检查是否有约束 (T: 约束名)
+            if (_当前标记.类型 == 标记类型::冒号) {
+                前进();
+                if (_当前标记.类型 == 标记类型::标识符) {
+                    类型约束 约束;
+                    约束.类型参数名 = 类型参数名;
+                    约束.约束名 = _当前标记.值;
+                    约束列表.push_back(约束);
+                    前进();
+                }
+            }
             while (_当前标记.类型 == 标记类型::逗号) {
                 前进();
                 期望类型(标记类型::标识符, "类型参数名应为标识符");
-                类型参数列表.push_back(_当前标记.值);
+                std::string 类型参数名2 = _当前标记.值;
+                类型参数列表.push_back(类型参数名2);
                 前进();
+                if (_当前标记.类型 == 标记类型::冒号) {
+                    前进();
+                    if (_当前标记.类型 == 标记类型::标识符) {
+                        类型约束 约束2;
+                        约束2.类型参数名 = 类型参数名2;
+                        约束2.约束名 = _当前标记.值;
+                        约束列表.push_back(约束2);
+                        前进();
+                    }
+                }
             }
         }
         期望(标记类型::大于, "类型参数后应有'>'");
@@ -1449,7 +1510,7 @@ std::unique_ptr<函数> 语法分析器::解析函数(bool 是否协程) {
     返回值列表 = 解析返回值列表();
 
     auto 主体 = 解析代码块();
-    return std::make_unique<函数>(函数名, std::move(类型参数列表), std::move(参数列表), std::move(返回值列表),
+    return std::make_unique<函数>(函数名, std::move(类型参数列表), std::move(约束列表), std::move(参数列表), std::move(返回值列表),
                                  std::move(主体), 是否协程);
 }
 
@@ -1498,6 +1559,14 @@ std::unique_ptr<程序> 语法分析器::解析程序() {
             期望类型(标记类型::标识符, "结构体名应为标识符");
             std::string 名称 = _当前标记.值;
             前进();
+            // 检查是否有基类 (结构体 子类 : 基类)
+            std::string 基类名;
+            if (_当前标记.类型 == 标记类型::冒号) {
+                前进();
+                期望类型(标记类型::标识符, "基类名应为标识符");
+                基类名 = _当前标记.值;
+                前进();
+            }
             期望(标记类型::左花括号, "结构体后应有'{'");
             std::vector<结构体成员> 成员列表;
             std::vector<结构体方法> 方法列表;
@@ -1525,7 +1594,8 @@ std::unique_ptr<程序> 语法分析器::解析程序() {
                     期望(标记类型::冒号, "成员名后应有':'");
                     std::string 类型名 = _当前标记.值;
                     if (_当前标记.类型 == 标记类型::整数类型 || _当前标记.类型 == 标记类型::浮点类型 ||
-                        _当前标记.类型 == 标记类型::布尔类型 || _当前标记.类型 == 标记类型::标识符) {
+                        _当前标记.类型 == 标记类型::布尔类型 || _当前标记.类型 == 标记类型::字符串类型 ||
+                        _当前标记.类型 == 标记类型::标识符) {
                         前进();
                     } else {
                         期望类型(标记类型::标识符, "成员类型应为类型名");
@@ -1543,10 +1613,10 @@ std::unique_ptr<程序> 语法分析器::解析程序() {
                     参数.push_back(std::move(p));
                 }
                 auto 函数_ptr = std::make_unique<函数>(名称 + "_" + 方法.名称, std::vector<std::string>{},
-                    std::move(参数), std::move(方法.返回值列表), std::move(方法.主体));
+                    std::vector<类型约束>{}, std::move(参数), std::move(方法.返回值列表), std::move(方法.主体));
                 程序->函数列表.push_back(std::move(函数_ptr));
             }
-            程序->结构体定义列表.push_back({名称, std::move(成员列表)});
+            程序->结构体定义列表.push_back({名称, std::move(成员列表), 基类名});
         } else if (_当前标记.类型 == 标记类型::导入) {
             前进();
             期望类型(标记类型::字符串, "导入后应为文件路径字符串");
@@ -1661,7 +1731,7 @@ std::unique_ptr<程序> 语法分析器::解析程序() {
                     // 检查是否有 :类型
                     if (_当前标记.类型 == 标记类型::冒号) {
                         前进();
-                        if (_当前标记.类型 == 标记类型::类型) {
+                        if (_当前标记.类型 == 标记类型::类型 || (_当前标记.类型 == 标记类型::标识符 && _当前标记.值 == "类型")) {
                             // 确认是类型别名
                             前进();
                             期望(标记类型::分号, "类型别名后应有';'");

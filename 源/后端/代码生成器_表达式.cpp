@@ -60,50 +60,44 @@ llvm::Value* 代码生成器::生成表达式(const 表达式& 表达式) {
             const auto& 二元 = static_cast<const 二元运算表达式&>(表达式);
             if (二元.操作符 == 二元操作符::逻辑或) {
                 llvm::Value* 左 = 生成表达式(*二元.左操作数);
-                if (左->getType()->isIntegerTy(1)) 左 = 构建器->CreateZExt(左, llvm::Type::getInt32Ty(上下文));
-                llvm::Value* 左结果 = 构建器->CreateICmpNE(左, llvm::ConstantInt::get(上下文, llvm::APInt(32, 0)), "lortmp");
-                llvm::Function* 当前函数 = 构建器->GetInsertBlock()->getParent();
-                llvm::BasicBlock* 右块 = llvm::BasicBlock::Create(上下文, "lor_rhs", 当前函数);
-                llvm::BasicBlock* 合并块 = llvm::BasicBlock::Create(上下文, "lor_merge");
-                构建器->CreateCondBr(左结果, 合并块, 右块);
-                llvm::BasicBlock* 左块 = 构建器->GetInsertBlock();
-                构建器->SetInsertPoint(右块);
-                llvm::Value* 右 = 生成表达式(*二元.右操作数);
-                if (右->getType()->isIntegerTy(1)) 右 = 构建器->CreateZExt(右, llvm::Type::getInt32Ty(上下文));
-                llvm::Value* 右结果 = 构建器->CreateICmpNE(右, llvm::ConstantInt::get(上下文, llvm::APInt(32, 0)), "lortmp2");
-                右块 = 构建器->GetInsertBlock();
-                构建器->CreateBr(合并块);
-                当前函数->insert(当前函数->end(), 合并块);
-                构建器->SetInsertPoint(合并块);
-                llvm::PHINode* phi = 构建器->CreatePHI(llvm::Type::getInt1Ty(上下文), 2, "lor");
-                phi->addIncoming(llvm::ConstantInt::getTrue(上下文), 左块);
-                phi->addIncoming(右结果, 右块);
-                return 构建器->CreateZExt(phi, llvm::Type::getInt32Ty(上下文), "lorext");
+                return 短路逻辑运算(*构建器, 上下文, 左, [&]() { return 生成表达式(*二元.右操作数); }, false);
             }
             if (二元.操作符 == 二元操作符::逻辑与) {
                 llvm::Value* 左 = 生成表达式(*二元.左操作数);
-                if (左->getType()->isIntegerTy(1)) 左 = 构建器->CreateZExt(左, llvm::Type::getInt32Ty(上下文));
-                llvm::Value* 左结果 = 构建器->CreateICmpNE(左, llvm::ConstantInt::get(上下文, llvm::APInt(32, 0)), "landtmp");
-                llvm::Function* 当前函数 = 构建器->GetInsertBlock()->getParent();
-                llvm::BasicBlock* 右块 = llvm::BasicBlock::Create(上下文, "land_rhs", 当前函数);
-                llvm::BasicBlock* 合并块 = llvm::BasicBlock::Create(上下文, "land_merge");
-                构建器->CreateCondBr(左结果, 右块, 合并块);
-                llvm::BasicBlock* 左块 = 构建器->GetInsertBlock();
-                构建器->SetInsertPoint(右块);
-                llvm::Value* 右 = 生成表达式(*二元.右操作数);
-                if (右->getType()->isIntegerTy(1)) 右 = 构建器->CreateZExt(右, llvm::Type::getInt32Ty(上下文));
-                llvm::Value* 右结果 = 构建器->CreateICmpNE(右, llvm::ConstantInt::get(上下文, llvm::APInt(32, 0)), "landtmp2");
-                右块 = 构建器->GetInsertBlock();
-                构建器->CreateBr(合并块);
-                当前函数->insert(当前函数->end(), 合并块);
-                构建器->SetInsertPoint(合并块);
-                llvm::PHINode* phi = 构建器->CreatePHI(llvm::Type::getInt1Ty(上下文), 2, "land");
-                phi->addIncoming(llvm::ConstantInt::getFalse(上下文), 左块);
-                phi->addIncoming(右结果, 右块);
-                return 构建器->CreateZExt(phi, llvm::Type::getInt32Ty(上下文), "landext");
+                return 短路逻辑运算(*构建器, 上下文, 左, [&]() { return 生成表达式(*二元.右操作数); }, true);
             }
             llvm::Value* 左 = 生成表达式(*二元.左操作数);
             llvm::Value* 右 = 生成表达式(*二元.右操作数);
+
+            // 运算符重载检查：如果左操作数是结构体变量，检查是否有对应的运算符方法
+            if (二元.左操作数->类型 == 表达式类型::变量) {
+                const auto& 左变量名 = static_cast<const 变量表达式&>(*二元.左操作数).名称;
+                const std::string& 结构体类型名 = 符号表实例.获取结构体类型(左变量名);
+                if (!结构体类型名.empty()) {
+                    // 查找运算符方法名
+                    std::string 运算符名;
+                    switch (二元.操作符) {
+                        case 二元操作符::加法: 运算符名 = "加"; break;
+                        case 二元操作符::减法: 运算符名 = "减"; break;
+                        case 二元操作符::乘法: 运算符名 = "乘"; break;
+                        case 二元操作符::除法: 运算符名 = "除"; break;
+                        case 二元操作符::等于: 运算符名 = "等于"; break;
+                        case 二元操作符::不等于: 运算符名 = "不等于"; break;
+                        case 二元操作符::小于: 运算符名 = "小于"; break;
+                        case 二元操作符::大于: 运算符名 = "大于"; break;
+                        default: break;
+                    }
+                    if (!运算符名.empty()) {
+                        std::string 方法函数名 = 结构体类型名 + "_" + 运算符名;
+                        llvm::Function* 方法函数 = 模块->getFunction(方法函数名);
+                        if (方法函数) {
+                            llvm::Value* 左地址 = 符号表实例.获取变量值(左变量名);
+                            llvm::Value* 左值 = 构建器->CreateLoad(类型名到LLVM类型(结构体类型名), 左地址, "左值");
+                            return 创建调用(方法函数, {左值, 右}, 方法函数名 + "_结果");
+                        }
+                    }
+                }
+            }
 
             // 字符串拼接
             if (二元.操作符 == 二元操作符::加法 &&
@@ -127,8 +121,8 @@ llvm::Value* 代码生成器::生成表达式(const 表达式& 表达式) {
             // 浮点运算
             bool 是浮点 = (左->getType()->isDoubleTy() || 右->getType()->isDoubleTy());
             if (是浮点) {
-                if (左->getType()->isIntegerTy()) 左 = 构建器->CreateSIToFP(左, llvm::Type::getDoubleTy(上下文), "int2float_l");
-                if (右->getType()->isIntegerTy()) 右 = 构建器->CreateSIToFP(右, llvm::Type::getDoubleTy(上下文), "int2float_r");
+                左 = 确保浮点(*构建器, 上下文, 左);
+                右 = 确保浮点(*构建器, 上下文, 右);
                 switch (二元.操作符) {
                     case 二元操作符::加法: return 构建器->CreateFAdd(左, 右, "faddtmp");
                     case 二元操作符::减法: return 构建器->CreateFSub(左, 右, "fsubtmp");
@@ -683,6 +677,137 @@ llvm::Value* 代码生成器::生成表达式(const 表达式& 表达式) {
                 return llvm::ConstantInt::get(llvm::Type::getInt32Ty(上下文), 0);
             }
 
+            if (调用.函数名 == "断点") {
+                创建调用无返回(模块->getFunction("断点命中"), {
+                    构建器->CreateGlobalString("用户代码"),
+                    llvm::ConstantInt::get(llvm::Type::getInt32Ty(上下文), 0),
+                    构建器->CreateGlobalString("断点")
+                });
+                return llvm::ConstantInt::get(llvm::Type::getInt32Ty(上下文), 0);
+            }
+
+            if (调用.函数名 == "HTTP获取") {
+                llvm::Value* url = 生成表达式(*调用.参数列表[0]);
+                return 创建调用(模块->getFunction("HTTP获取"), {url}, "http_result");
+            }
+
+            if (调用.函数名 == "写入文件") {
+                llvm::Value* 路径 = 生成表达式(*调用.参数列表[0]);
+                llvm::Value* 内容 = 生成表达式(*调用.参数列表[1]);
+                return 创建调用(模块->getFunction("写入文件"), {路径, 内容}, "写入结果");
+            }
+
+            if (调用.函数名 == "读取文件") {
+                llvm::Value* 路径 = 生成表达式(*调用.参数列表[0]);
+                return 创建调用(模块->getFunction("读取文件"), {路径}, "文件内容");
+            }
+
+            if (调用.函数名 == "执行GC") {
+                创建调用无返回(模块->getFunction("执行GC"), {});
+                return llvm::ConstantInt::get(llvm::Type::getInt32Ty(上下文), 0);
+            }
+
+            if (调用.函数名 == "获取GC对象数量") {
+                return 创建调用(模块->getFunction("获取GC对象数量"), {}, "gc_count");
+            }
+
+            if (调用.函数名 == "启用GC") {
+                创建调用无返回(模块->getFunction("启用GC"), {});
+                return llvm::ConstantInt::get(llvm::Type::getInt32Ty(上下文), 0);
+            }
+
+            if (调用.函数名 == "设置GC阈值") {
+                llvm::Value* 阈值 = 生成表达式(*调用.参数列表[0]);
+                创建调用无返回(模块->getFunction("设置GC阈值"), {阈值});
+                return llvm::ConstantInt::get(llvm::Type::getInt32Ty(上下文), 0);
+            }
+
+            if (调用.函数名 == "异步写入文件") {
+                llvm::Value* 路径 = 生成表达式(*调用.参数列表[0]);
+                llvm::Value* 内容 = 生成表达式(*调用.参数列表[1]);
+                return 创建调用(模块->getFunction("异步写入文件"), {路径, 内容}, "async_write");
+            }
+
+            if (调用.函数名 == "异步读取文件") {
+                llvm::Value* 路径 = 生成表达式(*调用.参数列表[0]);
+                return 创建调用(模块->getFunction("异步读取文件"), {路径}, "async_read");
+            }
+
+            if (调用.函数名 == "IO是否完成") {
+                llvm::Value* 任务ID = 生成表达式(*调用.参数列表[0]);
+                return 创建调用(模块->getFunction("IO是否完成"), {任务ID}, "io_done");
+            }
+
+            if (调用.函数名 == "IO获取结果") {
+                llvm::Value* 任务ID = 生成表达式(*调用.参数列表[0]);
+                return 创建调用(模块->getFunction("IO获取结果"), {任务ID}, "io_result");
+            }
+
+            if (调用.函数名 == "IO获取读取结果") {
+                llvm::Value* 任务ID = 生成表达式(*调用.参数列表[0]);
+                return 创建调用(模块->getFunction("IO获取读取结果"), {任务ID}, "io_data");
+            }
+
+            if (调用.函数名 == "异步IO等待") {
+                llvm::Value* 任务ID = 生成表达式(*调用.参数列表[0]);
+                return 创建调用(模块->getFunction("异步IO等待"), {任务ID}, "io_wait");
+            }
+
+            if (调用.函数名 == "等待IO完成") {
+                llvm::Value* 任务ID = 生成表达式(*调用.参数列表[0]);
+                return 创建调用(模块->getFunction("等待IO完成"), {任务ID}, "io_wait_result");
+            }
+
+            if (调用.函数名 == "创建TCP客户端") {
+                return 创建调用(模块->getFunction("创建TCP客户端"), {}, "tcp_sock");
+            }
+
+            if (调用.函数名 == "TCP连接") {
+                llvm::Value* sock = 生成表达式(*调用.参数列表[0]);
+                llvm::Value* addr = 生成表达式(*调用.参数列表[1]);
+                llvm::Value* port = 生成表达式(*调用.参数列表[2]);
+                return 创建调用(模块->getFunction("TCP连接"), {sock, addr, port}, "tcp_conn");
+            }
+
+            if (调用.函数名 == "TCP发送") {
+                llvm::Value* sock = 生成表达式(*调用.参数列表[0]);
+                llvm::Value* data = 生成表达式(*调用.参数列表[1]);
+                return 创建调用(模块->getFunction("TCP发送"), {sock, data}, "tcp_send");
+            }
+
+            if (调用.函数名 == "TCP接收") {
+                llvm::Value* sock = 生成表达式(*调用.参数列表[0]);
+                return 创建调用(模块->getFunction("TCP接收"), {sock}, "tcp_recv");
+            }
+
+            if (调用.函数名 == "TCP关闭") {
+                llvm::Value* sock = 生成表达式(*调用.参数列表[0]);
+                创建调用无返回(模块->getFunction("TCP关闭"), {sock});
+                return llvm::ConstantInt::get(llvm::Type::getInt32Ty(上下文), 0);
+            }
+
+            if (调用.函数名 == "创建TCP服务器") {
+                llvm::Value* port = 生成表达式(*调用.参数列表[0]);
+                return 创建调用(模块->getFunction("创建TCP服务器"), {port}, "tcp_serv");
+            }
+
+            if (调用.函数名 == "TCP接受连接") {
+                llvm::Value* serv = 生成表达式(*调用.参数列表[0]);
+                return 创建调用(模块->getFunction("TCP接受连接"), {serv}, "tcp_accept");
+            }
+
+            if (调用.函数名 == "创建UDP套接字") {
+                return 创建调用(模块->getFunction("创建UDP套接字"), {}, "udp_sock");
+            }
+
+            if (调用.函数名 == "UDP发送到") {
+                llvm::Value* sock = 生成表达式(*调用.参数列表[0]);
+                llvm::Value* data = 生成表达式(*调用.参数列表[1]);
+                llvm::Value* addr = 生成表达式(*调用.参数列表[2]);
+                llvm::Value* port = 生成表达式(*调用.参数列表[3]);
+                return 创建调用(模块->getFunction("UDP发送到"), {sock, data, addr, port}, "udp_send");
+            }
+
             // 内置函数：打印
             if (调用.函数名 == "打印") {
                 llvm::FunctionType* printf类型 = llvm::FunctionType::get(
@@ -695,7 +820,10 @@ llvm::Value* 代码生成器::生成表达式(const 表达式& 表达式) {
                 if (值->getType()->isDoubleTy() || 值->getType()->isFloatTy()) {
                     return 创建调用(模块->getFunction("printf"), {构建器->CreateGlobalString("%.6g\n"), 值});
                 } else if (值->getType()->isPointerTy()) {
-                    return 创建调用(模块->getFunction("printf"), {构建器->CreateGlobalString("%s\n"), 值});
+                    llvm::Value* ptr_int = 构建器->CreatePtrToInt(值, llvm::Type::getInt64Ty(上下文));
+                    llvm::Value* 是小值 = 构建器->CreateICmpULT(ptr_int, llvm::ConstantInt::get(llvm::Type::getInt64Ty(上下文), 0x10000));
+                    llvm::Value* fmt = 构建器->CreateSelect(是小值, 构建器->CreateGlobalString("%d\n"), 构建器->CreateGlobalString("%s\n"));
+                    return 创建调用(模块->getFunction("printf"), {fmt, 值});
                 } else {
                     return 创建调用(模块->getFunction("printf"), {构建器->CreateGlobalString("%d\n"), 值});
                 }
@@ -726,6 +854,27 @@ llvm::Value* 代码生成器::生成表达式(const 表达式& 表达式) {
                         else if (符号表实例.是指针变量(变量名)) 类型名 = "字符串";
                     }
                     具体类型.push_back(类型名);
+                }
+                // 检查类型约束
+                for (const auto& 约束 : 函数定义->约束列表) {
+                    for (size_t i = 0; i < 函数定义->类型参数列表.size(); ++i) {
+                        if (函数定义->类型参数列表[i] == 约束.类型参数名 && i < 具体类型.size()) {
+                            std::string 实际类型 = 具体类型[i];
+                            if (约束.约束名 == "可比较") {
+                                // 可比较约束：整数、浮点数、字符串都满足
+                                if (实际类型 != "整数" && 实际类型 != "浮点数" && 实际类型 != "字符串") {
+                                    throw std::runtime_error("类型约束错误: " + 实际类型 + " 不满足 '可比较' 约束");
+                                }
+                            } else if (约束.约束名 == "可打印") {
+                                // 可打印约束：所有类型都满足
+                            } else if (约束.约束名 == "数值") {
+                                // 数值约束：只有整数和浮点数满足
+                                if (实际类型 != "整数" && 实际类型 != "浮点数") {
+                                    throw std::runtime_error("类型约束错误: " + 实际类型 + " 不满足 '数值' 约束");
+                                }
+                            }
+                        }
+                    }
                 }
                 // 生成特化函数名
                 实际函数名 = 调用.函数名 + "_";
@@ -847,6 +996,15 @@ llvm::Value* 代码生成器::生成表达式(const 表达式& 表达式) {
             size_t 固定参数计数 = 0;
             for (const auto& 参数 : 调用.参数列表) {
                 llvm::Value* 值 = 生成表达式(*参数);
+                // 结构体参数：如果是结构体变量，传递地址而非值
+                if (参数->类型 == 表达式类型::变量 && 函数定义 && 固定参数计数 < 函数定义->参数列表.size()) {
+                    const auto& 变量名 = static_cast<const 变量表达式&>(*参数).名称;
+                    const std::string& 参数类型名 = 函数定义->参数列表[固定参数计数].类型;
+                    if (结构体类型映射.count(参数类型名) && !符号表实例.获取结构体类型(变量名).empty()) {
+                        llvm::Value* 地址 = 符号表实例.获取变量值(变量名);
+                        if (地址) 值 = 地址;
+                    }
+                }
                 if (有变长参数 && 固定参数计数 >= 固定参数数量) {
                     // 变长参数部分，先收集到临时列表
                     break;
@@ -1192,26 +1350,15 @@ llvm::Value* 代码生成器::生成表达式(const 表达式& 表达式) {
         }
         case 表达式类型::成员访问: {
             const auto& 访问 = static_cast<const 成员访问表达式&>(表达式);
-            llvm::Value* 对象地址 = 符号表实例.获取变量值(访问.对象名);
-            if (!对象地址) throw std::runtime_error("未定义的变量: " + 访问.对象名);
+            llvm::Value* 成员地址 = 查找结构体成员地址(*构建器, 上下文, 访问.对象名, 访问.成员名, 符号表实例, 结构体类型映射, 结构体成员映射);
+            // 获取成员类型并加载
             const std::string& 结构体名 = 符号表实例.获取结构体类型(访问.对象名);
-            if (结构体名.empty()) throw std::runtime_error("变量不是结构体: " + 访问.对象名);
-            auto it = 结构体类型映射.find(结构体名);
-            if (it == 结构体类型映射.end()) throw std::runtime_error("未定义的结构体: " + 结构体名);
-            llvm::StructType* 结构体类型 = it->second;
+            llvm::StructType* 结构体类型 = 结构体类型映射[结构体名];
             const auto& 成员名列表 = 结构体成员映射[结构体名];
             int 成员索引 = -1;
             for (size_t i = 0; i < 成员名列表.size(); i++) {
                 if (成员名列表[i] == 访问.成员名) { 成员索引 = static_cast<int>(i); break; }
             }
-            if (成员索引 < 0) throw std::runtime_error("未定义的成员: " + 访问.成员名);
-            // 检查是否需要加载指针（结构体参数是指针类型）
-            llvm::AllocaInst* alloca = llvm::dyn_cast<llvm::AllocaInst>(对象地址);
-            if (alloca && alloca->getAllocatedType()->isPointerTy()) {
-                // 结构体参数是指针，需要先加载
-                对象地址 = 构建器->CreateLoad(llvm::PointerType::get(上下文, 0), 对象地址, 访问.对象名 + "_加载");
-            }
-            llvm::Value* 成员地址 = 构建器->CreateStructGEP(结构体类型, 对象地址, static_cast<unsigned>(成员索引), 访问.成员名);
             llvm::Type* 成员LLVM类型 = 结构体类型->getElementType(static_cast<unsigned>(成员索引));
             return 构建器->CreateLoad(成员LLVM类型, 成员地址, 访问.成员名);
         }

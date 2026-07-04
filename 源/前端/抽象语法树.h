@@ -232,6 +232,7 @@ enum class 语句类型 { 变量声明, 常量声明, 赋值语句, 下标赋值
 class 语句 {
 public:
     语句类型 类型;
+    int 行号 = 0;
     virtual ~语句() = default;
 protected:
     语句(语句类型 类型) : 类型(类型) {}
@@ -240,9 +241,10 @@ protected:
 class 变量声明 : public 语句 {
 public:
     std::string 变量名;
+    std::string 类型标注;  // 可选：类型注解（如 ": 整数"）
     std::unique_ptr<表达式> 初始值;
-    变量声明(std::string 名, std::unique_ptr<表达式> 值)
-        : 语句(语句类型::变量声明), 变量名(std::move(名)), 初始值(std::move(值)) {}
+    变量声明(std::string 名, std::unique_ptr<表达式> 值, std::string 类型 = "")
+        : 语句(语句类型::变量声明), 变量名(std::move(名)), 类型标注(std::move(类型)), 初始值(std::move(值)) {}
 };
 
 class 常量声明 : public 语句 {
@@ -415,10 +417,12 @@ struct 结构体方法 {
 class 结构体定义语句 : public 语句 {
 public:
     std::string 名称;
+    std::string 基类名;  // 继承的基类名（空表示无继承）
     std::vector<结构体成员> 成员列表;
     std::vector<结构体方法> 方法列表;
-    结构体定义语句(std::string 名, std::vector<结构体成员> 成员, std::vector<结构体方法> 方法 = {})
-        : 语句(语句类型::结构体定义), 名称(std::move(名)), 成员列表(std::move(成员)), 方法列表(std::move(方法)) {}
+    结构体定义语句(std::string 名, std::vector<结构体成员> 成员, std::vector<结构体方法> 方法 = {}, std::string 基类 = "")
+        : 语句(语句类型::结构体定义), 名称(std::move(名)), 基类名(std::move(基类)),
+          成员列表(std::move(成员)), 方法列表(std::move(方法)) {}
 };
 
 class 导入语句 : public 语句 {
@@ -494,24 +498,32 @@ struct 返回值描述 {
     std::unique_ptr<表达式> 默认值;
 };
 
+struct 类型约束 {
+    std::string 类型参数名;   // 如 "T"
+    std::string 约束名;       // 如 "可比较"
+};
+
 class 函数 {
 public:
     std::string 名称;
     std::vector<std::string> 类型参数列表;
+    std::vector<类型约束> 约束列表;
     std::vector<函数参数> 参数列表;
     std::vector<返回值描述> 返回值列表;
     std::vector<std::unique_ptr<语句>> 主体;
     bool 是否协程 = false;
-    函数(std::string 名, std::vector<std::string> 类型参数, std::vector<函数参数> 参数, std::vector<返回值描述> 返回值,
+    函数(std::string 名, std::vector<std::string> 类型参数, std::vector<类型约束> 约束,
+         std::vector<函数参数> 参数, std::vector<返回值描述> 返回值,
          std::vector<std::unique_ptr<语句>> body, bool 协程 = false)
-        : 名称(std::move(名)), 类型参数列表(std::move(类型参数)), 参数列表(std::move(参数)), 返回值列表(std::move(返回值)),
+        : 名称(std::move(名)), 类型参数列表(std::move(类型参数)), 约束列表(std::move(约束)),
+          参数列表(std::move(参数)), 返回值列表(std::move(返回值)),
           主体(std::move(body)), 是否协程(协程) {}
 };
 
 struct 程序 {
     std::vector<std::unique_ptr<全局变量声明>> 全局变量;
     std::vector<std::unique_ptr<函数>> 函数列表;
-    std::vector<std::pair<std::string, std::vector<结构体成员>>> 结构体定义列表;
+    std::vector<std::tuple<std::string, std::vector<结构体成员>, std::string>> 结构体定义列表;  // 名称, 成员, 基类名
     std::vector<std::pair<std::string, std::vector<枚举成员>>> 枚举定义列表;
     std::vector<std::unique_ptr<函数>> 方法列表;  // 结构体方法（已转换为普通函数）
     std::vector<std::pair<std::string, std::string>> 类型别名列表;  // 别名 -> 原始类型

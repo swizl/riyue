@@ -1,12 +1,15 @@
 #pragma once
 #include "词法分析器.h"
 #include "抽象语法树.h"
+#include "诊断.h"
 #include <memory>
 
 class 语法分析器 {
 private:
     词法分析器 _词法分析器;
     标记 _当前标记;
+    诊断引擎* _诊断 = nullptr;
+    std::string _文件名;
     std::vector<std::pair<std::string, std::vector<结构体成员>>> 结构体定义缓存;
     std::vector<std::string> 导入列表;
     std::unordered_map<std::string, std::string> 导入别名映射;
@@ -15,6 +18,7 @@ private:
     void 前进();
     void 期望类型(标记类型 类型, const std::string& 信息);
     void 期望(标记类型 类型, const std::string& 信息);
+    [[noreturn]] void 报告错误(const std::string& 消息);
 
     std::unique_ptr<表达式> 解析基本表达式();
     std::unique_ptr<表达式> 解析一元表达式();
@@ -41,12 +45,15 @@ public:
     std::vector<std::unique_ptr<语句>> 解析代码块();
 
 public:
-    语法分析器(const std::string& 文件名) : _词法分析器(文件名), _当前标记(标记类型::未知, "", 0) {
+    语法分析器(const std::string& 文件名) : _词法分析器(文件名), _当前标记(标记类型::未知, "", 0), _文件名(文件名) {
         前进();
     }
     语法分析器(const char* 源码, size_t 长度) : _词法分析器(源码, 长度), _当前标记(标记类型::未知, "", 0) {
         前进();
     }
+
+    void 设置诊断(诊断引擎* 诊断实例) { _诊断 = 诊断实例; }
+    void 设置源码(const std::string& 源码) { if (_诊断) _诊断->设置源码(源码, _文件名); }
 
     std::unique_ptr<程序> 解析程序();
     const 标记& 当前标记() const { return _当前标记; }

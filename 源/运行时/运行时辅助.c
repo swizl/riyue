@@ -1536,3 +1536,399 @@ void 断点命中(const char* 文件, int 行号, const char* 函数名) {
     printf("[调试器] 断点: %s (行 %d, 函数 %s)\n", 文件, 行号, 函数名);
     调试器单步模式 = 1;
 }
+
+// 测试覆盖率支持
+#define 最大行数 10000
+static int 覆盖率已启用 = 0;
+static int 已执行行数[最大行数];
+static int 总行数 = 0;
+static const char* 覆盖率文件名 = NULL;
+
+void 设置覆盖率(int 启用) {
+    覆盖率已启用 = 启用;
+    if (启用) {
+        memset(已执行行数, 0, sizeof(已执行行数));
+    }
+}
+
+void 记录行执行(int 行号) {
+    if (!覆盖率已启用) return;
+    if (行号 > 0 && 行号 < 最大行数) {
+        已执行行数[行号] = 1;
+        if (行号 > 总行数) 总行数 = 行号;
+    }
+}
+
+void 设置覆盖率文件(const char* 文件名) {
+    覆盖率文件名 = 文件名;
+}
+
+void 输出覆盖率报告() {
+    if (!覆盖率已启用) return;
+    int 已覆盖 = 0;
+    for (int i = 1; i <= 总行数; i++) {
+        if (已执行行数[i]) 已覆盖++;
+    }
+    printf("\n=== 覆盖率报告 ===\n");
+    printf("文件: %s\n", 覆盖率文件名 ? 覆盖率文件名 : "未知");
+    printf("总行数: %d\n", 总行数);
+    printf("已覆盖: %d\n", 已覆盖);
+    if (总行数 > 0) {
+        printf("覆盖率: %.1f%%\n", 100.0 * 已覆盖 / 总行数);
+    }
+    printf("\n未覆盖的行:\n");
+    int 未覆盖数 = 0;
+    for (int i = 1; i <= 总行数; i++) {
+        if (!已执行行数[i]) {
+            printf("  行 %d\n", i);
+            未覆盖数++;
+            if (未覆盖数 >= 20) {
+                printf("  ... (还有更多)\n");
+                break;
+            }
+        }
+    }
+    printf("==================\n");
+}
+
+// RTTI 支持 — 异常类型注册表
+#define 最大异常类型 256
+static void* 异常指针表[最大异常类型];
+static int 异常类型表[最大异常类型];
+static int 异常类型数量 = 0;
+
+void 设置异常类型(void* 指针, int 类型) {
+    for (int i = 0; i < 异常类型数量; i++) {
+        if (异常指针表[i] == 指针) {
+            异常类型表[i] = 类型;
+            return;
+        }
+    }
+    if (异常类型数量 < 最大异常类型) {
+        异常指针表[异常类型数量] = 指针;
+        异常类型表[异常类型数量] = 类型;
+        异常类型数量++;
+    }
+}
+
+int 获取异常类型(void* 指针) {
+    for (int i = 0; i < 异常类型数量; i++) {
+        if (异常指针表[i] == 指针) {
+            return 异常类型表[i];
+        }
+    }
+    return 0;  // 默认为整数类型
+}
+
+void 清除异常类型(void* 指针) {
+    for (int i = 0; i < 异常类型数量; i++) {
+        if (异常指针表[i] == 指针) {
+            异常指针表[i] = 异常指针表[异常类型数量 - 1];
+            异常类型表[i] = 异常类型表[异常类型数量 - 1];
+            异常类型数量--;
+            return;
+        }
+    }
+}
+
+// HTTP GET 支持（简化版，使用系统命令）
+static char http缓冲区[65536];
+
+const char* HTTP获取(const char* url) {
+    char 命令[1024];
+#ifdef _WIN32
+    snprintf(命令, sizeof(命令), "curl -s \"%s\" 2>/dev/null", url);
+#else
+    snprintf(命令, sizeof(命令), "curl -s \"%s\" 2>/dev/null", url);
+#endif
+    FILE* fp = popen(命令, "r");
+    if (!fp) {
+        http缓冲区[0] = '\0';
+        return http缓冲区;
+    }
+    size_t 总读取 = 0;
+    while (总读取 < sizeof(http缓冲区) - 1) {
+        size_t 读取 = fread(http缓冲区 + 总读取, 1, sizeof(http缓冲区) - 1 - 总读取, fp);
+        if (读取 == 0) break;
+        总读取 += 读取;
+    }
+    http缓冲区[总读取] = '\0';
+    pclose(fp);
+    return http缓冲区;
+}
+
+// 文件写入
+int 写入文件(const char* 路径, const char* 内容) {
+    FILE* fp = fopen(路径, "w");
+    if (!fp) return -1;
+    fwrite(内容, 1, strlen(内容), fp);
+    fclose(fp);
+    return 0;
+}
+
+// 文件读取
+const char* 读取文件(const char* 路径) {
+    static char 读取缓冲区[65536];
+    FILE* fp = fopen(路径, "r");
+    if (!fp) {
+        读取缓冲区[0] = '\0';
+        return 读取缓冲区;
+    }
+    size_t 读取 = fread(读取缓冲区, 1, sizeof(读取缓冲区) - 1, fp);
+    读取缓冲区[读取] = '\0';
+    fclose(fp);
+    return 读取缓冲区;
+}
+
+// 异步IO支持
+// 真异步IO：基于线程的异步执行
+#ifdef _WIN32
+#include <process.h>
+typedef HANDLE 线程句柄;
+#else
+#include <pthread.h>
+typedef pthread_t 线程句柄;
+#endif
+
+typedef struct {
+    char* 路径;
+    char* 内容;
+    int 模式;  // 0=读取, 1=写入
+    volatile int 完成;
+    int 结果;
+    char* 读取结果;
+    线程句柄 线程;
+} IO任务;
+
+#define 最大IO任务 64
+static IO任务 IO任务表[最大IO任务];
+static int IO任务数量 = 0;
+
+#ifdef _WIN32
+static unsigned __stdcall 异步写入线程(void* arg) {
+    IO任务* 任务 = (IO任务*)arg;
+    FILE* fp = fopen(任务->路径, "w");
+    if (fp) {
+        fwrite(任务->内容, 1, strlen(任务->内容), fp);
+        fclose(fp);
+        任务->结果 = 0;
+    } else {
+        任务->结果 = -1;
+    }
+    任务->完成 = 1;
+    return 0;
+}
+
+static unsigned __stdcall 异步读取线程(void* arg) {
+    IO任务* 任务 = (IO任务*)arg;
+    static char 读取缓冲区[65536];
+    FILE* fp = fopen(任务->路径, "r");
+    if (fp) {
+        size_t 读取 = fread(读取缓冲区, 1, sizeof(读取缓冲区) - 1, fp);
+        读取缓冲区[读取] = '\0';
+        fclose(fp);
+        任务->读取结果 = strdup(读取缓冲区);
+        任务->结果 = 0;
+    } else {
+        任务->读取结果 = NULL;
+        任务->结果 = -1;
+    }
+    任务->完成 = 1;
+    return 0;
+}
+#else
+static void* 异步写入线程(void* arg) {
+    IO任务* 任务 = (IO任务*)arg;
+    FILE* fp = fopen(任务->路径, "w");
+    if (fp) {
+        fwrite(任务->内容, 1, strlen(任务->内容), fp);
+        fclose(fp);
+        任务->结果 = 0;
+    } else {
+        任务->结果 = -1;
+    }
+    任务->完成 = 1;
+    return NULL;
+}
+
+static void* 异步读取线程(void* arg) {
+    IO任务* 任务 = (IO任务*)arg;
+    static char 读取缓冲区[65536];
+    FILE* fp = fopen(任务->路径, "r");
+    if (fp) {
+        size_t 读取 = fread(读取缓冲区, 1, sizeof(读取缓冲区) - 1, fp);
+        读取缓冲区[读取] = '\0';
+        fclose(fp);
+        任务->读取结果 = strdup(读取缓冲区);
+        任务->结果 = 0;
+    } else {
+        任务->读取结果 = NULL;
+        任务->结果 = -1;
+    }
+    任务->完成 = 1;
+    return NULL;
+}
+#endif
+
+int 异步写入文件(const char* 路径, const char* 内容) {
+    if (IO任务数量 >= 最大IO任务) return -1;
+    IO任务* 任务 = &IO任务表[IO任务数量++];
+    任务->路径 = strdup(路径);
+    任务->内容 = strdup(内容);
+    任务->模式 = 1;
+    任务->完成 = 0;
+    任务->结果 = 0;
+    任务->读取结果 = NULL;
+#ifdef _WIN32
+    任务->线程 = (HANDLE)_beginthreadex(NULL, 0, 异步写入线程, 任务, 0, NULL);
+#else
+    pthread_create(&任务->线程, NULL, 异步写入线程, 任务);
+#endif
+    return IO任务数量 - 1;
+}
+
+int 异步读取文件(const char* 路径) {
+    if (IO任务数量 >= 最大IO任务) return -1;
+    IO任务* 任务 = &IO任务表[IO任务数量++];
+    任务->路径 = strdup(路径);
+    任务->内容 = NULL;
+    任务->模式 = 0;
+    任务->完成 = 0;
+    任务->结果 = 0;
+    任务->读取结果 = NULL;
+#ifdef _WIN32
+    任务->线程 = (HANDLE)_beginthreadex(NULL, 0, 异步读取线程, 任务, 0, NULL);
+#else
+    pthread_create(&任务->线程, NULL, 异步读取线程, 任务);
+#endif
+    return IO任务数量 - 1;
+}
+
+int IO是否完成(int 任务ID) {
+    if (任务ID >= 0 && 任务ID < IO任务数量) {
+        return IO任务表[任务ID].完成;
+    }
+    return -1;
+}
+
+int IO获取结果(int 任务ID) {
+    if (任务ID >= 0 && 任务ID < IO任务数量) {
+        return IO任务表[任务ID].结果;
+    }
+    return -1;
+}
+
+const char* IO获取读取结果(int 任务ID) {
+    if (任务ID >= 0 && 任务ID < IO任务数量) {
+        return IO任务表[任务ID].读取结果 ? IO任务表[任务ID].读取结果 : "";
+    }
+    return "";
+}
+
+// 协程异步IO集成：等待IO完成并返回结果
+const char* 异步IO等待(int 任务ID) {
+    if (任务ID >= 0 && 任务ID < IO任务数量) {
+        IO任务* 任务 = &IO任务表[任务ID];
+        // 等待线程完成
+#ifdef _WIN32
+        if (任务->线程) WaitForSingleObject(任务->线程, INFINITE);
+#else
+        if (任务->线程) pthread_join(任务->线程, NULL);
+#endif
+        return 任务->读取结果 ? 任务->读取结果 : "";
+    }
+    return "";
+}
+
+int 等待IO完成(int 任务ID) {
+    if (任务ID >= 0 && 任务ID < IO任务数量) {
+        IO任务* 任务 = &IO任务表[任务ID];
+#ifdef _WIN32
+        if (任务->线程) WaitForSingleObject(任务->线程, INFINITE);
+#else
+        if (任务->线程) pthread_join(任务->线程, NULL);
+#endif
+        return 任务->完成 ? 1 : 0;
+    }
+    return 0;
+}
+#define 最大GC对象 1024
+static void* GC对象表[最大GC对象];
+static int GC对象数量 = 0;
+static int GC标记[最大GC对象];
+static int GC启用 = 0;
+static int GC阈值 = 100;  // 每分配N个对象触发一次GC
+
+void 执行GC(void);  // 前向声明
+
+void 注册GC对象(void* 对象) {
+    if (GC对象数量 < 最大GC对象) {
+        GC对象表[GC对象数量] = 对象;
+        GC标记[GC对象数量] = 0;
+        GC对象数量++;
+        if (GC启用 && GC对象数量 >= GC阈值) {
+            执行GC();
+        }
+    }
+}
+
+void 标记对象(void* 对象) {
+    for (int i = 0; i < GC对象数量; i++) {
+        if (GC对象表[i] == 对象) {
+            GC标记[i] = 1;
+            return;
+        }
+    }
+}
+
+void 清除所有标记() {
+    for (int i = 0; i < GC对象数量; i++) {
+        GC标记[i] = 0;
+    }
+}
+
+void 执行GC() {
+    清除所有标记();
+    // 标记阶段：保守扫描栈寻找可能的指针值
+    void* 栈顶 = __builtin_frame_address(0);
+    // 扫描栈帧，检查每个可能的指针值
+    volatile void** 栈指针 = (volatile void**)栈顶;
+    for (int i = 0; i < 4096; i++) {
+        void* 候选指针 = *栈指针;
+        // 检查候选指针是否匹配任何已注册对象
+        for (int j = 0; j < GC对象数量; j++) {
+            if (GC对象表[j] == 候选指针) {
+                GC标记[j] = 1;
+                break;
+            }
+        }
+        栈指针++;
+    }
+
+    // 清除阶段：释放未标记的对象
+    int 清除数量 = 0;
+    for (int i = GC对象数量 - 1; i >= 0; i--) {
+        if (!GC标记[i]) {
+            free(GC对象表[i]);
+            GC对象表[i] = GC对象表[GC对象数量 - 1];
+            GC标记[i] = GC标记[GC对象数量 - 1];
+            GC对象数量--;
+            清除数量++;
+        }
+    }
+    if (清除数量 > 0) {
+        printf("[GC] 清除了 %d 个对象, 剩余 %d\n", 清除数量, GC对象数量);
+    }
+}
+
+void 启用GC() {
+    GC启用 = 1;
+}
+
+void 设置GC阈值(int 阈值) {
+    GC阈值 = 阈值;
+}
+
+int 获取GC对象数量() {
+    return GC对象数量;
+}

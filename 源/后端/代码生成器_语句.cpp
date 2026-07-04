@@ -59,6 +59,13 @@ llvm::Value* 代码生成器::创建间接调用(llvm::FunctionType* 类型, llv
 void 代码生成器::生成语句(const 语句& 语句) {
     if (构建器->GetInsertBlock()->getTerminator() != nullptr) return;
 
+    if (语句.行号 > 0) {
+        llvm::Function* 记录函数 = 模块->getFunction("记录行执行");
+        if (记录函数) {
+            创建调用无返回(记录函数, {llvm::ConstantInt::get(llvm::Type::getInt32Ty(上下文), 语句.行号)});
+        }
+    }
+
     switch (语句.类型) {
         case 语句类型::变量声明:
         case 语句类型::常量声明: {
@@ -128,6 +135,50 @@ void 代码生成器::生成语句(const 语句& 语句) {
                 bool 是浮点 = 初始值->getType()->isDoubleTy();
                 bool 是指针 = 初始值->getType()->isPointerTy();
 
+                // 类型标注检查（渐进式：仅警告，不报错）
+                if (语句.类型 == 语句类型::变量声明) {
+                    const auto& 声明 = static_cast<const 变量声明&>(语句);
+                    if (!声明.类型标注.empty()) {
+                        std::string 标注 = 声明.类型标注;
+                        // 递归解析类型别名
+                        for (int i = 0; i < 10; i++) {
+                            auto it = 类型别名映射.find(标注);
+                            if (it == 类型别名映射.end()) break;
+                            标注 = it->second;
+                        }
+                        bool 标注是浮点 = (标注 == "浮点" || 标注 == "浮点数");
+                        bool 标注是整数 = (标注 == "整数" || 标注 == "整数类型");
+                        bool 标注是字符串 = (标注 == "字符串" || 标注 == "字符串类型");
+                        bool 标注是布尔 = (标注 == "布尔" || 标注 == "布尔类型");
+
+                        if (标注是浮点 && !是浮点 && !是指针) {
+                            std::cerr << "警告: 变量 '" << 名称 << "' 类型标注为浮点，但初始值是整数（行 " << 语句.行号 << "）" << std::endl;
+                        } else if (标注是整数 && 是浮点) {
+                            std::cerr << "警告: 变量 '" << 名称 << "' 类型标注为整数，但初始值是浮点（行 " << 语句.行号 << "）" << std::endl;
+                        } else if (标注是字符串 && !是指针) {
+                            std::cerr << "警告: 变量 '" << 名称 << "' 类型标注为字符串，但初始值不是字符串（行 " << 语句.行号 << "）" << std::endl;
+                        }
+                    }
+                }
+
+                // 检查函数调用是否返回结构体类型
+                std::string 结构体类型名;
+                if (初始值表达式->类型 == 表达式类型::函数调用) {
+                    const auto& 调用 = static_cast<const 函数调用表达式&>(*初始值表达式);
+                    调试打印("[codegen] 检查函数返回结构体: " << 调用.函数名);
+                    auto 定义迭代 = 全局函数定义映射.find(调用.函数名);
+                    if (定义迭代 != 全局函数定义映射.end()) {
+                        const 函数* func = 定义迭代->second;
+                        调试打印("[codegen] 找到函数: " << func->名称 << " 返回值数: " << func->返回值列表.size());
+                        if (!func->返回值列表.empty()) {
+                            调试打印("[codegen] 返回类型: " << func->返回值列表[0].类型 << " 是否结构体: " << 结构体类型映射.count(func->返回值列表[0].类型));
+                        }
+                        if (!func->返回值列表.empty() && 结构体类型映射.count(func->返回值列表[0].类型)) {
+                            结构体类型名 = func->返回值列表[0].类型;
+                        }
+                    }
+                }
+
                 // 检查变量是否已存在
                 llvm::Value* 已有地址 = 符号表实例.获取变量值(名称);
                 if (已有地址) {
@@ -136,15 +187,28 @@ void 代码生成器::生成语句(const 语句& 语句) {
                 } else {
                     // 变量不存在，创建新变量
                     llvm::Type* 变量类型;
-                    if (是浮点) 变量类型 = llvm::Type::getDoubleTy(上下文);
+                    if (!结构体类型名.empty()) 变量类型 = llvm::PointerType::get(上下文, 0);
+                    else if (是浮点) 变量类型 = llvm::Type::getDoubleTy(上下文);
                     else if (是指针) 变量类型 = llvm::PointerType::get(上下文, 0);
                     else 变量类型 = llvm::Type::getInt32Ty(上下文);
                     llvm::AllocaInst* 分配 = 构建器->CreateAlloca(变量类型, nullptr, 名称);
                     构建器->CreateStore(初始值, 分配);
                     符号表实例.声明变量(名称, 分配);
+                    if (!结构体类型名.empty()) {
+                        符号表实例.设置结构体变量(名称, 结构体类型名);
+                    } else if (是浮点) {
+                        符号表实例.设置浮点变量(名称);
+                    } else if (是指针) {
+                        符号表实例.设置指针变量(名称);
+                    }
                 }
-                if (是浮点) 符号表实例.设置浮点变量(名称);
-                if (是指针) 符号表实例.设置指针变量(名称);
+                if (!结构体类型名.empty()) {
+                    // 已在上面设置，跳过
+                } else if (是浮点) {
+                    符号表实例.设置浮点变量(名称);
+                } else if (是指针) {
+                    符号表实例.设置指针变量(名称);
+                }
             }
             if (语句.类型 == 语句类型::常量声明) 符号表实例.声明常量(名称);
             break;
@@ -152,36 +216,17 @@ void 代码生成器::生成语句(const 语句& 语句) {
         case 语句类型::赋值语句: {
             const auto& 赋值 = static_cast<const 赋值语句&>(语句);
             if (符号表实例.是常量(赋值.变量名)) {
-                throw std::runtime_error("不能对常量 '" + 赋值.变量名 + "' 赋值（行 " + std::to_string(0) + "）");
+                throw std::runtime_error("不能对常量 '" + 赋值.变量名 + "' 赋值（行 " + std::to_string(语句.行号) + "）");
             }
             size_t 点位置 = 赋值.变量名.find('.');
             if (点位置 != std::string::npos) {
                 std::string 对象名 = 赋值.变量名.substr(0, 点位置);
                 std::string 成员名 = 赋值.变量名.substr(点位置 + 1);
-                llvm::Value* 对象地址 = 符号表实例.获取变量值(对象名);
-                if (!对象地址) throw std::runtime_error("未定义的变量: " + 对象名);
-                const std::string& 结构体名 = 符号表实例.获取结构体类型(对象名);
-                if (结构体名.empty()) throw std::runtime_error("变量不是结构体: " + 对象名);
-                auto it = 结构体类型映射.find(结构体名);
-                if (it == 结构体类型映射.end()) throw std::runtime_error("未定义的结构体: " + 结构体名);
-                llvm::StructType* 结构体类型 = it->second;
-                const auto& 成员名列表 = 结构体成员映射[结构体名];
-                int 成员索引 = -1;
-                for (size_t i = 0; i < 成员名列表.size(); i++) {
-                    if (成员名列表[i] == 成员名) { 成员索引 = static_cast<int>(i); break; }
-                }
-                if (成员索引 < 0) throw std::runtime_error("未定义的成员: " + 成员名);
-                // 检查是否需要加载指针（结构体参数是指针类型）
-                llvm::AllocaInst* alloca = llvm::dyn_cast<llvm::AllocaInst>(对象地址);
-                if (alloca && alloca->getAllocatedType()->isPointerTy()) {
-                    // 结构体参数是指针，需要先加载
-                    对象地址 = 构建器->CreateLoad(llvm::PointerType::get(上下文, 0), 对象地址, 对象名 + "_加载");
-                }
-                llvm::Value* 成员地址 = 构建器->CreateStructGEP(结构体类型, 对象地址, static_cast<unsigned>(成员索引), 成员名);
+                llvm::Value* 成员地址 = 查找结构体成员地址(*构建器, 上下文, 对象名, 成员名, 符号表实例, 结构体类型映射, 结构体成员映射);
                 构建器->CreateStore(生成表达式(*赋值.值表达式), 成员地址);
             } else {
                 llvm::Value* 变量地址 = 符号表实例.获取变量值(赋值.变量名);
-                if (!变量地址) throw std::runtime_error("未定义的变量: " + 赋值.变量名);
+                if (!变量地址) throw std::runtime_error("未定义的变量: " + 赋值.变量名 + "（行 " + std::to_string(语句.行号) + "）");
                 llvm::Value* 赋值结果 = 生成表达式(*赋值.值表达式);
                 if (!赋值结果 || 赋值结果->getType()->isVoidTy()) {
                     赋值结果 = llvm::ConstantInt::get(上下文, llvm::APInt(32, 0));
@@ -193,7 +238,7 @@ void 代码生成器::生成语句(const 语句& 语句) {
         case 语句类型::复合赋值: {
             const auto& 复合赋值 = static_cast<const 复合赋值语句&>(语句);
             llvm::Value* 变量地址 = 符号表实例.获取变量值(复合赋值.变量名);
-            if (!变量地址) throw std::runtime_error("未定义的变量: " + 复合赋值.变量名);
+            if (!变量地址) throw std::runtime_error("未定义的变量: " + 复合赋值.变量名 + "（行 " + std::to_string(语句.行号) + "）");
             llvm::Value* 当前值 = 构建器->CreateLoad(llvm::Type::getInt32Ty(上下文), 变量地址, 复合赋值.变量名);
             llvm::Value* 增量值 = 生成表达式(*复合赋值.值表达式);
             llvm::Value* 新值;
@@ -211,10 +256,10 @@ void 代码生成器::生成语句(const 语句& 语句) {
         case 语句类型::下标赋值语句: {
             const auto& 下标赋值 = static_cast<const 下标赋值语句&>(语句);
             if (符号表实例.是常量(下标赋值.数组名)) {
-                throw std::runtime_error("不能对常量 '" + 下标赋值.数组名 + "' 赋值");
+                throw std::runtime_error("不能对常量 '" + 下标赋值.数组名 + "' 赋值（行 " + std::to_string(语句.行号) + "）");
             }
             llvm::Value* 数组地址 = 符号表实例.获取变量值(下标赋值.数组名);
-            if (!数组地址) throw std::runtime_error("未定义的数组: " + 下标赋值.数组名);
+            if (!数组地址) throw std::runtime_error("未定义的数组: " + 下标赋值.数组名 + "（行 " + std::to_string(语句.行号) + "）");
             llvm::Value* 索引值 = 生成表达式(*下标赋值.索引);
             if (符号表实例.是字符串数组(下标赋值.数组名)) {
                 llvm::ArrayType* 数组类型 = llvm::ArrayType::get(llvm::PointerType::get(上下文, 0), 符号表实例.获取数组大小(下标赋值.数组名));
@@ -388,21 +433,21 @@ void 代码生成器::生成语句(const 语句& 语句) {
             break;
         }
         case 语句类型::中断语句: {
-            if (循环退出栈.empty()) throw std::runtime_error("'中断'必须在循环内使用");
+            if (循环退出栈.empty()) throw std::runtime_error("'中断'必须在循环内使用（行 " + std::to_string(语句.行号) + "）");
             构建器->CreateBr(循环退出栈.top());
             llvm::BasicBlock* 新块 = llvm::BasicBlock::Create(上下文, "afterbreak", 构建器->GetInsertBlock()->getParent());
             构建器->SetInsertPoint(新块);
             break;
         }
         case 语句类型::继续语句: {
-            if (循环继续栈.empty()) throw std::runtime_error("'继续'必须在循环内使用");
+            if (循环继续栈.empty()) throw std::runtime_error("'继续'必须在循环内使用（行 " + std::to_string(语句.行号) + "）");
             构建器->CreateBr(循环继续栈.top());
             llvm::BasicBlock* 新块 = llvm::BasicBlock::Create(上下文, "aftercontinue", 构建器->GetInsertBlock()->getParent());
             构建器->SetInsertPoint(新块);
             break;
         }
         case 语句类型::返回语句: {
-            throw std::runtime_error("不允许使用'返回'关键字，请直接赋值返回值变量");
+            throw std::runtime_error("不允许使用'返回'关键字，请直接赋值返回值变量（行 " + std::to_string(语句.行号) + "）");
         }
         case 语句类型::打印语句: {
             const auto& 打印 = static_cast<const 打印语句&>(语句);
@@ -484,7 +529,15 @@ void 代码生成器::生成语句(const 语句& 语句) {
 
                 if (分支.条件) {
                     llvm::Value* 分支值 = 生成表达式(*分支.条件);
-                    llvm::Value* 比较结果 = 构建器->CreateICmpEQ(匹配值, 分支值, "matchcmp");
+                    llvm::Value* 比较结果;
+                    if (匹配值->getType()->isPointerTy() && 分支值->getType()->isPointerTy()) {
+                        // 字符串比较：使用 strcmp
+                        llvm::Function* strcmp函数 = 模块->getFunction("strcmp");
+                        llvm::Value* cmp结果 = 创建调用(strcmp函数, {匹配值, 分支值}, "strcmp结果");
+                        比较结果 = 构建器->CreateICmpEQ(cmp结果, llvm::ConstantInt::get(llvm::Type::getInt32Ty(上下文), 0), "streq");
+                    } else {
+                        比较结果 = 构建器->CreateICmpEQ(匹配值, 分支值, "matchcmp");
+                    }
 
                     llvm::BasicBlock* 下一个块 = (i + 1 < 分支块.size()) ? 分支块[i + 1] : 合并块;
                     llvm::BasicBlock* 执行块 = llvm::BasicBlock::Create(上下文, "match_body_" + std::to_string(i), 当前函数);
@@ -594,6 +647,58 @@ void 代码生成器::生成语句(const 语句& 语句) {
             break;
         case 语句类型::类型别名:
             break;
+        case 语句类型::让出语句: {
+            const auto& 让出 = static_cast<const 让出语句&>(语句);
+            llvm::Value* 让出值 = 生成表达式(*让出.值表达式);
+            if (!返回值变量列表.empty()) {
+                构建器->CreateStore(让出值, 返回值变量列表[0]);
+            }
+
+            // LLVM coro.suspend intrinsic
+            auto* coro_suspend = llvm::Intrinsic::getOrInsertDeclaration(模块.get(), llvm::Intrinsic::coro_suspend);
+            auto* token = llvm::ConstantTokenNone::get(上下文);
+            auto* suspend结果 = 构建器->CreateCall(coro_suspend, {token, llvm::ConstantInt::getFalse(上下文)}, "yield_suspend");
+
+            llvm::Function* 当前函数体 = 构建器->GetInsertBlock()->getParent();
+            auto* resumeBB = llvm::BasicBlock::Create(上下文, "coro.resume", 当前函数体);
+            auto* suspendBB = llvm::BasicBlock::Create(上下文, "coro.suspend", 当前函数体);
+            auto* destroyBB = llvm::BasicBlock::Create(上下文, "coro.destroy", 当前函数体);
+
+            auto* sw = 构建器->CreateSwitch(suspend结果, suspendBB, 2);
+            sw->addCase(llvm::ConstantInt::get(llvm::Type::getInt8Ty(上下文), 0), resumeBB);
+            sw->addCase(llvm::ConstantInt::get(llvm::Type::getInt8Ty(上下文), 1), destroyBB);
+
+            // resume: continue execution
+            构建器->SetInsertPoint(resumeBB);
+
+            // destroy: cleanup and return
+            构建器->SetInsertPoint(destroyBB);
+            auto* coro_free = llvm::Intrinsic::getOrInsertDeclaration(模块.get(), llvm::Intrinsic::coro_free);
+            auto* coro_end = llvm::Intrinsic::getOrInsertDeclaration(模块.get(), llvm::Intrinsic::coro_end);
+            if (coro_free && 协程句柄) {
+                auto* free_mem = 构建器->CreateCall(coro_free, {token, 协程句柄}, "coro_free");
+                auto* free函数 = 模块->getFunction("free");
+                if (free函数) 构建器->CreateCall(free函数, {free_mem});
+            }
+            构建器->CreateBr(suspendBB);
+
+            // suspend: yield value and return
+            构建器->SetInsertPoint(suspendBB);
+            if (coro_end && 协程句柄) {
+                构建器->CreateCall(coro_end, {协程句柄, llvm::ConstantInt::getFalse(上下文), token});
+            }
+            if (返回值变量列表.size() == 1) {
+                auto* ret = 构建器->CreateLoad(返回值变量列表[0]->getAllocatedType(), 返回值变量列表[0], "yield_val");
+                构建器->CreateRet(ret);
+            } else {
+                构建器->CreateRetVoid();
+            }
+
+            // resume block continues here
+            构建器->SetInsertPoint(resumeBB);
+            break;
+        }
+
         case 语句类型::抛出语句: {
             const auto& 抛出 = static_cast<const 抛出语句&>(语句);
             llvm::Value* 异常值 = 生成表达式(*抛出.异常值);
@@ -601,7 +706,9 @@ void 代码生成器::生成语句(const 语句& 语句) {
                                                         {llvm::ConstantInt::get(llvm::Type::getInt64Ty(上下文), 8)}, "exc_alloc");
             llvm::Value* 存储值 = 异常值;
             if (异常值->getType()->isIntegerTy(32)) {
-                存储值 = 构建器->CreateSExt(异常值, llvm::Type::getInt64Ty(上下文));
+                llvm::Value* i64值 = 构建器->CreateSExt(异常值, llvm::Type::getInt64Ty(上下文));
+                存储值 = 构建器->CreateIntToPtr(i64值, llvm::PointerType::get(上下文, 0));
+                存储值 = 构建器->CreatePtrToInt(存储值, llvm::Type::getInt64Ty(上下文));
             } else if (异常值->getType()->isPointerTy()) {
                 存储值 = 构建器->CreatePtrToInt(异常值, llvm::Type::getInt64Ty(上下文));
             }
@@ -669,12 +776,13 @@ void 代码生成器::生成语句(const 语句& 语句) {
                 llvm::Value* 捕获值 = 构建器->CreateCall(开始捕获函数, {异常指针}, "catch_val");
                 llvm::Value* 异常i64 = 构建器->CreateLoad(llvm::Type::getInt64Ty(上下文),
                     构建器->CreateBitCast(捕获值, llvm::PointerType::get(上下文, 0)), "exc_i64");
-                llvm::Value* 异常整数 = 构建器->CreateTrunc(异常i64, llvm::Type::getInt32Ty(上下文));
+                llvm::Value* exc_ptr = 构建器->CreateIntToPtr(异常i64, llvm::PointerType::get(上下文, 0), "exc_ptr");
                 {
                     作用域守卫 守卫(符号表实例);
-                    llvm::AllocaInst* 变量地址 = 构建器->CreateAlloca(llvm::Type::getInt32Ty(上下文));
+                    llvm::AllocaInst* 变量地址 = 构建器->CreateAlloca(llvm::PointerType::get(上下文, 0));
                     符号表实例.声明变量(尝试.异常变量名, 变量地址);
-                    构建器->CreateStore(异常整数, 变量地址);
+                    符号表实例.设置指针变量(尝试.异常变量名);
+                    构建器->CreateStore(exc_ptr, 变量地址);
                     for (const auto& 子 : 尝试.捕获主体) 生成语句(*子);
                 }
                 if (构建器->GetInsertBlock()->getTerminator() == nullptr) {

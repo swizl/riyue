@@ -1,12 +1,15 @@
 #include "前端/语法分析器.h"
+#include "前端/诊断.h"
 #include "后端/代码生成器.h"
 #include "虚拟机/字节码编译器.h"
 #include "虚拟机/虚拟机.h"
 #include "前端/公共.h"
 #include "llvm/IR/LLVMContext.h"
 #include <iostream>
+#include <fstream>
 #include <string>
 #include <vector>
+#include <unordered_set>
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
@@ -15,6 +18,9 @@
 
 extern "C" {
     void 设置参数(int argc, const char** argv);
+    void 设置覆盖率(int 启用);
+    void 设置覆盖率文件(const char* 文件名);
+    void 输出覆盖率报告();
 }
 
 bool 调试模式 = false;
@@ -187,7 +193,7 @@ int 运行REPL() {
             }
 
             auto 程序 = std::make_unique<struct 程序>();
-            auto 主函数 = std::make_unique<函数>("__repl_main", std::vector<std::string>{}, std::vector<函数参数>{}, std::vector<返回值描述>{}, std::move(语句列表));
+            auto 主函数 = std::make_unique<函数>("__repl_main", std::vector<std::string>{}, std::vector<类型约束>{}, std::vector<函数参数>{}, std::vector<返回值描述>{}, std::move(语句列表));
             程序->函数列表.push_back(std::move(主函数));
 
             字节码编译器 编译器;
@@ -242,6 +248,15 @@ int main() {
             输入文件索引 = i + 1;
         } else if (参数[i] == "--交互") {
             return 运行REPL();
+        } else if (参数[i] == "--调试器") {
+            模式 = "调试器";
+            输入文件索引 = i + 1;
+        } else if (参数[i] == "--覆盖率") {
+            模式 = "覆盖率";
+            输入文件索引 = i + 1;
+        } else if (参数[i] == "--文档") {
+            模式 = "文档";
+            输入文件索引 = i + 1;
         }
     }
 
@@ -296,6 +311,118 @@ int main() {
             VM.加载文件(输入文件);
             return VM.执行();
 
+        } else if (模式 == "调试器") {
+            // 调试器模式：编译并运行，支持断点
+            语法分析器 分析器(输入文件);
+            auto 程序 = 分析器.解析程序();
+
+            字节码编译器 编译器;
+            auto 字节码结果 = 编译器.编译(*程序);
+
+            虚拟机 VM;
+            VM.加载(字节码结果);
+            std::cout << "[调试器] 程序已加载，输入'帮助'查看命令" << std::endl;
+            return VM.执行();
+
+        } else if (模式 == "覆盖率") {
+            // 覆盖率模式：编译并运行，统计代码覆盖率
+            语法分析器 分析器(输入文件);
+            auto 程序 = 分析器.解析程序();
+
+            字节码编译器 编译器;
+            auto 字节码结果 = 编译器.编译(*程序);
+
+            虚拟机 VM;
+            VM.加载(字节码结果);
+            设置覆盖率(1);
+            设置覆盖率文件(输入文件.c_str());
+            int 结果 = VM.执行();
+            输出覆盖率报告();
+            return 结果;
+
+        } else if (模式 == "文档") {
+            // 文档生成模式：解析源码并生成文档
+            语法分析器 分析器(输入文件);
+            auto 程序 = 分析器.解析程序();
+
+            std::string 输出文件 = (输入文件索引 + 1 < argc) ? 参数[输入文件索引 + 1] : 输入文件 + ".md";
+
+            std::ofstream 文档文件(输出文件);
+            if (!文档文件.is_open()) {
+                std::cerr << "错误: 无法创建文档文件: " << 输出文件 << std::endl;
+                return 1;
+            }
+
+            文档文件 << "# " << 输入文件 << " API 文档\n\n";
+            文档文件 << "> 由日月编译器自动生成\n\n";
+
+            // 生成函数文档
+            if (!程序->函数列表.empty()) {
+                文档文件 << "## 函数\n\n";
+                for (const auto& 函数 : 程序->函数列表) {
+                    文档文件 << "### " << 函数->名称 << "\n\n";
+                    if (函数->是否协程) {
+                        文档文件 << "**类型**: 协程\n\n";
+                    }
+                    if (!函数->参数列表.empty()) {
+                        文档文件 << "**参数**:\n\n";
+                        文档文件 << "| 名称 | 类型 | 默认值 |\n";
+                        文档文件 << "|------|------|--------|\n";
+                        for (const auto& 参数 : 函数->参数列表) {
+                            文档文件 << "| " << 参数.名称 << " | " << (参数.类型.empty() ? "整数" : 参数.类型) << " | ";
+                            if (参数.默认值) {
+                                文档文件 << "有";
+                            } else {
+                                文档文件 << "-";
+                            }
+                            文档文件 << " |\n";
+                        }
+                        文档文件 << "\n";
+                    }
+                    if (!函数->返回值列表.empty()) {
+                        文档文件 << "**返回值**:\n\n";
+                        文档文件 << "| 名称 | 类型 |\n";
+                        文档文件 << "|------|------|\n";
+                        for (const auto& 返回值 : 函数->返回值列表) {
+                            文档文件 << "| " << 返回值.名称 << " | " << (返回值.类型.empty() ? "整数" : 返回值.类型) << " |\n";
+                        }
+                        文档文件 << "\n";
+                    }
+                }
+            }
+
+            // 生成结构体文档
+            if (!程序->结构体定义列表.empty()) {
+                文档文件 << "## 结构体\n\n";
+                for (const auto& [名称, 成员列表, 基类名] : 程序->结构体定义列表) {
+                    文档文件 << "### " << 名称 << "\n\n";
+                    文档文件 << "| 成员 | 类型 |\n";
+                    文档文件 << "|------|------|\n";
+                    for (const auto& 成员 : 成员列表) {
+                        文档文件 << "| " << 成员.名称 << " | " << 成员.类型 << " |\n";
+                    }
+                    文档文件 << "\n";
+                }
+            }
+
+            // 生成枚举文档
+            if (!程序->枚举定义列表.empty()) {
+                文档文件 << "## 枚举\n\n";
+                for (const auto& [名称, 成员列表] : 程序->枚举定义列表) {
+                    文档文件 << "### " << 名称 << "\n\n";
+                    文档文件 << "| 成员 | 值 |\n";
+                    文档文件 << "|------|----|\n";
+                    for (const auto& 成员 : 成员列表) {
+                        文档文件 << "| " << 成员.名称 << " | " << 成员.值 << " |\n";
+                    }
+                    文档文件 << "\n";
+                }
+            }
+
+            文档文件.close();
+            std::cout << "文档已生成: " << 输出文件 << std::endl;
+            return 0;
+
         } else {
             // LLVM编译模式
             if (输入文件索引 + 1 >= argc) {
@@ -304,7 +431,17 @@ int main() {
             }
             std::string 输出文件 = 参数[输入文件索引 + 1];
 
+            // 读取源文件用于诊断
+            std::ifstream 源文件流(输入文件, std::ios::binary);
+            std::string 源码内容;
+            if (源文件流.is_open()) {
+                源码内容.assign((std::istreambuf_iterator<char>(源文件流)), std::istreambuf_iterator<char>());
+            }
+
+            诊断引擎 诊断;
             语法分析器 分析器(输入文件);
+            分析器.设置诊断(&诊断);
+            if (!源码内容.empty()) 分析器.设置源码(源码内容);
             auto 程序 = 分析器.解析程序();
 
             // 处理导入
@@ -318,33 +455,118 @@ int main() {
             if (最后分隔符 != std::string::npos) {
                 输入目录 = 输入文件.substr(0, 最后分隔符 + 1);
             }
-            
-            for (const auto& 模块名 : 导入列表) {
-                std::string 模块路径 = 模块名;
-                
-                调试打印("[主程序] 原始模块路径: " << 模块路径);
-                调试打印("[主程序] 输入目录: " << 输入目录);
-                
-                // 路径解析：相对路径基于当前文件目录
-                if (模块路径.find(":") == std::string::npos && 模块路径[0] != '/') {
-                    // 只有当模块路径不以输入目录开头时才添加
-                    if (输入目录.empty() || 模块路径.substr(0, 输入目录.size()) != 输入目录) {
-                        模块路径 = 输入目录 + 模块路径;
-                        调试打印("[主程序] 添加目录后: " << 模块路径);
-                    } else {
-                        调试打印("[主程序] 路径已包含目录，跳过添加");
+
+            // 获取可执行文件所在目录（用于标准库路径）
+            std::string 程序目录;
+            char 程序路径[MAX_PATH] = {0};
+            GetModuleFileNameA(nullptr, 程序路径, MAX_PATH);
+            std::string 程序路径串(程序路径);
+            size_t 程序分隔符 = 程序路径串.find_last_of("/\\");
+            if (程序分隔符 != std::string::npos) {
+                程序目录 = 程序路径串.substr(0, 程序分隔符 + 1);
+            }
+
+            // 循环导入检测
+            std::unordered_set<std::string> 已导入集合;
+
+            // 模块查找函数
+            auto 规范化路径 = [](std::string 路径) -> std::string {
+                for (auto& c : 路径) {
+                    if (c == '/') c = '\\';
+                }
+                return 路径;
+            };
+
+            auto 查找模块 = [&](const std::string& 原始路径) -> std::string {
+                std::string 规范化原始 = 规范化路径(原始路径);
+                std::vector<std::string> 候选;
+                bool 需要后缀 = (规范化原始.find(".心") == std::string::npos);
+
+                // 获取当前工作目录
+                char 工作目录[MAX_PATH] = {0};
+                GetCurrentDirectoryA(MAX_PATH, 工作目录);
+                std::string 工作目录串(工作目录);
+                if (工作目录串.back() != '\\') 工作目录串 += '\\';
+
+                // 检查模块路径是否已经是绝对路径
+                bool 是绝对路径 = (规范化原始.size() >= 2 && 规范化原始[1] == ':');
+
+                if (!是绝对路径) {
+                    // 1. 相对路径（基于当前工作目录）
+                    候选.push_back(工作目录串 + 规范化原始);
+                    if (需要后缀) 候选.push_back(工作目录串 + 规范化原始 + ".心");
+
+                    // 2. 相对路径（基于输入文件目录）
+                    if (!输入目录.empty()) {
+                        std::string 规范化输入目录 = 规范化路径(输入目录);
+                        // 检查模块路径是否已经以输入目录开头
+                        if (规范化原始.substr(0, 规范化输入目录.size()) != 规范化输入目录) {
+                            char 绝对路径[MAX_PATH] = {0};
+                            if (GetFullPathNameA(规范化输入目录.c_str(), MAX_PATH, 绝对路径, nullptr)) {
+                                std::string 绝对输入目录(绝对路径);
+                                if (绝对输入目录.back() != '\\') 绝对输入目录 += '\\';
+                                候选.push_back(绝对输入目录 + 规范化原始);
+                                if (需要后缀) 候选.push_back(绝对输入目录 + 规范化原始 + ".心");
+                            }
+                        }
+                    }
+
+                    // 3. 标准库路径
+                    if (!程序目录.empty()) {
+                        候选.push_back(程序目录 + "标准库\\" + 规范化原始);
+                        if (需要后缀) 候选.push_back(程序目录 + "标准库\\" + 规范化原始 + ".心");
+                    }
+                } else {
+                    // 绝对路径
+                    候选.push_back(规范化原始);
+                    if (需要后缀) 候选.push_back(规范化原始 + ".心");
+                }
+
+                for (const auto& 路径 : 候选) {
+                    // 使用宽字符API检查文件是否存在（支持中文路径）
+                    int 宽长度 = MultiByteToWideChar(CP_UTF8, 0, 路径.c_str(), (int)路径.size(), nullptr, 0);
+                    std::vector<wchar_t> 宽路径(宽长度 + 1, 0);
+                    MultiByteToWideChar(CP_UTF8, 0, 路径.c_str(), (int)路径.size(), 宽路径.data(), 宽长度);
+                    std::ifstream 检查(宽路径.data());
+                    if (检查.is_open()) {
+                        检查.close();
+                        调试打印("[主程序] 找到模块: " << 路径);
+                        return 路径;
                     }
                 }
+                return "";
+            };
+            
+            for (const auto& 模块名 : 导入列表) {
+                std::string 模块路径 = 查找模块(模块名);
                 
-                // 尝试添加.心后缀
-                if (模块路径.find(".心") == std::string::npos) {
-                    模块路径 += ".心";
+                if (模块路径.empty()) {
+                    std::cerr << "导入模块失败: 找不到模块 '" << 模块名 << "'" << std::endl;
+                    return 1;
                 }
+
                 调试打印("[主程序] 导入模块: " << 模块路径);
+
+                // 循环导入检测
+                if (已导入集合.count(模块路径) > 0) {
+                    调试打印("[主程序] 跳过已导入模块: " << 模块路径);
+                    continue;
+                }
+
                 try {
                     语法分析器 模块分析器(模块路径);
                     auto 模块程序 = 模块分析器.解析程序();
                     
+                    // 标记为已导入
+                    已导入集合.insert(模块路径);
+
+                    // 应用别名重命名
+                    auto 别名迭代 = 导入别名映射.find(模块名);
+                    std::string 别名前缀;
+                    if (别名迭代 != 导入别名映射.end()) {
+                        别名前缀 = 别名迭代->second + "_";
+                    }
+
                     // 检查是否有选择性导入
                     auto 选择导入 = 选择导入映射.find(模块名);
                     if (选择导入 != 选择导入映射.end()) {
@@ -352,6 +574,9 @@ int main() {
                         for (const auto& 函数名 : 选择导入->second) {
                             for (auto& 函数 : 模块程序->函数列表) {
                                 if (函数->名称 == 函数名) {
+                                    if (!别名前缀.empty()) {
+                                        函数->名称 = 别名前缀 + 函数->名称;
+                                    }
                                     程序->函数列表.insert(程序->函数列表.begin(), std::move(函数));
                                     break;
                                 }
@@ -361,6 +586,9 @@ int main() {
                         // 合并所有函数（插入到主程序函数之前）
                         size_t 插入位置 = 0;
                         for (auto& 函数 : 模块程序->函数列表) {
+                            if (!别名前缀.empty()) {
+                                函数->名称 = 别名前缀 + 函数->名称;
+                            }
                             程序->函数列表.insert(程序->函数列表.begin() + 插入位置, std::move(函数));
                             插入位置++;
                         }

@@ -135,6 +135,9 @@ enum class 操作码 : uint8_t {
     发送通道运算,   // A=通道寄存器 B=值寄存器
     接收通道运算,   // A=目标寄存器 B=通道寄存器
     关闭通道运算,   // A=通道寄存器
+
+    // 调试器
+    断点运算,       // 无操作数
 };
 
 std::string 操作码名称(操作码 码);
@@ -162,11 +165,91 @@ struct 值 {
     协程状态* 协程指针 = nullptr;
     // 通道数据
     通道结构* 通道指针 = nullptr;
+    // 引用计数
+    int* 引用计数 = nullptr;
 
     值() : 类型(整数), 整数值(0) {}
     值(int32_t v) : 类型(整数), 整数值(v) {}
     值(double v) : 类型(浮点数), 浮点值(v) {}
     值(const std::string& s) : 类型(字符串), 字符串值(s) {}
+
+    // 拷贝构造：增加引用计数
+    值(const 值& other) : 类型(other.类型), 整数值(other.整数值), 字符串值(other.字符串值),
+        数组值(other.数组值), 闭包函数索引(other.闭包函数索引), 捕获变量(other.捕获变量),
+        成员映射(other.成员映射), 动态数组指针(other.动态数组指针),
+        协程指针(other.协程指针), 通道指针(other.通道指针), 引用计数(other.引用计数) {
+        if (引用计数) (*引用计数)++;
+    }
+
+    // 移动构造：转移所有权
+    值(值&& other) noexcept : 类型(other.类型), 整数值(other.整数值), 字符串值(std::move(other.字符串值)),
+        数组值(std::move(other.数组值)), 闭包函数索引(other.闭包函数索引), 捕获变量(std::move(other.捕获变量)),
+        成员映射(std::move(other.成员映射)), 动态数组指针(other.动态数组指针),
+        协程指针(other.协程指针), 通道指针(other.通道指针), 引用计数(other.引用计数) {
+        other.动态数组指针 = nullptr;
+        other.协程指针 = nullptr;
+        other.通道指针 = nullptr;
+        other.引用计数 = nullptr;
+    }
+
+    // 拷贝赋值
+    值& operator=(const 值& other) {
+        if (this != &other) {
+            释放资源();
+            类型 = other.类型;
+            整数值 = other.整数值;
+            字符串值 = other.字符串值;
+            数组值 = other.数组值;
+            闭包函数索引 = other.闭包函数索引;
+            捕获变量 = other.捕获变量;
+            成员映射 = other.成员映射;
+            动态数组指针 = other.动态数组指针;
+            协程指针 = other.协程指针;
+            通道指针 = other.通道指针;
+            引用计数 = other.引用计数;
+            if (引用计数) (*引用计数)++;
+        }
+        return *this;
+    }
+
+    // 移动赋值
+    值& operator=(值&& other) noexcept {
+        if (this != &other) {
+            释放资源();
+            类型 = other.类型;
+            整数值 = other.整数值;
+            字符串值 = std::move(other.字符串值);
+            数组值 = std::move(other.数组值);
+            闭包函数索引 = other.闭包函数索引;
+            捕获变量 = std::move(other.捕获变量);
+            成员映射 = std::move(other.成员映射);
+            动态数组指针 = other.动态数组指针;
+            协程指针 = other.协程指针;
+            通道指针 = other.通道指针;
+            引用计数 = other.引用计数;
+            other.动态数组指针 = nullptr;
+            other.协程指针 = nullptr;
+            other.通道指针 = nullptr;
+            other.引用计数 = nullptr;
+        }
+        return *this;
+    }
+
+    // 析构：减少引用计数，释放资源
+    ~值() { 释放资源(); }
+
+private:
+    void 释放资源() {
+        if (引用计数 && --(*引用计数) == 0) {
+            delete 引用计数;
+            // 动态数组由 C 运行时管理
+            // 协程和通道由 VM 管理
+        }
+        引用计数 = nullptr;
+        动态数组指针 = nullptr;
+        协程指针 = nullptr;
+        通道指针 = nullptr;
+    }
 };
 
 struct 指令 {

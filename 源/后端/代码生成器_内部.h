@@ -20,6 +20,8 @@
 #include <cstdlib>
 
 extern std::unordered_map<std::string, const 函数*> 全局函数定义映射;
+extern llvm::Value* 协程句柄;
+extern std::vector<llvm::AllocaInst*> 返回值变量列表;
 
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN

@@ -1,0 +1,28 @@
+# 构建产物
+*.o
+*.exe
+*.ll
+*.s
+*.riue
+构建/
+out_t
+out_t.exe
+out_t.ll
+out_t.s
+out2*
+
+# 临时文件
+*.tmp
+test_tmp.ming
+test_full.ming
+
+# IDE
+.vs/
+.vscode/
+*.user
+
+# MSYS2
+*.d
+
+# 包管理器产物
+packages/

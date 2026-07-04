@@ -1,6 +1,8 @@
 #include "代码生成器_内部.h"
 
 std::unordered_map<std::string, const 函数*> 全局函数定义映射;
+llvm::Value* 协程句柄 = nullptr;
+std::vector<llvm::AllocaInst*> 返回值变量列表;
 
 代码生成器::代码生成器(llvm::LLVMContext& ctx, const std::string& 输出文件, bool 优化)
     : 上下文(ctx), 输出文件名(输出文件), 启用优化(优化) {
@@ -11,10 +13,11 @@ std::unordered_map<std::string, const 函数*> 全局函数定义映射;
 }
 
 llvm::Type* 代码生成器::类型名到LLVM类型(const std::string& 类型名) {
-    // 解析类型别名
+    // 递归解析类型别名（最多10层，防止循环）
     std::string 解析后类型名 = 类型名;
-    auto 别名It = 类型别名映射.find(类型名);
-    if (别名It != 类型别名映射.end()) {
+    for (int i = 0; i < 10; i++) {
+        auto 别名It = 类型别名映射.find(解析后类型名);
+        if (别名It == 类型别名映射.end()) break;
         解析后类型名 = 别名It->second;
     }
     // 处理数组类型后缀
@@ -195,10 +198,23 @@ void 代码生成器::生成(const 程序& 程序) {
     调试打印("[代码生成器] 预声明完成，开始生成函数");
 
     // 处理结构体定义
-    for (const auto& [名称, 成员列表] : 程序.结构体定义列表) {
+    for (const auto& [名称, 成员列表, 基类名] : 程序.结构体定义列表) {
         std::vector<llvm::Type*> 成员类型;
         std::vector<std::string> 成员名;
         std::vector<std::string> 成员类型名;
+        // 如果有基类，先添加基类的成员
+        if (!基类名.empty()) {
+            auto 基类成员迭代 = 结构体成员映射.find(基类名);
+            auto 基类类型迭代 = 结构体成员类型名映射.find(基类名);
+            if (基类成员迭代 != 结构体成员映射.end() && 基类类型迭代 != 结构体成员类型名映射.end()) {
+                for (size_t i = 0; i < 基类成员迭代->second.size(); ++i) {
+                    成员名.push_back(基类成员迭代->second[i]);
+                    成员类型名.push_back(基类类型迭代->second[i]);
+                    成员类型.push_back(类型名到LLVM类型(基类类型迭代->second[i]));
+                }
+            }
+        }
+        // 添加当前结构体的成员
         for (const auto& 成员 : 成员列表) {
             成员类型.push_back(类型名到LLVM类型(成员.类型));
             成员名.push_back(成员.名称);
@@ -295,6 +311,38 @@ void 代码生成器::生成函数(const 函数& 函数) {
     构建器->SetInsertPoint(入口块);
     符号表实例.重置为全局作用域();
 
+    // 协程支持：初始化协程框架
+    llvm::Value* 当前协程句柄 = nullptr;
+    if (函数.是否协程) {
+        auto* coro_id = llvm::Intrinsic::getOrInsertDeclaration(模块.get(), llvm::Intrinsic::coro_id);
+        auto* coro_alloc = llvm::Intrinsic::getOrInsertDeclaration(模块.get(), llvm::Intrinsic::coro_alloc);
+        auto* coro_begin = llvm::Intrinsic::getOrInsertDeclaration(模块.get(), llvm::Intrinsic::coro_begin);
+        auto* coro_size = llvm::Intrinsic::getOrInsertDeclaration(模块.get(), llvm::Intrinsic::coro_size);
+        llvm::Function* malloc函数 = 模块->getFunction("malloc");
+
+        auto* id = 构建器->CreateCall(coro_id, {
+            llvm::ConstantInt::get(llvm::Type::getInt32Ty(上下文), 0),
+            llvm::Constant::getNullValue(llvm::PointerType::get(上下文, 0)),
+            llvm::Constant::getNullValue(llvm::PointerType::get(上下文, 0)),
+            llvm::Constant::getNullValue(llvm::PointerType::get(上下文, 0))
+        }, "coro_id");
+        auto* need_alloc = 构建器->CreateCall(coro_alloc, {id}, "coro_needalloc");
+        auto* allocBB = llvm::BasicBlock::Create(上下文, "coro.alloc", llvm函数);
+        auto* entryBB = llvm::BasicBlock::Create(上下文, "coro.entry", llvm函数);
+        构建器->CreateCondBr(need_alloc, allocBB, entryBB);
+        构建器->SetInsertPoint(allocBB);
+        auto* sz = 构建器->CreateCall(coro_size, {}, "coro_size");
+        auto* mem = 构建器->CreateCall(malloc函数, {sz}, "coro_mem");
+        构建器->CreateBr(entryBB);
+        构建器->SetInsertPoint(entryBB);
+        auto* phi = 构建器->CreatePHI(llvm::PointerType::get(上下文, 0), 2, "coro_mem_phi");
+        phi->addIncoming(mem, allocBB);
+        phi->addIncoming(llvm::Constant::getNullValue(llvm::PointerType::get(上下文, 0)), 构建器->GetInsertBlock());
+        auto* token = llvm::ConstantTokenNone::get(上下文);
+        当前协程句柄 = 构建器->CreateCall(coro_begin, {token, llvm::ConstantInt::getFalse(上下文), phi}, "coro_hdl");
+        协程句柄 = 当前协程句柄;
+    }
+
     // 函数体独立作用域（RAII守卫）
     {
         作用域守卫 守卫(符号表实例);
@@ -338,6 +386,14 @@ void 代码生成器::生成函数(const 函数& 函数) {
                 符号表实例.声明变量(返回值.名称, 分配);
                 if (返回LLVM类型->isDoubleTy()) {
                     符号表实例.设置浮点变量(返回值.名称);
+                } else if (结构体类型映射.count(返回值.类型)) {
+                    符号表实例.设置结构体变量(返回值.名称, 返回值.类型);
+                    // 为结构体返回值分配内存并存储指针
+                    llvm::StructType* 结构体类型 = 结构体类型映射[返回值.类型];
+                    llvm::Value* 结构体大小 = llvm::ConstantInt::get(llvm::Type::getInt64Ty(上下文),
+                        模块->getDataLayout().getTypeAllocSize(结构体类型));
+                    llvm::Value* 结构体内存 = 创建调用(模块->getFunction("malloc"), {结构体大小}, "ret_struct_mem");
+                    构建器->CreateStore(结构体内存, 分配);
                 } else if (返回LLVM类型->isPointerTy()) {
                     符号表实例.设置指针变量(返回值.名称);
                 }
@@ -349,6 +405,7 @@ void 代码生成器::生成函数(const 函数& 函数) {
                 返回值分配列表.push_back(分配);
             }
         }
+        返回值变量列表 = 返回值分配列表;
 
         for (const auto& 语句 : 函数.主体) 生成语句(*语句);
 
@@ -412,6 +469,18 @@ void 代码生成器::运行优化Pass() {
 
     // 全局值编号
     FPM.add(llvm::createGVNPass());
+
+    // 早期公共子表达式消除 (Early CSE)
+    // 消除重复计算的表达式
+    FPM.add(llvm::createEarlyCSEPass());
+
+    // 死存储消除 (Dead Store Elimination)
+    // 删除无用的存储操作
+    FPM.add(llvm::createDeadStoreEliminationPass());
+
+    // 循环展开 (Loop Unrolling)
+    // 将小循环展开为重复代码，减少循环开销
+    FPM.add(llvm::createLoopUnrollPass());
 
     FPM.doInitialization();
 

@@ -29,6 +29,18 @@ llvm::Value* 调用数学函数2(llvm::IRBuilder<>& 构建器, llvm::LLVMContext
 llvm::Value* 生成极值选择(llvm::IRBuilder<>& 构建器, llvm::LLVMContext& 上下文,
     llvm::Value* 左, llvm::Value* 右, bool 是最小);
 
+// 短路逻辑运算（逻辑与/逻辑或）
+// 是与操作: true = AND, false = OR
+llvm::Value* 短路逻辑运算(llvm::IRBuilder<>& 构建器, llvm::LLVMContext& 上下文,
+    llvm::Value* 左值, std::function<llvm::Value*()> 生成右值, bool 是与操作);
+
+// 查找结构体成员地址
+llvm::Value* 查找结构体成员地址(llvm::IRBuilder<>& 构建器, llvm::LLVMContext& 上下文,
+    const std::string& 对象名, const std::string& 成员名,
+    class 符号表& 符号表实例,
+    std::unordered_map<std::string, llvm::StructType*>& 结构体类型映射,
+    std::unordered_map<std::string, std::vector<std::string>>& 结构体成员映射);
+
 template<typename 返回值列表类型>
 llvm::Type* 计算返回类型(llvm::LLVMContext& 上下文, const 返回值列表类型& 返回值列表,
     std::function<llvm::Type*(const std::string&)> 类型转换) {

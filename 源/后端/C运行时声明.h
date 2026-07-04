@@ -58,6 +58,36 @@ struct C运行时函数 {
 
         声明("断点命中", llvm::Type::getVoidTy(上下文), {i8Ptr, i32, i8Ptr});
         声明("设置调试器", llvm::Type::getVoidTy(上下文), {i32});
+        声明("记录行执行", llvm::Type::getVoidTy(上下文), {i32});
+        声明("输出覆盖率报告", llvm::Type::getVoidTy(上下文), {});
+        声明("设置异常类型", llvm::Type::getVoidTy(上下文), {i8Ptr, i32});
+        声明("获取异常类型", i32, {i8Ptr});
+        声明("清除异常类型", llvm::Type::getVoidTy(上下文), {i8Ptr});
+        声明("HTTP获取", i8Ptr, {i8Ptr});
+        声明("写入文件", i32, {i8Ptr, i8Ptr});
+        声明("读取文件", i8Ptr, {i8Ptr});
+        声明("异步写入文件", i32, {i8Ptr, i8Ptr});
+        声明("异步读取文件", i32, {i8Ptr});
+        声明("IO是否完成", i32, {i32});
+        声明("IO获取结果", i32, {i32});
+        声明("IO获取读取结果", i8Ptr, {i32});
+        声明("异步IO等待", i8Ptr, {i32});
+        声明("等待IO完成", i32, {i32});
+        声明("创建TCP客户端", i32, {});
+        声明("TCP连接", i32, {i32, i8Ptr, i32});
+        声明("TCP发送", i32, {i32, i8Ptr});
+        声明("TCP接收", i8Ptr, {i32});
+        声明("TCP关闭", llvm::Type::getVoidTy(上下文), {i32});
+        声明("创建TCP服务器", i32, {i32});
+        声明("TCP接受连接", i32, {i32});
+        声明("创建UDP套接字", i32, {});
+        声明("UDP发送到", i32, {i32, i8Ptr, i8Ptr, i32});
+        声明("注册GC对象", llvm::Type::getVoidTy(上下文), {i8Ptr});
+        声明("标记对象", llvm::Type::getVoidTy(上下文), {i8Ptr});
+        声明("执行GC", llvm::Type::getVoidTy(上下文), {});
+        声明("启用GC", llvm::Type::getVoidTy(上下文), {});
+        声明("设置GC阈值", llvm::Type::getVoidTy(上下文), {i32});
+        声明("获取GC对象数量", i32, {});
     }
 };
 

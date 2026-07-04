@@ -80,6 +80,7 @@ std::string 操作码名称(操作码 码) {
         case 操作码::发送通道运算: return "发送通道运算";
         case 操作码::接收通道运算: return "接收通道运算";
         case 操作码::关闭通道运算: return "关闭通道运算";
+        case 操作码::断点运算: return "断点运算";
         default: return "未知";
     }
 }

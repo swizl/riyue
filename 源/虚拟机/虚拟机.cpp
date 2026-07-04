@@ -30,7 +30,7 @@ int 虚拟机::执行() {
     入口帧.寄存器.resize(入口函数.最大寄存器);
     调用栈.push(std::move(入口帧));
     当前帧 = &调用栈.top();
-    执行当前帧(1);
+    执行当前帧(0);
 
     return 转整数(返回值);
 }
@@ -40,7 +40,9 @@ void 虚拟机::执行当前帧(size_t 目标栈深度) {
         const auto& 函数 = 程序.函数表[当前帧->函数索引];
         if (当前帧->指令指针 >= 函数.指令列表.size()) {
             // 函数结束，自动返回
+            返回值 = 当前帧->寄存器.empty() ? 值(0) : 当前帧->寄存器[0];
             调用栈.pop();
+            if (调用栈.empty()) return;
             当前帧 = &调用栈.top();
             当前帧->指令指针++;
             continue;
@@ -49,7 +51,7 @@ void 虚拟机::执行当前帧(size_t 目标栈深度) {
         switch (指令.码) {
             case 操作码::停止:
                 调用栈.pop();
-                if (调用栈.size() >= 目标栈深度) 当前帧 = &调用栈.top();
+                if (!调用栈.empty() && 调用栈.size() >= 目标栈深度) 当前帧 = &调用栈.top();
                 return;
             case 操作码::加载常量:
                 写寄存器(指令.A, 程序.常量池[指令.B]);
@@ -500,6 +502,7 @@ void 虚拟机::执行当前帧(size_t 目标栈深度) {
                 值 arr;
                 arr.类型 = 值::动态数组;
                 arr.动态数组指针 = 创建动态数组();
+                arr.引用计数 = new int(1);
                 写寄存器(指令.A, std::move(arr));
                 当前帧->指令指针++;
                 break;
@@ -648,15 +651,18 @@ void 虚拟机::执行当前帧(size_t 目标栈深度) {
             case 操作码::返回值: {
                 值 结果 = 读寄存器(指令.A);
                 if (!当前帧->寄存器.empty()) 当前帧->寄存器[0] = 结果;
+                返回值 = 结果;
                 uint8_t 返回寄存器 = 当前帧->返回寄存器;
                 调用栈.pop();
+                if (调用栈.empty()) return;
                 当前帧 = &调用栈.top();
                 写寄存器(返回寄存器, std::move(结果));
                 break;
             }
             case 操作码::返回空: {
-                uint8_t 返回寄存器 = 当前帧->返回寄存器;
+                返回值 = 当前帧->寄存器.empty() ? 值(0) : 当前帧->寄存器[0];
                 调用栈.pop();
+                if (调用栈.empty()) return;
                 当前帧 = &调用栈.top();
                 break;
             }
@@ -806,6 +812,7 @@ void 虚拟机::执行当前帧(size_t 目标栈深度) {
                 值 协程值;
                 协程值.类型 = 值::协程;
                 协程值.协程指针 = 协程;
+                协程值.引用计数 = new int(1);
                 写寄存器(指令.A, 协程值);
                 当前帧->指令指针++;
                 break;
@@ -830,10 +837,26 @@ void 虚拟机::执行当前帧(size_t 目标栈深度) {
                     当前帧->指令指针++;
                     break;
                 }
+                // 如果协程有未处理的异常，重新抛出
+                if (协程->有异常) {
+                    协程->有异常 = false;
+                    throw std::runtime_error("协程异常: " + std::to_string(协程->异常值.整数值));
+                }
                 // 将协程帧压入栈
                 调用栈.push(协程->帧);
                 当前帧 = &调用栈.top();
-                执行当前帧(调用栈.size());
+                try {
+                    执行当前帧(调用栈.size());
+                } catch (const std::exception& e) {
+                    // 捕获协程内的异常，存储到协程状态
+                    协程->有异常 = true;
+                    协程->异常值 = 值(0);
+                    协程->当前状态 = 协程状态::已完成;
+                    // 恢复调用者帧
+                    调用栈.pop();
+                    当前帧 = &调用栈.top();
+                    throw;
+                }
                 // 协程执行完毕，获取返回值
                 值 结果 = 返回值;
                 协程->帧 = 调用栈.top();
@@ -851,6 +874,7 @@ void 虚拟机::执行当前帧(size_t 目标栈深度) {
                 值 通道值;
                 通道值.类型 = 值::通道;
                 通道值.通道指针 = ch;
+                通道值.引用计数 = new int(1);
                 写寄存器(指令.A, 通道值);
                 当前帧->指令指针++;
                 break;
@@ -897,6 +921,72 @@ void 虚拟机::执行当前帧(size_t 目标栈深度) {
                     throw std::runtime_error("尝试关闭非通道值");
                 }
                 通道值.通道指针->已关闭 = 1;
+                当前帧->指令指针++;
+                break;
+            }
+
+            case 操作码::断点运算: {
+                printf("[调试器] 断点命中 (函数: %s, 指令: %zu)\n",
+                       程序.函数表[当前帧->函数索引].名称.c_str(), 当前帧->指令指针);
+                char 命令[256];
+                while (1) {
+                    printf("调试> ");
+                    fflush(stdout);
+                    if (!fgets(命令, sizeof(命令), stdin)) break;
+                    size_t len = strlen(命令);
+                    if (len > 0 && 命令[len-1] == '\n') 命令[len-1] = 0;
+                    if (strcmp(命令, "继续") == 0 || strcmp(命令, "c") == 0) {
+                        break;
+                    } else if (strcmp(命令, "变量") == 0 || strcmp(命令, "v") == 0) {
+                        const auto& func = 程序.函数表[当前帧->函数索引];
+                        printf("  函数: %s\n", func.名称.c_str());
+                        printf("  指令: %zu/%zu\n", 当前帧->指令指针, func.指令列表.size());
+                        for (size_t i = 0; i < 当前帧->寄存器.size(); i++) {
+                            const auto& val = 当前帧->寄存器[i];
+                            if (val.类型 == 值::整数) printf("  r%zu = %d\n", i, val.整数值);
+                            else if (val.类型 == 值::浮点数) printf("  r%zu = %g\n", i, val.浮点值);
+                            else if (val.类型 == 值::字符串) printf("  r%zu = \"%s\"\n", i, val.字符串值.c_str());
+                            else if (val.类型 == 值::通道) printf("  r%zu = <通道>\n", i);
+                            else if (val.类型 == 值::协程) printf("  r%zu = <协程>\n", i);
+                        }
+                    } else if (strcmp(命令, "调用栈") == 0 || strcmp(命令, "bt") == 0) {
+                        printf("  调用栈:\n");
+                        std::stack<调用帧> 临时栈 = 调用栈;
+                        int 深度 = 0;
+                        while (!临时栈.empty()) {
+                            const auto& 帧 = 临时栈.top();
+                            printf("  #%d %s (指令: %zu)\n", 深度,
+                                   程序.函数表[帧.函数索引].名称.c_str(), 帧.指令指针);
+                            临时栈.pop();
+                            深度++;
+                        }
+                    } else if (strcmp(命令, "单步") == 0 || strcmp(命令, "s") == 0) {
+                        当前帧->指令指针++;
+                        return;
+                    } else if (strcmp(命令, "打印") == 0 || strcmp(命令, "p") == 0) {
+                        printf("  用法: 打印 <寄存器号>\n");
+                    } else if (strncmp(命令, "打印 ", 5) == 0 || strncmp(命令, "p ", 2) == 0) {
+                        char* arg = strchr(命令, ' ');
+                        if (arg) {
+                            int reg = atoi(arg + 1);
+                            if (reg >= 0 && reg < (int)当前帧->寄存器.size()) {
+                                const auto& val = 当前帧->寄存器[reg];
+                                if (val.类型 == 值::整数) printf("  r%d = %d\n", reg, val.整数值);
+                                else if (val.类型 == 值::浮点数) printf("  r%d = %g\n", reg, val.浮点值);
+                                else if (val.类型 == 值::字符串) printf("  r%d = \"%s\"\n", reg, val.字符串值.c_str());
+                            }
+                        }
+                    } else if (strcmp(命令, "帮助") == 0 || strcmp(命令, "h") == 0) {
+                        printf("  继续(c)     - 继续执行\n");
+                        printf("  单步(s)     - 执行一条指令\n");
+                        printf("  变量(v)     - 显示所有寄存器\n");
+                        printf("  打印(p) N   - 显示寄存器N的值\n");
+                        printf("  调用栈(bt)  - 显示调用栈\n");
+                        printf("  帮助(h)     - 显示帮助\n");
+                    } else {
+                        printf("  未知命令: %s (输入'帮助'查看可用命令)\n", 命令);
+                    }
+                }
                 当前帧->指令指针++;
                 break;
             }
