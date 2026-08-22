@@ -250,7 +250,8 @@ void 代码生成器::生成(const 程序& 程序) {
             if (!函数->参数列表[i].类型.empty()) {
                 参数类型.push_back(类型名到LLVM类型(函数->参数列表[i].类型));
             } else {
-                参数类型.push_back(llvm::Type::getInt32Ty(上下文));
+                // 无类型注解：默认指针类型
+                参数类型.push_back(llvm::PointerType::get(上下文, 0));
             }
         }
         llvm::Type* 返回LLVM类型 = 计算返回类型(上下文, 函数->返回值列表, [this](const std::string& t) { return 类型名到LLVM类型(t); });
@@ -293,7 +294,8 @@ void 代码生成器::生成函数(const 函数& 函数) {
             } else if (!函数.参数列表[i].类型.empty()) {
                 参数类型.push_back(类型名到LLVM类型(函数.参数列表[i].类型));
             } else {
-                参数类型.push_back(llvm::Type::getInt32Ty(上下文));
+                // 无类型注解：默认使用指针类型（支持数组、字符串等）
+                参数类型.push_back(llvm::PointerType::get(上下文, 0));
             }
         }
         // 计算返回类型
@@ -358,7 +360,8 @@ void 代码生成器::生成函数(const 函数& 函数) {
             } else if (!函数.参数列表[i].类型.empty()) {
                 参数类型 = 类型名到LLVM类型(函数.参数列表[i].类型);
             } else {
-                参数类型 = llvm::Type::getInt32Ty(上下文);
+                // 无类型注解：默认指针类型
+                参数类型 = llvm::PointerType::get(上下文, 0);
             }
             llvm::AllocaInst* 分配 = 构建器->CreateAlloca(参数类型, nullptr, 函数.参数列表[i].名称);
             构建器->CreateStore(&参数, 分配);

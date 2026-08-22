@@ -261,13 +261,23 @@ void 代码生成器::生成语句(const 语句& 语句) {
             llvm::Value* 数组地址 = 符号表实例.获取变量值(下标赋值.数组名);
             if (!数组地址) throw std::runtime_error("未定义的数组: " + 下标赋值.数组名 + "（行 " + std::to_string(语句.行号) + "）");
             llvm::Value* 索引值 = 生成表达式(*下标赋值.索引);
-            if (符号表实例.是字符串数组(下标赋值.数组名)) {
-                llvm::ArrayType* 数组类型 = llvm::ArrayType::get(llvm::PointerType::get(上下文, 0), 符号表实例.获取数组大小(下标赋值.数组名));
-                llvm::Value* 元素地址 = 构建器->CreateInBoundsGEP(数组类型, 数组地址, {llvm::ConstantInt::get(上下文, llvm::APInt(32, 0)), 索引值}, 下标赋值.数组名 + "_元素");
-                构建器->CreateStore(生成表达式(*下标赋值.值表达式), 元素地址);
+            llvm::Value* 赋值 = 生成表达式(*下标赋值.值表达式);
+            // 优先检查是否为本地数组（alloca），使用正确的数组类型
+            if (auto* alloca = llvm::dyn_cast<llvm::AllocaInst>(数组地址)) {
+                llvm::Type* 分配类型 = alloca->getAllocatedType();
+                if (分配类型->isArrayTy()) {
+                    llvm::ArrayType* 数组类型 = llvm::cast<llvm::ArrayType>(分配类型);
+                    llvm::Value* 元素地址 = 构建器->CreateInBoundsGEP(数组类型, 数组地址, {llvm::ConstantInt::get(上下文, llvm::APInt(32, 0)), 索引值}, 下标赋值.数组名 + "_元素");
+                    构建器->CreateStore(赋值, 元素地址);
+                } else {
+                    llvm::Value* 元素地址 = 构建器->CreateInBoundsGEP(llvm::Type::getInt32Ty(上下文), 数组地址, 索引值, 下标赋值.数组名 + "_元素");
+                    构建器->CreateStore(赋值, 元素地址);
+                }
             } else {
-                llvm::Value* 元素地址 = 构建器->CreateInBoundsGEP(llvm::Type::getInt32Ty(上下文), 数组地址, 索引值, 下标赋值.数组名 + "_元素");
-                构建器->CreateStore(生成表达式(*下标赋值.值表达式), 元素地址);
+                // 动态数组：先加载指针
+                llvm::Value* 实际数组地址 = 构建器->CreateLoad(llvm::PointerType::get(上下文, 0), 数组地址, 下标赋值.数组名 + "_加载");
+                llvm::Value* 元素地址 = 构建器->CreateInBoundsGEP(llvm::Type::getInt32Ty(上下文), 实际数组地址, 索引值, 下标赋值.数组名 + "_元素");
+                构建器->CreateStore(赋值, 元素地址);
             }
             break;
         }
@@ -280,6 +290,10 @@ void 代码生成器::生成语句(const 语句& 语句) {
             }
             
             llvm::Value* 条件值 = 生成表达式(*如果.条件);
+            if (条件值->getType()->isPointerTy()) {
+                条件值 = 构建器->CreatePtrToInt(条件值, llvm::Type::getInt64Ty(上下文), "ptrtoint");
+                条件值 = 构建器->CreateTrunc(条件值, llvm::Type::getInt32Ty(上下文), "ptri32");
+            }
             条件值 = 构建器->CreateICmpNE(条件值, llvm::ConstantInt::get(上下文, llvm::APInt(32, 0)), "ifcond");
             llvm::Function* 当前函数 = 构建器->GetInsertBlock()->getParent();
 
@@ -303,6 +317,10 @@ void 代码生成器::生成语句(const 语句& 语句) {
             for (size_t j = 0; j < 如果.否则如果列表.size(); ++j) {
                 构建器->SetInsertPoint(elif块列表[j]);
                 llvm::Value* elif条件 = 生成表达式(*如果.否则如果列表[j].条件);
+                if (elif条件->getType()->isPointerTy()) {
+                    elif条件 = 构建器->CreatePtrToInt(elif条件, llvm::Type::getInt64Ty(上下文), "ptrtoint");
+                    elif条件 = 构建器->CreateTrunc(elif条件, llvm::Type::getInt32Ty(上下文), "ptri32");
+                }
                 elif条件 = 构建器->CreateICmpNE(elif条件, llvm::ConstantInt::get(上下文, llvm::APInt(32, 0)), "elifcond");
                 llvm::BasicBlock* elif体块 = llvm::BasicBlock::Create(上下文, "elifbody", 当前函数);
                 llvm::BasicBlock* 下一个 = (j + 1 < elif块列表.size()) ? elif块列表[j + 1] : else块;
@@ -347,6 +365,10 @@ void 代码生成器::生成语句(const 语句& 语句) {
             构建器->SetInsertPoint(条件块);
             if (循环.条件) {
                 llvm::Value* 条件值 = 生成表达式(*循环.条件);
+                if (条件值->getType()->isPointerTy()) {
+                    条件值 = 构建器->CreatePtrToInt(条件值, llvm::Type::getInt64Ty(上下文), "ptrtoint");
+                    条件值 = 构建器->CreateTrunc(条件值, llvm::Type::getInt32Ty(上下文), "ptri32");
+                }
                 条件值 = 构建器->CreateICmpNE(条件值, llvm::ConstantInt::get(上下文, llvm::APInt(32, 0)), "forcond");
                 构建器->CreateCondBr(条件值, 体块, 后块);
             } else {
@@ -384,6 +406,10 @@ void 代码生成器::生成语句(const 语句& 语句) {
             构建器->CreateBr(条件块);
             构建器->SetInsertPoint(条件块);
             llvm::Value* 条件值 = 生成表达式(*当循环.条件);
+            if (条件值->getType()->isPointerTy()) {
+                条件值 = 构建器->CreatePtrToInt(条件值, llvm::Type::getInt64Ty(上下文), "ptrtoint");
+                条件值 = 构建器->CreateTrunc(条件值, llvm::Type::getInt32Ty(上下文), "ptri32");
+            }
             条件值 = 构建器->CreateICmpNE(条件值, llvm::ConstantInt::get(上下文, llvm::APInt(32, 0)), "whilecond");
             构建器->CreateCondBr(条件值, 体块, 后块);
             构建器->SetInsertPoint(体块);
@@ -417,7 +443,8 @@ void 代码生成器::生成语句(const 语句& 语句) {
             构建器->SetInsertPoint(条件块);
             llvm::Value* 条件值 = 生成表达式(*做循环.条件);
             if (条件值->getType()->isPointerTy()) {
-                条件值 = 构建器->CreatePtrToInt(条件值, llvm::Type::getInt32Ty(上下文));
+                条件值 = 构建器->CreatePtrToInt(条件值, llvm::Type::getInt64Ty(上下文), "ptrtoint");
+                条件值 = 构建器->CreateTrunc(条件值, llvm::Type::getInt32Ty(上下文), "ptri32");
             }
             llvm::Value* 条件结果 = 构建器->CreateICmpNE(条件值, llvm::ConstantInt::get(上下文, llvm::APInt(32, 0)), "do_cond");
             if (做循环.是当循环) {
@@ -594,14 +621,25 @@ void 代码生成器::生成语句(const 语句& 语句) {
             {
                 作用域守卫 守卫(符号表实例);
 
-                if (符号表实例.是字符串数组(遍历.数组表达式->类型 == 表达式类型::变量 ? static_cast<const 变量表达式&>(*遍历.数组表达式).名称 : "")) {
-                    llvm::ArrayType* 数组类型 = llvm::ArrayType::get(llvm::PointerType::get(上下文, 0), 数组大小值);
-                    llvm::Value* 元素地址 = 构建器->CreateInBoundsGEP(数组类型, 数组地址, {llvm::ConstantInt::get(上下文, llvm::APInt(32, 0)), 当前索引}, "元素地址");
-                    llvm::Value* 元素值 = 构建器->CreateLoad(llvm::PointerType::get(上下文, 0), 元素地址, "元素值");
-                    llvm::AllocaInst* 循环变量 = 构建器->CreateAlloca(llvm::PointerType::get(上下文, 0), nullptr, 遍历.变量名);
-                    构建器->CreateStore(元素值, 循环变量);
-                    符号表实例.声明变量(遍历.变量名, 循环变量);
-                    符号表实例.设置指针变量(遍历.变量名);
+                // 优先检查本地数组类型
+                if (auto* alloca = llvm::dyn_cast<llvm::AllocaInst>(数组地址)) {
+                    llvm::Type* 分配类型 = alloca->getAllocatedType();
+                    if (分配类型->isArrayTy()) {
+                        llvm::ArrayType* 数组类型 = llvm::cast<llvm::ArrayType>(分配类型);
+                        llvm::Value* 元素地址 = 构建器->CreateInBoundsGEP(数组类型, 数组地址, {llvm::ConstantInt::get(上下文, llvm::APInt(32, 0)), 当前索引}, "元素地址");
+                        llvm::Value* 元素值 = 构建器->CreateLoad(数组类型->getElementType(), 元素地址, "元素值");
+                        llvm::AllocaInst* 循环变量 = 构建器->CreateAlloca(数组类型->getElementType(), nullptr, 遍历.变量名);
+                        构建器->CreateStore(元素值, 循环变量);
+                        符号表实例.声明变量(遍历.变量名, 循环变量);
+                        if (数组类型->getElementType()->isDoubleTy()) 符号表实例.设置浮点变量(遍历.变量名);
+                        else if (数组类型->getElementType()->isPointerTy()) 符号表实例.设置指针变量(遍历.变量名);
+                    } else {
+                        llvm::Value* 元素地址 = 构建器->CreateInBoundsGEP(llvm::Type::getInt32Ty(上下文), 数组地址, 当前索引, "元素地址");
+                        llvm::Value* 元素值 = 构建器->CreateLoad(llvm::Type::getInt32Ty(上下文), 元素地址, "元素值");
+                        llvm::AllocaInst* 循环变量 = 构建器->CreateAlloca(llvm::Type::getInt32Ty(上下文), nullptr, 遍历.变量名);
+                        构建器->CreateStore(元素值, 循环变量);
+                        符号表实例.声明变量(遍历.变量名, 循环变量);
+                    }
                 } else {
                     llvm::Value* 元素地址 = 构建器->CreateInBoundsGEP(llvm::Type::getInt32Ty(上下文), 数组地址, 当前索引, "元素地址");
                     llvm::Value* 元素值 = 构建器->CreateLoad(llvm::Type::getInt32Ty(上下文), 元素地址, "元素值");

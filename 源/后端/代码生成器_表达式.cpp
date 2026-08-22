@@ -48,6 +48,10 @@ llvm::Value* 代码生成器::生成表达式(const 表达式& 表达式) {
             const auto& 一元 = static_cast<const 一元运算表达式&>(表达式);
             llvm::Value* 操作数 = 生成表达式(*一元.操作数);
             if (一元.操作符 == 一元操作符::逻辑非) {
+                if (操作数->getType()->isPointerTy()) {
+                    操作数 = 构建器->CreatePtrToInt(操作数, llvm::Type::getInt64Ty(上下文), "ptrtoint");
+                    操作数 = 构建器->CreateTrunc(操作数, llvm::Type::getInt32Ty(上下文), "ptri32");
+                }
                 llvm::Value* 比较 = 构建器->CreateICmpEQ(操作数, llvm::ConstantInt::get(上下文, llvm::APInt(32, 0)), "nottmp");
                 return 构建器->CreateZExt(比较, llvm::Type::getInt32Ty(上下文), "notext");
             }
@@ -139,6 +143,14 @@ llvm::Value* 代码生成器::生成表达式(const 表达式& 表达式) {
             }
 
             // 整数运算
+            if (左->getType()->isPointerTy()) {
+                左 = 构建器->CreatePtrToInt(左, llvm::Type::getInt64Ty(上下文), "lptrtoint");
+                左 = 构建器->CreateTrunc(左, llvm::Type::getInt32Ty(上下文), "lptri32");
+            }
+            if (右->getType()->isPointerTy()) {
+                右 = 构建器->CreatePtrToInt(右, llvm::Type::getInt64Ty(上下文), "rptrtoint");
+                右 = 构建器->CreateTrunc(右, llvm::Type::getInt32Ty(上下文), "rptri32");
+            }
             switch (二元.操作符) {
                 case 二元操作符::加法: return 构建器->CreateAdd(左, 右, "addtmp");
                 case 二元操作符::减法: return 构建器->CreateSub(左, 右, "subtmp");
@@ -996,13 +1008,21 @@ llvm::Value* 代码生成器::生成表达式(const 表达式& 表达式) {
             size_t 固定参数计数 = 0;
             for (const auto& 参数 : 调用.参数列表) {
                 llvm::Value* 值 = 生成表达式(*参数);
-                // 结构体参数：如果是结构体变量，传递地址而非值
-                if (参数->类型 == 表达式类型::变量 && 函数定义 && 固定参数计数 < 函数定义->参数列表.size()) {
+                // 结构体/数组参数：如果是变量，传递地址而非值
+                if (参数->类型 == 表达式类型::变量) {
                     const auto& 变量名 = static_cast<const 变量表达式&>(*参数).名称;
-                    const std::string& 参数类型名 = 函数定义->参数列表[固定参数计数].类型;
-                    if (结构体类型映射.count(参数类型名) && !符号表实例.获取结构体类型(变量名).empty()) {
+                    // 数组参数：传递alloca地址
+                    if (符号表实例.是数组(变量名)) {
                         llvm::Value* 地址 = 符号表实例.获取变量值(变量名);
                         if (地址) 值 = 地址;
+                    }
+                    // 结构体参数：传递地址
+                    else if (函数定义 && 固定参数计数 < 函数定义->参数列表.size()) {
+                        const std::string& 参数类型名 = 函数定义->参数列表[固定参数计数].类型;
+                        if (结构体类型映射.count(参数类型名) && !符号表实例.获取结构体类型(变量名).empty()) {
+                            llvm::Value* 地址 = 符号表实例.获取变量值(变量名);
+                            if (地址) 值 = 地址;
+                        }
                     }
                 }
                 if (有变长参数 && 固定参数计数 >= 固定参数数量) {
@@ -1548,6 +1568,8 @@ llvm::Value* 代码生成器::生成表达式(const 表达式& 表达式) {
             llvm::Value* 条件布尔 = 条件值;
             if (条件值->getType()->isIntegerTy()) {
                 条件布尔 = 构建器->CreateICmpNE(条件值, llvm::ConstantInt::get(上下文, llvm::APInt(32, 0)));
+            } else if (条件值->getType()->isPointerTy()) {
+                条件布尔 = 构建器->CreateICmpNE(条件值, llvm::ConstantPointerNull::get(llvm::PointerType::get(上下文, 0)));
             }
             
             // 创建基本块
