@@ -6,13 +6,16 @@
 #include <string>
 #include "llvm/IR/Value.h"
 #include "llvm/IR/Function.h"
+#include "../共享/LLVM中文.h"
 #include "../前端/公共.h"
 #include "../前端/抽象语法树.h"
 
+using namespace llvm中文;
+
 struct 闭包信息 {
-    llvm::Function* 函数;
+    LLVM函数* 函数;
     std::vector<std::string> 捕获变量名;
-    std::vector<llvm::Value*> 捕获变量地址;
+    std::vector<LLVM值*> 捕获变量地址;
 };
 
 enum class 变量类型种类 {
@@ -36,7 +39,7 @@ struct 变量类型信息 {
 
 class 符号表 {
 private:
-    std::vector<std::unordered_map<std::string, llvm::Value*>> 作用域栈;
+    std::vector<std::unordered_map<std::string, LLVM值*>> 作用域栈;
     std::unordered_map<std::string, 变量类型信息> 类型映射;
     std::unordered_map<std::string, 闭包信息> 闭包映射;
     std::unordered_map<std::string, std::vector<std::string>> 枚举定义映射;
@@ -77,7 +80,7 @@ public:
         }
     }
 
-    void 声明变量(const std::string& 名称, llvm::Value* 值) {
+    void 声明变量(const std::string& 名称, LLVM值* 值) {
         作用域栈.back()[名称] = 值;
         调试打印("[符号表] 声明变量: '" << 名称 << "'（作用域深度 " << 作用域栈.size() << "）");
     }
@@ -178,12 +181,12 @@ public:
         return -1;
     }
 
-    void 声明全局变量(const std::string& 名称, llvm::Value* 值) {
+    void 声明全局变量(const std::string& 名称, LLVM值* 值) {
         作用域栈.front()[名称] = 值;
         调试打印("[符号表] 声明全局变量: '" << 名称 << "'");
     }
 
-    llvm::Value* 获取变量值(const std::string& 名称) {
+    LLVM值* 获取变量值(const std::string& 名称) {
         for (auto it = 作用域栈.rbegin(); it != 作用域栈.rend(); ++it) {
             auto found = it->find(名称);
             if (found != it->end()) return found->second;
@@ -210,7 +213,7 @@ public:
         return 结果.empty() ? "空" : 结果;
     }
 
-    void 声明数组(const std::string& 名称, llvm::Value* 值, int 大小) {
+    void 声明数组(const std::string& 名称, LLVM值* 值, int 大小) {
         声明变量(名称, 值);
         设置变量类型(名称, {变量类型种类::数组, "", 大小, false});
     }
@@ -226,9 +229,9 @@ public:
         return it != 类型映射.end() && it->second.种类 == 变量类型种类::数组;
     }
 
-    void 声明函数指针(const std::string& 名称, llvm::Function* 函数,
+    void 声明函数指针(const std::string& 名称, LLVM函数* 函数,
                     const std::vector<std::string>& 捕获名 = {},
-                    const std::vector<llvm::Value*>& 捕获地址 = {}) {
+                    const std::vector<LLVM值*>& 捕获地址 = {}) {
         声明变量(名称, 函数);
         设置变量类型(名称, {变量类型种类::函数, "", 0, false});
         闭包信息 信息;
@@ -247,7 +250,7 @@ public:
         return (it != 闭包映射.end()) ? &it->second : nullptr;
     }
 
-    llvm::Function* 获取函数指针(const std::string& 名称) const {
+    LLVM函数* 获取函数指针(const std::string& 名称) const {
         auto it = 闭包映射.find(名称);
         return (it != 闭包映射.end()) ? it->second.函数 : nullptr;
     }

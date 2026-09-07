@@ -4,8 +4,11 @@
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/LLVMContext.h"
+#include "LLVM中文.h"
 #include <string>
 #include <vector>
+
+using namespace llvm中文;
 
 enum class 内置参数类型 {
     空,
@@ -135,38 +138,37 @@ static const 内置函数描述 内置函数列表[] = {
     {"释放动态数组", "释放动态数组", 1, 内置参数类型::空, {内置参数类型::字符串}},
 };
 
-inline llvm::Type* 获取LLVM类型(llvm::LLVMContext& 上下文, 内置参数类型 类型) {
+inline 类型* 获取LLVM类型(llvm::LLVMContext& 上下文, 内置参数类型 类型) {
     switch (类型) {
-        case 内置参数类型::整数: return llvm::Type::getInt32Ty(上下文);
-        case 内置参数类型::浮点: return llvm::Type::getDoubleTy(上下文);
-        case 内置参数类型::字符串: return llvm::PointerType::get(上下文, 0);
-        case 内置参数类型::布尔: return llvm::Type::getInt1Ty(上下文);
-        default: return llvm::Type::getVoidTy(上下文);
+        case 内置参数类型::整数: return 整型32(上下文);
+        case 内置参数类型::浮点: return 双精度浮点(上下文);
+        case 内置参数类型::字符串: return 获取指针类型(上下文);
+        case 内置参数类型::布尔: return 整型1(上下文);
+        default: return 空类型(上下文);
     }
 }
 
 inline bool 尝试调用内置函数(llvm::IRBuilder<>& 构建器, llvm::LLVMContext& 上下文, llvm::Module& 模块,
-    const std::string& 函数名, const std::vector<llvm::Value*>& 参数值, llvm::Value*& 结果) {
+    const std::string& 函数名, const std::vector<LLVM值*>& 参数值, LLVM值*& 结果) {
     for (const auto& 描述 : 内置函数列表) {
         if (函数名 == 描述.名称 && 参数值.size() == static_cast<size_t>(描述.参数数量)) {
-            // 特殊处理需要int->float提升的数学函数
-            std::vector<llvm::Value*> 最终参数 = 参数值;
+            std::vector<LLVM值*> 最终参数 = 参数值;
             if (描述.返回类型 == 内置参数类型::浮点) {
                 for (size_t i = 0; i < 最终参数.size(); i++) {
                     if (描述.参数类型[i] == 内置参数类型::浮点 && 最终参数[i]->getType()->isIntegerTy()) {
-                        最终参数[i] = 构建器.CreateSIToFP(最终参数[i], llvm::Type::getDoubleTy(上下文));
+                        最终参数[i] = 创建整数转浮点(构建器, 最终参数[i], 双精度浮点(上下文));
                     }
                 }
             }
 
-            llvm::Type* 返回类型 = 获取LLVM类型(上下文, 描述.返回类型);
-            std::vector<llvm::Type*> 参数类型;
+            类型* 返回类型 = 获取LLVM类型(上下文, 描述.返回类型);
+            std::vector<类型*> 参数类型;
             for (int i = 0; i < 描述.参数数量; i++) {
                 参数类型.push_back(获取LLVM类型(上下文, 描述.参数类型[i]));
             }
             llvm::FunctionType* 函数类型 = llvm::FunctionType::get(返回类型, 参数类型, false);
-            模块.getOrInsertFunction(描述.C函数名, 函数类型);
-            结果 = 构建器.CreateCall(模块.getFunction(描述.C函数名), 最终参数);
+            获取或插入函数(模块, 描述.C函数名, 函数类型);
+            结果 = 创建调用(构建器, 获取模块函数(模块, 描述.C函数名), 最终参数);
             return true;
         }
     }

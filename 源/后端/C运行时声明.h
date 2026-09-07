@@ -4,17 +4,20 @@
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/LLVMContext.h"
+#include "../共享/LLVM中文.h"
+
+using namespace llvm中文;
 
 struct C运行时函数 {
     static void 预声明全部(llvm::LLVMContext& 上下文, llvm::Module& 模块) {
-        llvm::Type* i8Ptr = llvm::PointerType::get(上下文, 0);
-        llvm::Type* i32 = llvm::Type::getInt32Ty(上下文);
-        llvm::Type* i64 = llvm::Type::getInt64Ty(上下文);
-        llvm::Type* f64 = llvm::Type::getDoubleTy(上下文);
+        类型* i8Ptr = 获取指针类型(上下文);
+        类型* i32 = 整型32(上下文);
+        类型* i64 = 整型64(上下文);
+        类型* f64 = 双精度浮点(上下文);
 
-        auto 声明 = [&](const std::string& 名称, llvm::Type* 返回类型, std::vector<llvm::Type*> 参数类型, bool 变长 = false) {
-            llvm::FunctionType* 类型 = llvm::FunctionType::get(返回类型, 参数类型, 变长);
-            模块.getOrInsertFunction(名称, 类型);
+        auto 声明 = [&](const std::string& 名称, 类型* 返回类型, std::vector<类型*> 参数类型, bool 变长 = false) {
+            函数类型* 类型 = 函数类型::get(返回类型, 参数类型, 变长);
+            获取或插入函数(模块, 名称, 类型);
         };
 
         声明("malloc", i8Ptr, {i64});
@@ -44,25 +47,25 @@ struct C运行时函数 {
 
         声明("__gxx_personality_seh0", i32, {}, true);
         声明("__cxa_allocate_exception", i8Ptr, {i64});
-        声明("__cxa_throw", llvm::Type::getVoidTy(上下文), {i8Ptr, i8Ptr, i8Ptr}, false);
+        声明("__cxa_throw", 空类型(上下文), {i8Ptr, i8Ptr, i8Ptr}, false);
         声明("__cxa_begin_catch", i8Ptr, {i8Ptr});
-        声明("__cxa_end_catch", llvm::Type::getVoidTy(上下文), {});
-        声明("_Unwind_Resume", llvm::Type::getVoidTy(上下文), {i8Ptr});
+        声明("__cxa_end_catch", 空类型(上下文), {});
+        声明("_Unwind_Resume", 空类型(上下文), {i8Ptr});
 
         声明("创建通道函数", i8Ptr, {i32});
         声明("发送到通道函数", i32, {i8Ptr, i32});
         声明("从通道接收函数", i32, {i8Ptr});
         声明("通道是否为空", i32, {i8Ptr});
         声明("通道是否已关闭", i32, {i8Ptr});
-        声明("关闭通道函数", llvm::Type::getVoidTy(上下文), {i8Ptr});
+        声明("关闭通道函数", 空类型(上下文), {i8Ptr});
 
-        声明("断点命中", llvm::Type::getVoidTy(上下文), {i8Ptr, i32, i8Ptr});
-        声明("设置调试器", llvm::Type::getVoidTy(上下文), {i32});
-        声明("记录行执行", llvm::Type::getVoidTy(上下文), {i32});
-        声明("输出覆盖率报告", llvm::Type::getVoidTy(上下文), {});
-        声明("设置异常类型", llvm::Type::getVoidTy(上下文), {i8Ptr, i32});
+        声明("断点命中", 空类型(上下文), {i8Ptr, i32, i8Ptr});
+        声明("设置调试器", 空类型(上下文), {i32});
+        声明("记录行执行", 空类型(上下文), {i32});
+        声明("输出覆盖率报告", 空类型(上下文), {});
+        声明("设置异常类型", 空类型(上下文), {i8Ptr, i32});
         声明("获取异常类型", i32, {i8Ptr});
-        声明("清除异常类型", llvm::Type::getVoidTy(上下文), {i8Ptr});
+        声明("清除异常类型", 空类型(上下文), {i8Ptr});
         声明("HTTP获取", i8Ptr, {i8Ptr});
         声明("写入文件", i32, {i8Ptr, i8Ptr});
         声明("读取文件", i8Ptr, {i8Ptr});
@@ -77,16 +80,16 @@ struct C运行时函数 {
         声明("TCP连接", i32, {i32, i8Ptr, i32});
         声明("TCP发送", i32, {i32, i8Ptr});
         声明("TCP接收", i8Ptr, {i32});
-        声明("TCP关闭", llvm::Type::getVoidTy(上下文), {i32});
+        声明("TCP关闭", 空类型(上下文), {i32});
         声明("创建TCP服务器", i32, {i32});
         声明("TCP接受连接", i32, {i32});
         声明("创建UDP套接字", i32, {});
         声明("UDP发送到", i32, {i32, i8Ptr, i8Ptr, i32});
-        声明("注册GC对象", llvm::Type::getVoidTy(上下文), {i8Ptr});
-        声明("标记对象", llvm::Type::getVoidTy(上下文), {i8Ptr});
-        声明("执行GC", llvm::Type::getVoidTy(上下文), {});
-        声明("启用GC", llvm::Type::getVoidTy(上下文), {});
-        声明("设置GC阈值", llvm::Type::getVoidTy(上下文), {i32});
+        声明("注册GC对象", 空类型(上下文), {i8Ptr});
+        声明("标记对象", 空类型(上下文), {i8Ptr});
+        声明("执行GC", 空类型(上下文), {});
+        声明("启用GC", 空类型(上下文), {});
+        声明("设置GC阈值", 空类型(上下文), {i32});
         声明("获取GC对象数量", i32, {});
     }
 };

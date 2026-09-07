@@ -1,10 +1,23 @@
-CXX = clang++
-CC = clang
-CXXFLAGS = -std=c++17 -Wall -Wextra -g -finput-charset=UTF-8 -fexec-charset=UTF-8 \
-           -I/mingw64/include -D_GNU_SOURCE -D__STDC_CONSTANT_MACROS \
-           -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS
+# 链接到 D:\src\riyue\llvm\llvm-build 自定义构建的中文 LLVM 23 静态库。
+# 编译器本身用 MSYS2 系统 clang++（不启用中文 C 关键字，避免与源码中的中文
+# 枚举标识符冲突）；生成的 日月.exe 在编译用户 .心 程序时会调用中文 clang。
+# 可用 `make LLVM_CONFIG=/path/to/llvm-config CXX=...` 覆盖。
+LLVM_CONFIG ?= /d/src/riyue/llvm/llvm-build/bin/llvm-config
+
+# 编译器用 MSYS2 系统 clang（不带中文 C 关键字，避免与源码中文标识符冲突）；
+# 仅 LLVM 库/头文件用新构建的中文 LLVM 23。
+CXX = /mingw64/bin/clang++
+CC = /mingw64/bin/clang
+LLVM_CXXFLAGS := $(shell $(LLVM_CONFIG) --cxxflags | sed 's/-fno-exceptions//; s/-fno-rtti//')
+LLVM_LDFLAGS  := $(shell $(LLVM_CONFIG) --ldflags)
+LLVM_LIBS     := $(shell $(LLVM_CONFIG) --libs core orcjit native nativecodegen mcparser option target analysis)
+LLVM_SYSLIBS  := $(shell $(LLVM_CONFIG) --system-libs)
+
+CXXFLAGS = -std=c++17 -g -finput-charset=UTF-8 -fexec-charset=UTF-8 \
+           -D_GNU_SOURCE -fexceptions -frtti \
+           $(LLVM_CXXFLAGS)
 CFLAGS = -Wall -g -finput-charset=UTF-8 -fexec-charset=UTF-8
-LDFLAGS = -L/mingw64/lib -lLLVM-22 -lshell32 -lws2_32
+LDFLAGS = $(LLVM_LDFLAGS) $(LLVM_LIBS) $(LLVM_SYSLIBS) -lshell32 -lws2_32
 
 # 源文件
 前端_SRC = 源/前端/词法分析器.cpp 源/前端/语法分析器.cpp 源/前端/诊断.cpp

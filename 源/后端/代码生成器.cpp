@@ -1,8 +1,8 @@
 #include "代码生成器_内部.h"
 
 std::unordered_map<std::string, const 函数*> 全局函数定义映射;
-llvm::Value* 协程句柄 = nullptr;
-std::vector<llvm::AllocaInst*> 返回值变量列表;
+LLVM值* 协程句柄 = nullptr;
+std::vector<分配指令*> 返回值变量列表;
 
 代码生成器::代码生成器(llvm::LLVMContext& ctx, const std::string& 输出文件, bool 优化)
     : 上下文(ctx), 输出文件名(输出文件), 启用优化(优化) {
@@ -12,7 +12,7 @@ std::vector<llvm::AllocaInst*> 返回值变量列表;
     llvm::InitializeNativeTargetAsmPrinter();
 }
 
-llvm::Type* 代码生成器::类型名到LLVM类型(const std::string& 类型名) {
+类型* 代码生成器::类型名到LLVM类型(const std::string& 类型名) {
     // 递归解析类型别名（最多10层，防止循环）
     std::string 解析后类型名 = 类型名;
     for (int i = 0; i < 10; i++) {
@@ -22,14 +22,14 @@ llvm::Type* 代码生成器::类型名到LLVM类型(const std::string& 类型名
     }
     // 处理数组类型后缀
     if (解析后类型名.size() > 2 && 解析后类型名.substr(解析后类型名.size() - 2) == "[]") {
-        return llvm::PointerType::get(上下文, 0);  // 数组类型返回指针
+        return 获取指针类型(上下文);  // 数组类型返回指针
     }
-    if (解析后类型名 == "浮点" || 解析后类型名 == "浮点数") return llvm::Type::getDoubleTy(上下文);
-    if (解析后类型名 == "布尔" || 解析后类型名 == "布尔值") return llvm::Type::getInt1Ty(上下文);
-    if (解析后类型名 == "字符串" || 解析后类型名 == "函数") return llvm::PointerType::get(上下文, 0);
+    if (解析后类型名 == "浮点" || 解析后类型名 == "浮点数") return 双精度浮点(上下文);
+    if (解析后类型名 == "布尔" || 解析后类型名 == "布尔值") return 整型1(上下文);
+    if (解析后类型名 == "字符串" || 解析后类型名 == "函数") return 获取指针类型(上下文);
     // 检查是否为结构体类型
-    if (结构体类型映射.count(解析后类型名)) return llvm::PointerType::get(上下文, 0);
-    return llvm::Type::getInt32Ty(上下文);
+    if (结构体类型映射.count(解析后类型名)) return 获取指针类型(上下文);
+    return 整型32(上下文);
 }
 
 void 代码生成器::收集自由变量(const 表达式& 表达式, std::vector<std::string>& 自由变量, const std::vector<std::string>& 局部变量) {
@@ -146,51 +146,51 @@ void 代码生成器::生成(const 程序& 程序) {
     C运行时函数::预声明全部(上下文, *模块);
 
     // 创建全局文件句柄表
-    文件表类型 = llvm::ArrayType::get(llvm::PointerType::get(上下文, 0), 256);
-    文件表指针 = new llvm::GlobalVariable(*模块, 文件表类型, false, llvm::GlobalValue::InternalLinkage,
+    文件表类型 = llvm::ArrayType::get(获取指针类型(上下文), 256);
+    文件表指针 = new 全局变量类型(*模块, 文件表类型, false, llvm::GlobalValue::InternalLinkage,
         llvm::ConstantAggregateZero::get(文件表类型), "__文件表");
-    文件句柄计数器 = new llvm::GlobalVariable(*模块, llvm::Type::getInt32Ty(上下文), false,
-        llvm::GlobalValue::InternalLinkage, llvm::ConstantInt::get(上下文, llvm::APInt(32, 0)), "__文件句柄计数器");
+    文件句柄计数器 = new 全局变量类型(*模块, 整型32(上下文), false,
+        llvm::GlobalValue::InternalLinkage, 获取整数常量(上下文, 0, 32), "__文件句柄计数器");
 
     // 预声明运行时辅助函数
-    llvm::Type* i8Ptr = llvm::PointerType::get(上下文, 0);
-    llvm::Type* i32 = llvm::Type::getInt32Ty(上下文);
+    类型* i8Ptr = 获取指针类型(上下文);
+    类型* i32 = 整型32(上下文);
 
-    llvm::FunctionType* 字符位置到字节位置类型 = llvm::FunctionType::get(i32, {i8Ptr, i32}, false);
-    模块->getOrInsertFunction("字符位置到字节位置", 字符位置到字节位置类型);
+    函数类型* 字符位置到字节位置类型 = llvm::FunctionType::get(i32, {i8Ptr, i32}, false);
+    获取或插入函数(*模块, "字符位置到字节位置", 字符位置到字节位置类型);
 
-    llvm::FunctionType* 获取字符数类型 = llvm::FunctionType::get(i32, {i8Ptr}, false);
-    模块->getOrInsertFunction("获取字符数", 获取字符数类型);
+    函数类型* 获取字符数类型 = llvm::FunctionType::get(i32, {i8Ptr}, false);
+    获取或插入函数(*模块, "获取字符数", 获取字符数类型);
 
-    llvm::FunctionType* 映射查找类型 = llvm::FunctionType::get(i32, {i8Ptr, i32, i8Ptr}, false);
-    模块->getOrInsertFunction("映射查找", 映射查找类型);
+    函数类型* 映射查找类型 = llvm::FunctionType::get(i32, {i8Ptr, i32, i8Ptr}, false);
+    获取或插入函数(*模块, "映射查找", 映射查找类型);
 
-    llvm::FunctionType* 映射设置类型 = llvm::FunctionType::get(i32, {i8Ptr, i8Ptr, i32, i8Ptr, i8Ptr}, false);
-    模块->getOrInsertFunction("映射设置", 映射设置类型);
+    函数类型* 映射设置类型 = llvm::FunctionType::get(i32, {i8Ptr, i8Ptr, i32, i8Ptr, i8Ptr}, false);
+    获取或插入函数(*模块, "映射设置", 映射设置类型);
 
-    llvm::FunctionType* 映射获取类型 = llvm::FunctionType::get(i8Ptr, {i8Ptr, i8Ptr, i32, i8Ptr}, false);
-    模块->getOrInsertFunction("映射获取", 映射获取类型);
+    函数类型* 映射获取类型 = llvm::FunctionType::get(i8Ptr, {i8Ptr, i8Ptr, i32, i8Ptr}, false);
+    获取或插入函数(*模块, "映射获取", 映射获取类型);
 
     for (const auto& 全局变量 : 程序.全局变量) {
         if (全局变量->初始值 && 全局变量->初始值->类型 == 表达式类型::字符串) {
             const auto& str = static_cast<const 字符串表达式&>(*全局变量->初始值);
-            llvm::Constant* strConst = llvm::ConstantDataArray::getString(上下文, str.值);
-            auto* 全局 = new llvm::GlobalVariable(*模块, strConst->getType(), true,
+           常量* strConst = llvm::ConstantDataArray::getString(上下文, str.值);
+            auto* 全局 = new 全局变量类型(*模块, strConst->getType(), true,
                 llvm::GlobalValue::InternalLinkage, strConst, ".str." + 全局变量->变量名);
-            auto* 指针全局 = new llvm::GlobalVariable(*模块, llvm::PointerType::get(上下文, 0), false,
+            auto* 指针全局 = new 全局变量类型(*模块, 获取指针类型(上下文), false,
                 llvm::GlobalValue::ExternalLinkage, 全局, 全局变量->变量名);
             符号表实例.声明全局变量(全局变量->变量名, 指针全局);
             符号表实例.设置指针变量(全局变量->变量名);
         } else {
-            llvm::ConstantInt* 初始值 = nullptr;
+            常量整数* 初始值 = nullptr;
             if (全局变量->初始值 && 全局变量->初始值->类型 == 表达式类型::整数) {
-                初始值 = llvm::ConstantInt::get(上下文, llvm::APInt(32, static_cast<const 整数表达式&>(*全局变量->初始值).值));
+                初始值 = 获取整数常量(上下文, static_cast<const 整数表达式&>(*全局变量->初始值).值, 32);
             } else if (全局变量->初始值 && 全局变量->初始值->类型 == 表达式类型::布尔值) {
-                初始值 = llvm::ConstantInt::get(上下文, llvm::APInt(32, static_cast<const 布尔表达式&>(*全局变量->初始值).值 ? 1 : 0));
+                初始值 = 获取整数常量(上下文, static_cast<const 布尔表达式&>(*全局变量->初始值).值 ? 1 : 0, 32);
             } else {
-                初始值 = llvm::ConstantInt::get(上下文, llvm::APInt(32, 0));
+                初始值 = 获取整数常量(上下文, 0, 32);
             }
-            auto* 全局 = new llvm::GlobalVariable(*模块, llvm::Type::getInt32Ty(上下文), false, llvm::GlobalValue::ExternalLinkage, 初始值, 全局变量->变量名);
+            auto* 全局 = new 全局变量类型(*模块, 整型32(上下文), false, llvm::GlobalValue::ExternalLinkage, 初始值, 全局变量->变量名);
             符号表实例.声明全局变量(全局变量->变量名, 全局);
         }
     }
@@ -199,7 +199,7 @@ void 代码生成器::生成(const 程序& 程序) {
 
     // 处理结构体定义
     for (const auto& [名称, 成员列表, 基类名] : 程序.结构体定义列表) {
-        std::vector<llvm::Type*> 成员类型;
+        std::vector<类型*> 成员类型;
         std::vector<std::string> 成员名;
         std::vector<std::string> 成员类型名;
         // 如果有基类，先添加基类的成员
@@ -245,17 +245,17 @@ void 代码生成器::生成(const 程序& 程序) {
         全局函数定义映射[函数->名称] = 函数.get();
         // 跳过泛型函数（在调用时单态化）
         if (!函数->类型参数列表.empty()) continue;
-        std::vector<llvm::Type*> 参数类型;
+        std::vector<类型*> 参数类型;
         for (size_t i = 0; i < 函数->参数列表.size(); ++i) {
             if (!函数->参数列表[i].类型.empty()) {
                 参数类型.push_back(类型名到LLVM类型(函数->参数列表[i].类型));
             } else {
                 // 无类型注解：默认指针类型
-                参数类型.push_back(llvm::PointerType::get(上下文, 0));
+                参数类型.push_back(获取指针类型(上下文));
             }
         }
-        llvm::Type* 返回LLVM类型 = 计算返回类型(上下文, 函数->返回值列表, [this](const std::string& t) { return 类型名到LLVM类型(t); });
-        llvm::FunctionType* 函数类型 = llvm::FunctionType::get(返回LLVM类型, 参数类型, false);
+        类型* 返回LLVM类型 = 计算返回类型(上下文, 函数->返回值列表, [this](const std::string& t) { return 类型名到LLVM类型(t); });
+        函数类型* 函数类型 = llvm::FunctionType::get(返回LLVM类型, 参数类型, false);
         llvm::Function::Create(函数类型, llvm::Function::ExternalLinkage, 函数->名称, *模块);
     }
 
@@ -267,81 +267,81 @@ void 代码生成器::生成(const 程序& 程序) {
     调试打印("[代码生成器] 函数生成完成");
 
     if (!程序.函数列表.empty()) {
-        llvm::Function* 入口函数 = 模块->getFunction(程序.函数列表.back()->名称);
+        LLVM函数* 入口函数 = 获取模块函数(*模块, 程序.函数列表.back()->名称);
         if (入口函数) {
-            llvm::FunctionType* main类型 = llvm::FunctionType::get(llvm::Type::getInt32Ty(上下文), false);
+            函数类型* main类型 = llvm::FunctionType::get(整型32(上下文), false);
             llvm::Function* main函数 = llvm::Function::Create(main类型, llvm::Function::ExternalLinkage, "main", *模块);
-            llvm::Function* 人格函数 = 模块->getFunction("__gxx_personality_seh0");
+LLVM函数* 人格函数 = 获取模块函数(*模块, "__gxx_personality_seh0");
             if (人格函数) {
-                main函数->setPersonalityFn(llvm::ConstantExpr::getBitCast(人格函数, llvm::PointerType::get(上下文, 0)));
+                main函数->setPersonalityFn(获取位转换常量(人格函数, 获取指针类型(上下文)));
             }
             llvm::BasicBlock* 入口块 = llvm::BasicBlock::Create(上下文, "entry", main函数);
-            构建器->SetInsertPoint(入口块);
-            构建器->CreateCall(入口函数);
-            构建器->CreateRet(llvm::ConstantInt::get(上下文, llvm::APInt(32, 0)));
+            设置插入点(*构建器, 入口块);
+            llvm中文::创建调用(*构建器, 入口函数, {});
+            创建返回(*构建器, 获取整数常量(上下文, 0, 32));
         }
     }
 }
 
 void 代码生成器::生成函数(const 函数& 函数) {
-    llvm::Function* llvm函数 = 模块->getFunction(函数.名称);
+    LLVM函数* llvm函数 = 获取模块函数(*模块, 函数.名称);
     if (!llvm函数) {
-        std::vector<llvm::Type*> 参数类型;
+        std::vector<类型*> 参数类型;
         for (size_t i = 0; i < 函数.参数列表.size(); ++i) {
             if (函数.参数列表[i].是否变长) {
                 // 变长参数作为数组（指针）传递
-                参数类型.push_back(llvm::PointerType::get(上下文, 0));
+                参数类型.push_back(获取指针类型(上下文));
             } else if (!函数.参数列表[i].类型.empty()) {
                 参数类型.push_back(类型名到LLVM类型(函数.参数列表[i].类型));
             } else {
                 // 无类型注解：默认使用指针类型（支持数组、字符串等）
-                参数类型.push_back(llvm::PointerType::get(上下文, 0));
+                参数类型.push_back(获取指针类型(上下文));
             }
         }
         // 计算返回类型
-        llvm::Type* 返回LLVM类型 = 计算返回类型(上下文, 函数.返回值列表, [this](const std::string& t) { return 类型名到LLVM类型(t); });
-        llvm::FunctionType* 函数类型 = llvm::FunctionType::get(返回LLVM类型, 参数类型, false);
+        类型* 返回LLVM类型 = 计算返回类型(上下文, 函数.返回值列表, [this](const std::string& t) { return 类型名到LLVM类型(t); });
+        函数类型* 函数类型 = llvm::FunctionType::get(返回LLVM类型, 参数类型, false);
         llvm函数 = llvm::Function::Create(函数类型, llvm::Function::ExternalLinkage, 函数.名称, *模块);
     }
 
-    llvm::Function* 人格函数 = 模块->getFunction("__gxx_personality_seh0");
+    LLVM函数* 人格函数 = 获取模块函数(*模块, "__gxx_personality_seh0");
     if (人格函数) {
-        llvm函数->setPersonalityFn(llvm::ConstantExpr::getBitCast(人格函数, llvm::PointerType::get(上下文, 0)));
+        llvm函数->setPersonalityFn(获取位转换常量(人格函数, 获取指针类型(上下文)));
     }
 
     llvm::BasicBlock* 入口块 = llvm::BasicBlock::Create(上下文, "entry", llvm函数);
-    构建器->SetInsertPoint(入口块);
+    设置插入点(*构建器, 入口块);
     符号表实例.重置为全局作用域();
 
     // 协程支持：初始化协程框架
-    llvm::Value* 当前协程句柄 = nullptr;
+    LLVM值* 当前协程句柄 = nullptr;
     if (函数.是否协程) {
         auto* coro_id = llvm::Intrinsic::getOrInsertDeclaration(模块.get(), llvm::Intrinsic::coro_id);
         auto* coro_alloc = llvm::Intrinsic::getOrInsertDeclaration(模块.get(), llvm::Intrinsic::coro_alloc);
         auto* coro_begin = llvm::Intrinsic::getOrInsertDeclaration(模块.get(), llvm::Intrinsic::coro_begin);
         auto* coro_size = llvm::Intrinsic::getOrInsertDeclaration(模块.get(), llvm::Intrinsic::coro_size);
-        llvm::Function* malloc函数 = 模块->getFunction("malloc");
+        LLVM函数* malloc函数 = 获取模块函数(*模块, "malloc");
 
-        auto* id = 构建器->CreateCall(coro_id, {
-            llvm::ConstantInt::get(llvm::Type::getInt32Ty(上下文), 0),
-            llvm::Constant::getNullValue(llvm::PointerType::get(上下文, 0)),
-            llvm::Constant::getNullValue(llvm::PointerType::get(上下文, 0)),
-            llvm::Constant::getNullValue(llvm::PointerType::get(上下文, 0))
+        auto* id = llvm中文::创建调用(*构建器, coro_id, {
+            获取整数常量(上下文, 0, 32),
+            获取空值(获取指针类型(上下文)),
+            获取空值(获取指针类型(上下文)),
+            获取空值(获取指针类型(上下文))
         }, "coro_id");
-        auto* need_alloc = 构建器->CreateCall(coro_alloc, {id}, "coro_needalloc");
+        auto* need_alloc = llvm中文::创建调用(*构建器, coro_alloc, {id}, "coro_needalloc");
         auto* allocBB = llvm::BasicBlock::Create(上下文, "coro.alloc", llvm函数);
         auto* entryBB = llvm::BasicBlock::Create(上下文, "coro.entry", llvm函数);
-        构建器->CreateCondBr(need_alloc, allocBB, entryBB);
-        构建器->SetInsertPoint(allocBB);
-        auto* sz = 构建器->CreateCall(coro_size, {}, "coro_size");
-        auto* mem = 构建器->CreateCall(malloc函数, {sz}, "coro_mem");
-        构建器->CreateBr(entryBB);
-        构建器->SetInsertPoint(entryBB);
-        auto* phi = 构建器->CreatePHI(llvm::PointerType::get(上下文, 0), 2, "coro_mem_phi");
+        创建条件分支(*构建器, need_alloc, allocBB, entryBB);
+        设置插入点(*构建器, allocBB);
+        auto* sz = llvm中文::创建调用(*构建器, coro_size, {}, "coro_size");
+        auto* mem = llvm中文::创建调用(*构建器, malloc函数, {sz}, "coro_mem");
+        创建分支(*构建器, entryBB);
+        设置插入点(*构建器, entryBB);
+        auto* phi = 创建PHI(*构建器, 获取指针类型(上下文), 2, "coro_mem_phi");
         phi->addIncoming(mem, allocBB);
-        phi->addIncoming(llvm::Constant::getNullValue(llvm::PointerType::get(上下文, 0)), 构建器->GetInsertBlock());
+        phi->addIncoming(获取空值(获取指针类型(上下文)), 获取插入块(*构建器));
         auto* token = llvm::ConstantTokenNone::get(上下文);
-        当前协程句柄 = 构建器->CreateCall(coro_begin, {token, llvm::ConstantInt::getFalse(上下文), phi}, "coro_hdl");
+        当前协程句柄 = llvm中文::创建调用(*构建器, coro_begin, {token, 获取假值(上下文), phi}, "coro_hdl");
         协程句柄 = 当前协程句柄;
     }
 
@@ -354,17 +354,17 @@ void 代码生成器::生成函数(const 函数& 函数) {
             参数.setName(函数.参数列表[i].名称);
 
             // 为参数创建 alloca
-            llvm::Type* 参数类型;
+            类型* 参数类型;
             if (函数.参数列表[i].是否变长) {
-                参数类型 = llvm::PointerType::get(上下文, 0);
+                参数类型 = 获取指针类型(上下文);
             } else if (!函数.参数列表[i].类型.empty()) {
                 参数类型 = 类型名到LLVM类型(函数.参数列表[i].类型);
             } else {
                 // 无类型注解：默认指针类型
-                参数类型 = llvm::PointerType::get(上下文, 0);
+                参数类型 = 获取指针类型(上下文);
             }
-            llvm::AllocaInst* 分配 = 构建器->CreateAlloca(参数类型, nullptr, 函数.参数列表[i].名称);
-            构建器->CreateStore(&参数, 分配);
+            分配指令* 分配 = 创建分配(*构建器, 参数类型, 0, 函数.参数列表[i].名称);
+            创建存储(*构建器, &参数, 分配);
             符号表实例.声明变量(函数.参数列表[i].名称, 分配);
 
             if (函数.参数列表[i].是否变长) {
@@ -381,29 +381,29 @@ void 代码生成器::生成函数(const 函数& 函数) {
         }
 
         // 为返回值创建 alloca（支持多返回值）
-        std::vector<llvm::AllocaInst*> 返回值分配列表;
+        std::vector<分配指令*> 返回值分配列表;
         for (const auto& 返回值 : 函数.返回值列表) {
             if (!返回值.名称.empty() && !返回值.类型.empty() && 返回值.类型 != "空") {
-                llvm::Type* 返回LLVM类型 = 类型名到LLVM类型(返回值.类型);
-                llvm::AllocaInst* 分配 = 构建器->CreateAlloca(返回LLVM类型, nullptr, 返回值.名称);
+                类型* 返回LLVM类型 = 类型名到LLVM类型(返回值.类型);
+                分配指令* 分配 = 创建分配(*构建器, 返回LLVM类型, 0, 返回值.名称);
                 符号表实例.声明变量(返回值.名称, 分配);
-                if (返回LLVM类型->isDoubleTy()) {
+                if (是双精度类型(返回LLVM类型)) {
                     符号表实例.设置浮点变量(返回值.名称);
                 } else if (结构体类型映射.count(返回值.类型)) {
                     符号表实例.设置结构体变量(返回值.名称, 返回值.类型);
                     // 为结构体返回值分配内存并存储指针
                     llvm::StructType* 结构体类型 = 结构体类型映射[返回值.类型];
-                    llvm::Value* 结构体大小 = llvm::ConstantInt::get(llvm::Type::getInt64Ty(上下文),
-                        模块->getDataLayout().getTypeAllocSize(结构体类型));
-                    llvm::Value* 结构体内存 = 创建调用(模块->getFunction("malloc"), {结构体大小}, "ret_struct_mem");
-                    构建器->CreateStore(结构体内存, 分配);
-                } else if (返回LLVM类型->isPointerTy()) {
+                    LLVM值* 结构体大小 = 获取整数常量(上下文,
+                        模块->getDataLayout().getTypeAllocSize(结构体类型), 64);
+                    LLVM值* 结构体内存 = 创建调用(获取模块函数(*模块, "malloc"), {结构体大小}, "ret_struct_mem");
+                    创建存储(*构建器, 结构体内存, 分配);
+                } else if (是指针类型(返回LLVM类型)) {
                     符号表实例.设置指针变量(返回值.名称);
                 }
                 // 存储默认值
                 if (返回值.默认值) {
-                    llvm::Value* 默认值 = 生成表达式(*返回值.默认值);
-                    构建器->CreateStore(默认值, 分配);
+                    LLVM值* 默认值 = 生成表达式(*返回值.默认值);
+                    创建存储(*构建器, 默认值, 分配);
                 }
                 返回值分配列表.push_back(分配);
             }
@@ -413,27 +413,27 @@ void 代码生成器::生成函数(const 函数& 函数) {
         for (const auto& 语句 : 函数.主体) 生成语句(*语句);
 
         // 自动返回返回值
-        if (构建器->GetInsertBlock()->getTerminator() == nullptr) {
+        if (获取插入块(*构建器)->getTerminatorOrNull() == nullptr) {
             if (返回值分配列表.size() == 1) {
                 // 单返回值
-                llvm::Type* 返回LLVM类型 = 返回值分配列表[0]->getAllocatedType();
-                llvm::Value* 返回值 = 构建器->CreateLoad(返回LLVM类型, 返回值分配列表[0], "返回值");
-                构建器->CreateRet(返回值);
+                类型* 返回LLVM类型 = 返回值分配列表[0]->getAllocatedType();
+                LLVM值* 返回值 = 创建加载(*构建器, 返回LLVM类型, 返回值分配列表[0], "返回值");
+                创建返回(*构建器, 返回值);
             } else if (返回值分配列表.size() > 1) {
                 // 多返回值：创建结构体
-                std::vector<llvm::Type*> 返回类型列表;
+                std::vector<类型*> 返回类型列表;
                 for (const auto& 分配 : 返回值分配列表) {
                     返回类型列表.push_back(分配->getAllocatedType());
                 }
                 llvm::StructType* 返回结构体类型 = llvm::StructType::get(上下文, 返回类型列表);
-                llvm::Value* 返回结构体 = llvm::UndefValue::get(返回结构体类型);
+                LLVM值* 返回结构体 = llvm::UndefValue::get(返回结构体类型);
                 for (size_t j = 0; j < 返回值分配列表.size(); j++) {
-                    llvm::Value* 值 = 构建器->CreateLoad(返回值分配列表[j]->getAllocatedType(), 返回值分配列表[j], "返回值" + std::to_string(j));
-                    返回结构体 = 构建器->CreateInsertValue(返回结构体, 值, {static_cast<unsigned>(j)});
+                    LLVM值* 值 = 创建加载(*构建器, 返回值分配列表[j]->getAllocatedType(), 返回值分配列表[j], "返回值" + std::to_string(j));
+                    返回结构体 = 创建插入值(*构建器, 返回结构体, 值, {static_cast<unsigned>(j)});
                 }
-                构建器->CreateRet(返回结构体);
+                创建返回(*构建器, 返回结构体);
             } else {
-                构建器->CreateRetVoid();
+                创建空返回(*构建器);
             }
         }
     } // 作用域守卫在此析构，自动退出作用域
@@ -501,13 +501,33 @@ void 代码生成器::生成可执行文件() {
         运行优化Pass();
     }
 
+    // 使用 TargetMachine 直接生成目标文件，避免中文 LLVM 的 IR/汇编输出问题
+    std::string 目标文件名 = 输出文件名 + ".o";
+    三元组 目标三元组(llvm::sys::getDefaultTargetTriple());
+    std::string 错误信息;
+    const llvm::Target* 目标 = llvm::TargetRegistry::lookupTarget(目标三元组, 错误信息);
+    if (!目标) throw std::runtime_error("无法找到目标: " + 错误信息);
+
+    目标选项 选项;
+    auto 目标机器 = std::unique_ptr<llvm::TargetMachine>(
+        目标->createTargetMachine(目标三元组, "generic", "", 选项, llvm::Reloc::PIC_));
+    if (!目标机器) throw std::runtime_error("无法创建TargetMachine");
+
+    模块->setDataLayout(目标机器->createDataLayout());
+    模块->setTargetTriple(目标三元组);
+
     std::error_code 错误码;
-    llvm::raw_fd_ostream ir文件(输出文件名 + ".ll", 错误码, llvm::sys::fs::OF_None);
-    if (错误码) throw std::runtime_error("无法写入IR文件: " + 错误码.message());
-    模块->print(ir文件, nullptr);
-    ir文件.close();
-    std::string llc命令 = "llc " + 输出文件名 + ".ll -o " + 输出文件名 + ".s";
-    if (执行命令(llc命令) != 0) throw std::runtime_error("llc编译失败");
-    std::string 链接命令 = "clang++ " + 输出文件名 + ".s " + "源/运行时/运行时辅助.o" + " -o " + 输出文件名 + " -lws2_32 -lm -lstdc++";
+    原始输出流 目标文件流(目标文件名, 错误码, llvm::sys::fs::OF_None);
+    if (错误码) throw std::runtime_error("无法写入目标文件: " + 错误码.message());
+
+    llvm::legacy::PassManager 管理器;
+    if (目标机器->addPassesToEmitFile(管理器, 目标文件流, nullptr, 文件类型::ObjectFile)) {
+        throw std::runtime_error("TargetMachine无法生成目标文件");
+    }
+    管理器.run(*模块);
+    目标文件流.close();
+
+    // 链接目标文件与运行时
+    std::string 链接命令 = "clang++ " + 目标文件名 + " " + 运行时对象路径() + " -o " + 输出文件名 + " -lws2_32 -lm -lstdc++";
     if (执行命令(链接命令) != 0) throw std::runtime_error("链接失败");
 }
