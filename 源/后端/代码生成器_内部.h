@@ -115,8 +115,8 @@ inline std::string 可执行文件目录() {
 #if defined(__linux__) || defined(__CYGWIN__)
     n = readlink("/proc/self/exe", 缓冲, sizeof(缓冲) - 1);
 #elif defined(__APPLE__)
-    uint32_t 大小 = sizeof(缓冲);
-    if (_NSGetExecutablePath(缓冲, &大小) == 0) n = (ssize_t)strlen(缓冲);
+    uint32_t 元素数量 = sizeof(缓冲);
+    if (_NSGetExecutablePath(缓冲, &元素数量) == 0) n = (ssize_t)strlen(缓冲);
 #endif
     if (n <= 0) return std::string();
     std::string 路径(缓冲, n);

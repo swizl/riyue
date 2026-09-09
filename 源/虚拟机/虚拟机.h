@@ -25,15 +25,15 @@ extern "C" {
     int 分割行数(const char* 文本);
     const char* 获取行(const char* 文本, int 行号);
     const char* 去除空白(const char* 文本);
-    const char* 转小写(const char* 文本);
-    const char* 转大写(const char* 文本);
+    const char* 文本转小写(const char* 文本);
+    const char* 文本转大写(const char* 文本);
     int 字符串开头(const char* 文本, const char* 前缀);
     int 字符串结尾(const char* 文本, const char* 后缀);
     int 字符码(const char* 文本, int 位置);
-    const char* 字符(int 码点);
+    const char* 字符序列(int 码点);
 
     // 动态数组
-    typedef struct { int* 数据; int 大小; int 容量; } 动态数组;
+    typedef struct { int* 数据; int 数组大小; int 容量; } 动态数组;
     动态数组* 创建动态数组();
     void 动态数组添加(动态数组* arr, int 值);
     int 动态数组获取(动态数组* arr, int 索引);
@@ -54,8 +54,8 @@ extern "C" {
 struct 调用帧 {
     int 函数索引;
     size_t 返回地址 = 0;
-    uint8_t 返回寄存器 = 0;
-    std::vector<值> 寄存器;
+    uint8_t 返回寄存器组 = 0;
+    std::vector<值> 寄存器组;
     size_t 指令指针 = 0;
 };
 
@@ -92,24 +92,24 @@ class 虚拟机 {
     };
     std::vector<异常处理器> 异常处理栈;
 
-    值& 读寄存器(uint8_t reg) { return 当前帧->寄存器[reg]; }
-    void 写寄存器(uint8_t reg, 值 v) { 当前帧->寄存器[reg] = std::move(v); }
+    值& 读寄存器(uint8_t reg) { return 当前帧->寄存器组[reg]; }
+    void 写寄存器(uint8_t reg, 值 v) { 当前帧->寄存器组[reg] = std::move(v); }
 
     const 指令& 当前指令() {
         return 程序.函数表[当前帧->函数索引].指令列表[当前帧->指令指针];
     }
 
-    void 调用函数(int 函数索引, uint8_t 参数数量, uint8_t 返回寄存器) {
+    void 调用函数(int 函数索引, uint8_t 参数数量, uint8_t 返回寄存器组) {
         const auto& 函数信息 = 程序.函数表[函数索引];
 
         调用帧 新帧;
         新帧.函数索引 = 函数索引;
-        新帧.返回寄存器 = 返回寄存器;
+        新帧.返回寄存器组 = 返回寄存器组;
         新帧.指令指针 = 0;
-        新帧.寄存器.resize(函数信息.最大寄存器);
+        新帧.寄存器组.resize(函数信息.最大寄存器);
 
         for (int i = 0; i < 参数数量; i++) {
-            新帧.寄存器[i] = 读寄存器(static_cast<uint8_t>(i));
+            新帧.寄存器组[i] = 读寄存器(static_cast<uint8_t>(i));
         }
 
         调用栈.push(std::move(新帧));
@@ -117,21 +117,21 @@ class 虚拟机 {
     }
 
     bool 是真(const 值& v) {
-        if (v.类型 == 值::整数) return v.整数值 != 0;
-        if (v.类型 == 值::浮点数) return v.浮点值 != 0.0;
+        if (v.类型 == 值::值类型_整数) return v.整数值 != 0;
+        if (v.类型 == 值::值类型_浮点数) return v.浮点值 != 0.0;
         if (v.类型 == 值::字符串) return !v.字符串值.empty();
         return false;
     }
 
     int32_t 转整数(const 值& v) {
-        if (v.类型 == 值::整数) return v.整数值;
-        if (v.类型 == 值::浮点数) return static_cast<int32_t>(v.浮点值);
+        if (v.类型 == 值::值类型_整数) return v.整数值;
+        if (v.类型 == 值::值类型_浮点数) return static_cast<int32_t>(v.浮点值);
         return 0;
     }
 
     double 转浮点(const 值& v) {
-        if (v.类型 == 值::浮点数) return v.浮点值;
-        if (v.类型 == 值::整数) return static_cast<double>(v.整数值);
+        if (v.类型 == 值::值类型_浮点数) return v.浮点值;
+        if (v.类型 == 值::值类型_整数) return static_cast<double>(v.整数值);
         return 0.0;
     }
 

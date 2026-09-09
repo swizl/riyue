@@ -140,7 +140,7 @@ const char** 字符串分割(char* str, const char* 分隔符, int* 结果数量
 }
 
 // 字符串连接
-char* 字符串连接(const char** 字符串数组, int 数量, const char* 分隔符) {
+char* 文本连接(const char** 字符串数组, int 数量, const char* 分隔符) {
     static char 缓冲区[4096];
     缓冲区[0] = '\0';
     for (int i = 0; i < 数量; i++) {
@@ -151,15 +151,15 @@ char* 字符串连接(const char** 字符串数组, int 数量, const char* 分�
 }
 
 // 字符串格式化（简单版本，支持%d）
-char* 字符串格式化(const char* 模板, int 参数1, int 参数2, int 参数3) {
+char* 字符串格式化(const char* 格式模板, int 参数1, int 参数2, int 参数3) {
     static char 缓冲区[4096];
     缓冲区[0] = '\0';
     int 参数索引 = 0;
     int 参数值[] = {参数1, 参数2, 参数3};
     int i = 0;
     int j = 0;
-    while (模板[i] != '\0' && j < 4095) {
-        if (模板[i] == '%' && 模板[i + 1] == 'd' && 参数索引 < 3) {
+    while (格式模板[i] != '\0' && j < 4095) {
+        if (格式模板[i] == '%' && 格式模板[i + 1] == 'd' && 参数索引 < 3) {
             char 数字[32];
             sprintf(数字, "%d", 参数值[参数索引]);
             strcat(缓冲区, 数字);
@@ -167,7 +167,7 @@ char* 字符串格式化(const char* 模板, int 参数1, int 参数2, int 参�
             i += 2;
             参数索引++;
         } else {
-            缓冲区[j++] = 模板[i++];
+            缓冲区[j++] = 格式模板[i++];
         }
     }
     缓冲区[j] = '\0';
@@ -707,9 +707,9 @@ long 获取文件大小(const char* 路径) {
     FILE* 文件 = fopen(路径, "rb");
     if (!文件) return -1;
     fseek(文件, 0, SEEK_END);
-    long 大小 = ftell(文件);
+    long 文件大小 = ftell(文件);
     fclose(文件);
-    return 大小;
+    return 文件大小;
 }
 
 // ==================== 命令行参数 ====================
@@ -828,7 +828,7 @@ int 重命名文件(const char* 旧路径, const char* 新路径) {
 typedef struct {
     char 名称[256];
     int 是目录;
-    long long 大小;
+    long long 文件大小;
 } 目录项;
 
 // 列出目录内容，返回目录项数组
@@ -870,7 +870,7 @@ int 列出目录(const char* 路径) {
         WideCharToMultiByte(CP_UTF8, 0, 查找数据.cFileName, -1, 目录项列表[目录项数量].名称, 名称长度, NULL, NULL);
         
         目录项列表[目录项数量].是目录 = (查找数据.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) ? 1 : 0;
-        目录项列表[目录项数量].大小 = ((long long)查找数据.nFileSizeHigh << 32) | 查找数据.nFileSizeLow;
+        目录项列表[目录项数量].文件大小 = ((long long)查找数据.nFileSizeHigh << 32) | 查找数据.nFileSizeLow;
         
         目录项数量++;
     } while (FindNextFileW(句柄, &查找数据));
@@ -895,7 +895,7 @@ int 列出目录(const char* 路径) {
         strncpy(目录项列表[目录项数量].名称, 入口->d_name, 255);
         目录项列表[目录项数量].名称[255] = '\0';
         目录项列表[目录项数量].是目录 = (入口->d_type == DT_DIR) ? 1 : 0;
-        目录项列表[目录项数量].大小 = 0;
+        目录项列表[目录项数量].文件大小 = 0;
         
         目录项数量++;
     }
@@ -925,7 +925,7 @@ int 获取目录项是否目录(int 索引) {
 // 获取目录项大小
 long 获取目录项大小(int 索引) {
     if (索引 >= 0 && 索引 < 目录项数量) {
-        return 目录项列表[索引].大小;
+        return 目录项列表[索引].文件大小;
     }
     return 0;
 }
@@ -961,7 +961,7 @@ int 递归遍历目录(const char* 路径, int 深度) {
         WideCharToMultiByte(CP_UTF8, 0, 查找数据.cFileName, -1, 目录项列表[目录项数量].名称, 名称长度, NULL, NULL);
         
         目录项列表[目录项数量].是目录 = (查找数据.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) ? 1 : 0;
-        目录项列表[目录项数量].大小 = ((long long)查找数据.nFileSizeHigh << 32) | 查找数据.nFileSizeLow;
+        目录项列表[目录项数量].文件大小 = ((long long)查找数据.nFileSizeHigh << 32) | 查找数据.nFileSizeLow;
         
         目录项数量++;
         
@@ -986,7 +986,7 @@ int 递归遍历目录(const char* 路径, int 深度) {
         strncpy(目录项列表[目录项数量].名称, 入口->d_name, 255);
         目录项列表[目录项数量].名称[255] = '\0';
         目录项列表[目录项数量].是目录 = (入口->d_type == DT_DIR) ? 1 : 0;
-        目录项列表[目录项数量].大小 = 0;
+        目录项列表[目录项数量].文件大小 = 0;
         目录项数量++;
         
         if (入口->d_type == DT_DIR && 深度 > 0) {
@@ -1215,7 +1215,7 @@ const char* 去除空白(const char* 文本) {
 }
 
 // 字符串转小写
-const char* 转小写(const char* 文本) {
+const char* 文本转小写(const char* 文本) {
     static char 缓冲区[4096];
     int i = 0;
     while (文本[i] && i < 4095) {
@@ -1231,7 +1231,7 @@ const char* 转小写(const char* 文本) {
 }
 
 // 字符串转大写
-const char* 转大写(const char* 文本) {
+const char* 文本转大写(const char* 文本) {
     static char 缓冲区[4096];
     int i = 0;
     while (文本[i] && i < 4095) {
@@ -1287,7 +1287,7 @@ int 字符码(const char* 文本, int 位置) {
 }
 
 // 从码点创建UTF-8字符串
-const char* 字符(int 码点) {
+const char* 字符序列(int 码点) {
     static char 缓冲区[5];
     if (码点 < 0x80) {
         缓冲区[0] = (char)码点;
@@ -1317,56 +1317,56 @@ const char* 字符(int 码点) {
 
 typedef struct {
     int* 数据;
-    int 大小;
+    int 数组大小;
     int 容量;
 } 动态数组;
 
 动态数组* 创建动态数组() {
     动态数组* arr = (动态数组*)malloc(sizeof(动态数组));
     arr->数据 = (int*)malloc(动态数组初始大小 * sizeof(int));
-    arr->大小 = 0;
+    arr->数组大小 = 0;
     arr->容量 = 动态数组初始大小;
     return arr;
 }
 
 void 动态数组添加(动态数组* arr, int 值) {
-    if (arr->大小 >= arr->容量) {
+    if (arr->数组大小 >= arr->容量) {
         arr->容量 *= 2;
         arr->数据 = (int*)realloc(arr->数据, arr->容量 * sizeof(int));
     }
-    arr->数据[arr->大小++] = 值;
+    arr->数据[arr->数组大小++] = 值;
 }
 
 int 动态数组获取(动态数组* arr, int 索引) {
-    if (索引 >= 0 && 索引 < arr->大小) {
+    if (索引 >= 0 && 索引 < arr->数组大小) {
         return arr->数据[索引];
     }
     return 0;
 }
 
 void 动态数组设置(动态数组* arr, int 索引, int 值) {
-    if (索引 >= 0 && 索引 < arr->大小) {
+    if (索引 >= 0 && 索引 < arr->数组大小) {
         arr->数据[索引] = 值;
     }
 }
 
 int 动态数组大小(动态数组* arr) {
-    return arr->大小;
+    return arr->数组大小;
 }
 
 void 动态数组删除(动态数组* arr, int 索引) {
-    if (索引 >= 0 && 索引 < arr->大小) {
-        for (int i = 索引; i < arr->大小 - 1; i++) {
+    if (索引 >= 0 && 索引 < arr->数组大小) {
+        for (int i = 索引; i < arr->数组大小 - 1; i++) {
             arr->数据[i] = arr->数据[i + 1];
         }
-        arr->大小--;
+        arr->数组大小--;
     }
 }
 
 void 动态数组插入(动态数组* arr, int 索引, int 值) {
-    if (索引 < 0 || 索引 > arr->大小) return;
+    if (索引 < 0 || 索引 > arr->数组大小) return;
     动态数组添加(arr, 0);  // 扩展
-    for (int i = arr->大小 - 1; i > 索引; i--) {
+    for (int i = arr->数组大小 - 1; i > 索引; i--) {
         arr->数据[i] = arr->数据[i - 1];
     }
     arr->数据[索引] = 值;
@@ -1380,70 +1380,70 @@ void 释放动态数组(动态数组* arr) {
 // 动态字符串数组
 typedef struct {
     const char** 数据;
-    int 大小;
+    int 数组大小;
     int 容量;
 } 动态字符串数组;
 
 动态字符串数组* 创建动态字符串数组() {
     动态字符串数组* arr = (动态字符串数组*)malloc(sizeof(动态字符串数组));
     arr->数据 = (const char**)malloc(动态数组初始大小 * sizeof(const char*));
-    arr->大小 = 0;
+    arr->数组大小 = 0;
     arr->容量 = 动态数组初始大小;
     return arr;
 }
 
 void 动态字符串数组添加(动态字符串数组* arr, const char* 值) {
-    if (arr->大小 >= arr->容量) {
+    if (arr->数组大小 >= arr->容量) {
         arr->容量 *= 2;
         arr->数据 = (const char**)realloc(arr->数据, arr->容量 * sizeof(const char*));
     }
-    arr->数据[arr->大小++] = strdup(值);
+    arr->数据[arr->数组大小++] = strdup(值);
 }
 
 const char* 动态字符串数组获取(动态字符串数组* arr, int 索引) {
-    if (索引 >= 0 && 索引 < arr->大小) {
+    if (索引 >= 0 && 索引 < arr->数组大小) {
         return arr->数据[索引];
     }
     return "";
 }
 
 void 动态字符串数组设置(动态字符串数组* arr, int 索引, const char* 值) {
-    if (索引 >= 0 && 索引 < arr->大小) {
+    if (索引 >= 0 && 索引 < arr->数组大小) {
         free((void*)arr->数据[索引]);
         arr->数据[索引] = strdup(值);
     }
 }
 
 void 动态字符串数组删除(动态字符串数组* arr, int 索引) {
-    if (索引 >= 0 && 索引 < arr->大小) {
+    if (索引 >= 0 && 索引 < arr->数组大小) {
         free((void*)arr->数据[索引]);
-        for (int i = 索引; i < arr->大小 - 1; i++) {
+        for (int i = 索引; i < arr->数组大小 - 1; i++) {
             arr->数据[i] = arr->数据[i + 1];
         }
-        arr->大小--;
+        arr->数组大小--;
     }
 }
 
 void 动态字符串数组插入(动态字符串数组* arr, int 索引, const char* 值) {
-    if (索引 >= 0 && 索引 <= arr->大小) {
-        if (arr->大小 >= arr->容量) {
+    if (索引 >= 0 && 索引 <= arr->数组大小) {
+        if (arr->数组大小 >= arr->容量) {
             arr->容量 *= 2;
             arr->数据 = (const char**)realloc(arr->数据, arr->容量 * sizeof(const char*));
         }
-        for (int i = arr->大小; i > 索引; i--) {
+        for (int i = arr->数组大小; i > 索引; i--) {
             arr->数据[i] = arr->数据[i - 1];
         }
         arr->数据[索引] = strdup(值);
-        arr->大小++;
+        arr->数组大小++;
     }
 }
 
 int 动态字符串数组大小(动态字符串数组* arr) {
-    return arr->大小;
+    return arr->数组大小;
 }
 
 void 释放动态字符串数组(动态字符串数组* arr) {
-    for (int i = 0; i < arr->大小; i++) {
+    for (int i = 0; i < arr->数组大小; i++) {
         free((void*)arr->数据[i]);
     }
     free(arr->数据);
@@ -1453,7 +1453,7 @@ void 释放动态字符串数组(动态字符串数组* arr) {
 // 通道实现
 typedef struct {
     int* 数据;
-    int 大小;
+    int 数组大小;
     int 容量;
     int 头;
     int 尾;
@@ -1465,7 +1465,7 @@ typedef struct {
     通道数据* ch = (通道数据*)malloc(sizeof(通道数据));
     ch->容量 = 容量 > 0 ? 容量 : 1;
     ch->数据 = (int*)malloc(sizeof(int) * ch->容量);
-    ch->大小 = ch->容量;
+    ch->数组大小 = ch->容量;
     ch->头 = 0;
     ch->尾 = 0;
     ch->计数 = 0;

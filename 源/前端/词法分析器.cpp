@@ -17,8 +17,8 @@
 std::string 标记类型转字符串(标记类型 类型) {
     switch (类型) {
         case 标记类型::文件结束: return "文件结束";
-        case 标记类型::整数: return "整数";
-        case 标记类型::浮点: return "浮点";
+        case 标记类型::标记_整数: return "整数";
+        case 标记类型::标记_浮点: return "浮点";
         case 标记类型::字符串: return "字符串";
         case 标记类型::字符串插值: return "字符串插值";
         case 标记类型::标识符: return "标识符";
@@ -52,38 +52,38 @@ std::string 标记类型转字符串(标记类型 类型) {
         case 标记类型::冒号: return "冒号";
         case 标记类型::箭头: return "箭头";
         case 标记类型::函数: return "函数";
-        case 标记类型::空: return "空";
-        case 标记类型::如果: return "如果";
-        case 标记类型::否则: return "否则";
-        case 标记类型::否则如果: return "否则如果";
-        case 标记类型::循环: return "循环";
-        case 标记类型::当: return "当";
-        case 标记类型::中断: return "中断";
-        case 标记类型::继续: return "继续";
+        case 标记类型::标记_空: return "空";
+        case 标记类型::标记_如果: return "如果";
+        case 标记类型::标记_否则: return "否则";
+        case 标记类型::标记_否则如果: return "否则如果";
+        case 标记类型::标记_循环: return "循环";
+        case 标记类型::标记_当: return "当";
+        case 标记类型::标记_中断: return "中断";
+        case 标记类型::标记_继续: return "继续";
         case 标记类型::变量: return "变量";
-        case 标记类型::常量: return "常量";
-        case 标记类型::打印: return "打印";
-        case 标记类型::返回: return "返回";
+        case 标记类型::标记_常量: return "常量";
+        case 标记类型::标记_打印: return "打印";
+        case 标记类型::标记_返回: return "返回";
         case 标记类型::匹配: return "匹配";
         case 标记类型::遍历: return "遍历";
         case 标记类型::导入: return "导入";
-        case 标记类型::整数类型: return "整数类型";
-        case 标记类型::浮点类型: return "浮点类型";
-        case 标记类型::布尔类型: return "布尔类型";
+        case 标记类型::标记_整数类型: return "整数类型";
+        case 标记类型::标记_浮点类型: return "浮点类型";
+        case 标记类型::标记_布尔类型: return "布尔类型";
         case 标记类型::字符串类型: return "字符串类型";
-        case 标记类型::结构体: return "结构体";
-        case 标记类型::枚举: return "枚举";
-        case 标记类型::真: return "真";
-        case 标记类型::假: return "假";
+        case 标记类型::标记_结构体: return "结构体";
+        case 标记类型::标记_枚举: return "枚举";
+        case 标记类型::标记_真: return "真";
+        case 标记类型::标记_假: return "假";
         case 标记类型::问号: return "问号";
         case 标记类型::问问: return "问问";
         case 标记类型::刀乐: return "刀乐";
         case 标记类型::方法: return "方法";
         case 标记类型::类型: return "类型";
         case 标记类型::入: return "入";
-        case 标记类型::尝试: return "尝试";
-        case 标记类型::捕获: return "捕获";
-        case 标记类型::抛出: return "抛出";
+        case 标记类型::标记_尝试: return "尝试";
+        case 标记类型::标记_捕获: return "捕获";
+        case 标记类型::标记_抛出: return "抛出";
         case 标记类型::最终: return "最终";
         case 标记类型::协程: return "协程";
         case 标记类型::让出: return "让出";
@@ -202,10 +202,10 @@ std::string 词法分析器::读取多字节字符() {
         调试打印("[词法分析器][UTF-8] 无效序列，仅取首字节");
     }
 
-    std::string 字符(源代码.substr(位置, 实际长度));
-    调试打印("[词法分析器][UTF-8] 读取字符: '" << 字符 << "'（长度: " << 实际长度 << "）");
+    std::string 字符序列(源代码.substr(位置, 实际长度));
+    调试打印("[词法分析器][UTF-8] 读取字符: '" << 字符序列 << "'（长度: " << 实际长度 << "）");
     前进字节(实际长度);
-    return 字符;
+    return 字符序列;
 }
 
 std::string 词法分析器::解析字符串内容(bool 是插值模式) {
@@ -274,15 +274,15 @@ std::string 词法分析器::解析字符串内容(bool 是插值模式) {
             前进字节(1);
         } else {
             // 读取 UTF-8 字符，计算 Unicode 码点
-            std::string 字符 = 读取多字节字符();
-            if (字符.size() == 1) {
-                字符值 = static_cast<unsigned char>(字符[0]);
-            } else if (字符.size() == 2) {
-                字符值 = ((字符[0] & 0x1F) << 6) | (字符[1] & 0x3F);
-            } else if (字符.size() == 3) {
-                字符值 = ((字符[0] & 0x0F) << 12) | ((字符[1] & 0x3F) << 6) | (字符[2] & 0x3F);
-            } else if (字符.size() == 4) {
-                字符值 = ((字符[0] & 0x07) << 18) | ((字符[1] & 0x3F) << 12) | ((字符[2] & 0x3F) << 6) | (字符[3] & 0x3F);
+            std::string 字符序列 = 读取多字节字符();
+            if (字符序列.size() == 1) {
+                字符值 = static_cast<unsigned char>(字符序列[0]);
+            } else if (字符序列.size() == 2) {
+                字符值 = ((字符序列[0] & 0x1F) << 6) | (字符序列[1] & 0x3F);
+            } else if (字符序列.size() == 3) {
+                字符值 = ((字符序列[0] & 0x0F) << 12) | ((字符序列[1] & 0x3F) << 6) | (字符序列[2] & 0x3F);
+            } else if (字符序列.size() == 4) {
+                字符值 = ((字符序列[0] & 0x07) << 18) | ((字符序列[1] & 0x3F) << 12) | ((字符序列[2] & 0x3F) << 6) | (字符序列[3] & 0x3F);
             }
         }
         if (已到文件尾() || 字节() != '\'') {
@@ -290,7 +290,7 @@ std::string 词法分析器::解析字符串内容(bool 是插值模式) {
         }
         前进字节(1); // 跳过闭合 '
         调试打印("[词法分析器][标记] 字符: " << 字符值);
-        return 标记(标记类型::字符, std::to_string(字符值), 当前行, 标记起始列);
+        return 标记(标记类型::标记_字符, std::to_string(字符值), 当前行, 标记起始列);
     }
 
     // 识别字符串字面量
@@ -324,10 +324,10 @@ std::string 词法分析器::解析字符串内容(bool 是插值模式) {
         }
         if (是浮点) {
             调试打印("[词法分析器][标记] 浮点: '" << 数字串 << "'");
-            return 标记(标记类型::浮点, 数字串, 当前行, 标记起始列);
+            return 标记(标记类型::标记_浮点, 数字串, 当前行, 标记起始列);
         }
         调试打印("[词法分析器][标记] 整数: '" << 数字串 << "'");
-        return 标记(标记类型::整数, 数字串, 当前行, 标记起始列);
+        return 标记(标记类型::标记_整数, 数字串, 当前行, 标记起始列);
     }
 
     // 识别标识符（重点处理“计数”）

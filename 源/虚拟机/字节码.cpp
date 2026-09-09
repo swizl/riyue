@@ -42,7 +42,7 @@ std::string 操作码名称(操作码 码) {
         case 操作码::浮点取负: return "浮点取负";
         case 操作码::整数转浮点: return "整数转浮点";
         case 操作码::浮点转整数: return "浮点转整数";
-        case 操作码::跳转: return "跳转";
+        case 操作码::操作_跳转: return "跳转";
         case 操作码::假跳转: return "假跳转";
         case 操作码::调用: return "调用";
         case 操作码::返回值: return "返回值";

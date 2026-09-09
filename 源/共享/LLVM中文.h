@@ -31,9 +31,9 @@ namespace llvm中文 {
     using 指针类型 = llvm::PointerType;
     using LLVM数组类型 = llvm::ArrayType;
     using LLVM结构体类型 = llvm::StructType;
-    using 常量整数 = llvm::ConstantInt;
-    using 常量浮点 = llvm::ConstantFP;
-    using 常量 = llvm::Constant;
+using LLVM常量整数 = llvm::ConstantInt;
+using LLVM常量浮点 = llvm::ConstantFP;
+using LLVM常量 = llvm::Constant;
     using PHI节点 = llvm::PHINode;
     using 分配指令 = llvm::AllocaInst;
     using 全局变量类型 = llvm::GlobalVariable;
@@ -65,7 +65,7 @@ namespace llvm中文 {
     inline llvm::Type* 整型16(llvm::LLVMContext& 上下文) { return llvm::Type::getInt16Ty(上下文); }
     inline llvm::Type* 整型1(llvm::LLVMContext& 上下文) { return llvm::Type::getInt1Ty(上下文); }
     inline llvm::Type* 双精度浮点(llvm::LLVMContext& 上下文) { return llvm::Type::getDoubleTy(上下文); }
-    inline llvm::Type* 空类型(llvm::LLVMContext& 上下文) { return llvm::Type::getVoidTy(上下文); }
+    inline llvm::Type* 获取空类型(llvm::LLVMContext& 上下文) { return llvm::Type::getVoidTy(上下文); }
     inline llvm::Type* 获取指针类型(llvm::LLVMContext& 上下文, unsigned 地址空间 = 0) { return llvm::PointerType::get(上下文, 地址空间); }
 
     inline llvm::ConstantInt* 获取整数常量(llvm::LLVMContext& 上下文, uint64_t 值, unsigned 位宽 = 32) {
@@ -80,7 +80,7 @@ namespace llvm中文 {
     inline llvm::ConstantFP* 获取浮点常量(llvm::LLVMContext& 上下文, const llvm::APFloat& 值) {
         return llvm::ConstantFP::get(上下文, 值);
     }
-    inline llvm::Constant* 获取空指针(llvm::LLVMContext& 上下文) {
+    inline llvm::Constant* 获取空指针值(llvm::LLVMContext& 上下文) {
         return llvm::ConstantPointerNull::get(llvm::PointerType::get(上下文, 0));
     }
     inline llvm::Constant* 获取假值(llvm::LLVMContext& 上下文) {
@@ -105,7 +105,7 @@ namespace llvm中文 {
 // ============================================================================
 namespace llvm中文 {
     template<typename T, typename U>
-    inline T* 动态转换(U* 值) { return llvm::dyn_cast<T>(值); }
+    inline T* LLVM动态转换(U* 值) { return llvm::dyn_cast<T>(值); }
     template<typename T, typename U>
     inline bool 是类型(U* 值) { return llvm::isa<T>(值); }
     template<typename T, typename U>
@@ -140,8 +140,8 @@ namespace llvm中文 {
     inline llvm::Value* 创建加(llvm::IRBuilder<>& 构建器, llvm::Value* 左, llvm::Value* 右, const llvm::Twine& 名称 = "") { return 构建器.CreateAdd(左, 右, 名称); }
     inline llvm::Value* 创建减(llvm::IRBuilder<>& 构建器, llvm::Value* 左, llvm::Value* 右, const llvm::Twine& 名称 = "") { return 构建器.CreateSub(左, 右, 名称); }
     inline llvm::Value* 创建乘(llvm::IRBuilder<>& 构建器, llvm::Value* 左, llvm::Value* 右, const llvm::Twine& 名称 = "") { return 构建器.CreateMul(左, 右, 名称); }
-    inline llvm::Value* 创建有符号除(llvm::IRBuilder<>& 构建器, llvm::Value* 左, llvm::Value* 右, const llvm::Twine& 名称 = "") { return 构建器.CreateSDiv(左, 右, 名称); }
-    inline llvm::Value* 创建有符号取余(llvm::IRBuilder<>& 构建器, llvm::Value* 左, llvm::Value* 右, const llvm::Twine& 名称 = "") { return 构建器.CreateSRem(左, 右, 名称); }
+inline llvm::Value* 创建有符号除法(llvm::IRBuilder<>& 构建器, llvm::Value* 左, llvm::Value* 右, const llvm::Twine& 名称 = "") { return 构建器.CreateSDiv(左, 右, 名称); }
+inline llvm::Value* 创建有符号取余数(llvm::IRBuilder<>& 构建器, llvm::Value* 左, llvm::Value* 右, const llvm::Twine& 名称 = "") { return 构建器.CreateSRem(左, 右, 名称); }
     inline llvm::Value* 创建取负(llvm::IRBuilder<>& 构建器, llvm::Value* 值, const llvm::Twine& 名称 = "") { return 构建器.CreateNeg(值, 名称); }
     inline llvm::Value* 创建浮点取负(llvm::IRBuilder<>& 构建器, llvm::Value* 值, const llvm::Twine& 名称 = "") { return 构建器.CreateFNeg(值, 名称); }
     inline llvm::Value* 创建左移(llvm::IRBuilder<>& 构建器, llvm::Value* 左, llvm::Value* 右, const llvm::Twine& 名称 = "") { return 构建器.CreateShl(左, 右, 名称); }
@@ -173,8 +173,8 @@ namespace llvm中文 {
     inline llvm::Value* 创建整数比较大于(llvm::IRBuilder<>& 构建器, llvm::Value* 左, llvm::Value* 右, const llvm::Twine& 名称 = "") { return 构建器.CreateICmpSGT(左, 右, 名称); }
     inline llvm::Value* 创建整数比较小于等(llvm::IRBuilder<>& 构建器, llvm::Value* 左, llvm::Value* 右, const llvm::Twine& 名称 = "") { return 构建器.CreateICmpSLE(左, 右, 名称); }
     inline llvm::Value* 创建整数比较大于等(llvm::IRBuilder<>& 构建器, llvm::Value* 左, llvm::Value* 右, const llvm::Twine& 名称 = "") { return 构建器.CreateICmpSGE(左, 右, 名称); }
-    inline llvm::Value* 创建无符号整数比较大于(llvm::IRBuilder<>& 构建器, llvm::Value* 左, llvm::Value* 右, const llvm::Twine& 名称 = "") { return 构建器.CreateICmpUGT(左, 右, 名称); }
-    inline llvm::Value* 创建无符号整数比较小于(llvm::IRBuilder<>& 构建器, llvm::Value* 左, llvm::Value* 右, const llvm::Twine& 名称 = "") { return 构建器.CreateICmpULT(左, 右, 名称); }
+inline llvm::Value* 创建无符号整型比较大于(llvm::IRBuilder<>& 构建器, llvm::Value* 左, llvm::Value* 右, const llvm::Twine& 名称 = "") { return 构建器.CreateICmpUGT(左, 右, 名称); }
+inline llvm::Value* 创建无符号整型比较小于(llvm::IRBuilder<>& 构建器, llvm::Value* 左, llvm::Value* 右, const llvm::Twine& 名称 = "") { return 构建器.CreateICmpULT(左, 右, 名称); }
 
     // 浮点比较
     inline llvm::Value* 创建浮点比较等(llvm::IRBuilder<>& 构建器, llvm::Value* 左, llvm::Value* 右, const llvm::Twine& 名称 = "") { return 构建器.CreateFCmpOEQ(左, 右, 名称); }
@@ -187,8 +187,8 @@ namespace llvm中文 {
     // 控制流
     inline llvm::Instruction* 创建分支(llvm::IRBuilder<>& 构建器, llvm::BasicBlock* 目标) { return 构建器.CreateBr(目标); }
     inline llvm::Instruction* 创建条件分支(llvm::IRBuilder<>& 构建器, llvm::Value* 条件, llvm::BasicBlock* 真分支, llvm::BasicBlock* 假分支) { return 构建器.CreateCondBr(条件, 真分支, 假分支); }
-    inline llvm::SwitchInst* 创建开关(llvm::IRBuilder<>& 构建器, llvm::Value* 值, llvm::BasicBlock* 默认, unsigned 分支数 = 10) { return 构建器.CreateSwitch(值, 默认, 分支数); }
-    inline llvm::ReturnInst* 创建返回(llvm::IRBuilder<>& 构建器, llvm::Value* 值 = nullptr) { return 构建器.CreateRet(值); }
+    inline llvm::SwitchInst* 创建开关指令(llvm::IRBuilder<>& 构建器, llvm::Value* 值, llvm::BasicBlock* 默认分支, unsigned 分支数 = 10) { return 构建器.CreateSwitch(值, 默认分支, 分支数); }
+    inline llvm::ReturnInst* 创建返回指令(llvm::IRBuilder<>& 构建器, llvm::Value* 值 = nullptr) { return 构建器.CreateRet(值); }
     inline llvm::ReturnInst* 创建空返回(llvm::IRBuilder<>& 构建器) { return 构建器.CreateRetVoid(); }
     inline llvm::UnreachableInst* 创建不可达(llvm::IRBuilder<>& 构建器) { return 构建器.CreateUnreachable(); }
 
@@ -203,8 +203,8 @@ namespace llvm中文 {
     inline llvm::Value* 创建选择(llvm::IRBuilder<>& 构建器, llvm::Value* 条件, llvm::Value* 真值, llvm::Value* 假值, const llvm::Twine& 名称 = "") { return 构建器.CreateSelect(条件, 真值, 假值, 名称); }
 
     // 结构体操作
-    inline llvm::Value* 创建提取值(llvm::IRBuilder<>& 构建器, llvm::Value* 结构体, llvm::ArrayRef<unsigned> 索引, const llvm::Twine& 名称 = "") { return 构建器.CreateExtractValue(结构体, 索引, 名称); }
-    inline llvm::Value* 创建插入值(llvm::IRBuilder<>& 构建器, llvm::Value* 结构体, llvm::Value* 值, llvm::ArrayRef<unsigned> 索引, const llvm::Twine& 名称 = "") { return 构建器.CreateInsertValue(结构体, 值, 索引, 名称); }
+inline llvm::Value* 创建提取值(llvm::IRBuilder<>& 构建器, llvm::Value* 结构体值, llvm::ArrayRef<unsigned> 索引, const llvm::Twine& 名称 = "") { return 构建器.CreateExtractValue(结构体值, 索引, 名称); }
+inline llvm::Value* 创建插入值(llvm::IRBuilder<>& 构建器, llvm::Value* 结构体值, llvm::Value* 值, llvm::ArrayRef<unsigned> 索引, const llvm::Twine& 名称 = "") { return 构建器.CreateInsertValue(结构体值, 值, 索引, 名称); }
 
     // 异常处理
     inline llvm::LandingPadInst* 创建着陆垫(llvm::IRBuilder<>& 构建器, llvm::Type* 类型, unsigned 子句数量, const llvm::Twine& 名称 = "") { return 构建器.CreateLandingPad(类型, 子句数量, 名称); }
@@ -221,7 +221,7 @@ namespace llvm中文 {
     inline bool 是指针类型(const llvm::Type* 类型) { return 类型->isPointerTy(); }
     inline bool 是整型(const llvm::Type* 类型) { return 类型->isIntegerTy(); }
     inline bool 是双精度类型(const llvm::Type* 类型) { return 类型->isDoubleTy(); }
-    inline bool 是空类型(const llvm::Type* 类型) { return 类型->isVoidTy(); }
+    inline bool 是获取空类型(const llvm::Type* 类型) { return 类型->isVoidTy(); }
     inline bool 是结构体类型(const llvm::Type* 类型) { return 类型->isStructTy(); }
     inline bool 是数组类型(const llvm::Type* 类型) { return 类型->isArrayTy(); }
     inline bool 是浮点类型(const llvm::Type* 类型) { return 类型->isFloatTy(); }

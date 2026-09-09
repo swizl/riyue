@@ -12,9 +12,9 @@ std::vector<分配指令*> 返回值变量列表;
     llvm::InitializeNativeTargetAsmPrinter();
 }
 
-类型* 代码生成器::类型名到LLVM类型(const std::string& 类型名) {
+类型* 代码生成器::类型名到LLVM类型(const std::string& 类型名称) {
     // 递归解析类型别名（最多10层，防止循环）
-    std::string 解析后类型名 = 类型名;
+    std::string 解析后类型名 = 类型名称;
     for (int i = 0; i < 10; i++) {
         auto 别名It = 类型别名映射.find(解析后类型名);
         if (别名It == 类型别名映射.end()) break;
@@ -106,22 +106,22 @@ void 代码生成器::收集语句自由变量(const 语句& 语句, std::vector
             收集自由变量(*static_cast<const 打印语句&>(语句).值表达式, 自由变量, 局部变量);
             break;
         case 语句类型::返回语句: {
-            const auto& 返回 = static_cast<const 返回语句&>(语句);
-            if (返回.返回值) 收集自由变量(*返回.返回值, 自由变量, 局部变量);
+            const auto& 返回引用 = static_cast<const 返回语句&>(语句);
+            if (返回引用.返回值) 收集自由变量(*返回引用.返回值, 自由变量, 局部变量);
             break;
         }
         case 语句类型::表达式语句:
             收集自由变量(*static_cast<const 表达式语句&>(语句).值表达式, 自由变量, 局部变量);
             break;
         case 语句类型::如果语句: {
-            const auto& 如果 = static_cast<const 如果语句&>(语句);
-            收集自由变量(*如果.条件, 自由变量, 局部变量);
-            for (const auto& 子 : 如果.then块) 收集语句自由变量(*子, 自由变量, 局部变量);
-            for (const auto& 分支 : 如果.否则如果列表) {
+            const auto& 如果引用 = static_cast<const 如果语句&>(语句);
+            收集自由变量(*如果引用.条件, 自由变量, 局部变量);
+            for (const auto& 子 : 如果引用.then块) 收集语句自由变量(*子, 自由变量, 局部变量);
+            for (const auto& 分支 : 如果引用.否则如果列表) {
                 收集自由变量(*分支.条件, 自由变量, 局部变量);
                 for (const auto& 子 : 分支.主体) 收集语句自由变量(*子, 自由变量, 局部变量);
             }
-            for (const auto& 子 : 如果.else块) 收集语句自由变量(*子, 自由变量, 局部变量);
+            for (const auto& 子 : 如果引用.else块) 收集语句自由变量(*子, 自由变量, 局部变量);
             break;
         }
         case 语句类型::循环语句:
@@ -174,7 +174,7 @@ void 代码生成器::生成(const 程序& 程序) {
     for (const auto& 全局变量 : 程序.全局变量) {
         if (全局变量->初始值 && 全局变量->初始值->类型 == 表达式类型::字符串) {
             const auto& str = static_cast<const 字符串表达式&>(*全局变量->初始值);
-           常量* strConst = llvm::ConstantDataArray::getString(上下文, str.值);
+           LLVM常量* strConst = llvm::ConstantDataArray::getString(上下文, str.值);
             auto* 全局 = new 全局变量类型(*模块, strConst->getType(), true,
                 llvm::GlobalValue::InternalLinkage, strConst, ".str." + 全局变量->变量名);
             auto* 指针全局 = new 全局变量类型(*模块, 获取指针类型(上下文), false,
@@ -182,8 +182,8 @@ void 代码生成器::生成(const 程序& 程序) {
             符号表实例.声明全局变量(全局变量->变量名, 指针全局);
             符号表实例.设置指针变量(全局变量->变量名);
         } else {
-            常量整数* 初始值 = nullptr;
-            if (全局变量->初始值 && 全局变量->初始值->类型 == 表达式类型::整数) {
+            LLVM常量整数* 初始值 = nullptr;
+            if (全局变量->初始值 && 全局变量->初始值->类型 == 表达式类型::表达式_整数) {
                 初始值 = 获取整数常量(上下文, static_cast<const 整数表达式&>(*全局变量->初始值).值, 32);
             } else if (全局变量->初始值 && 全局变量->初始值->类型 == 表达式类型::布尔值) {
                 初始值 = 获取整数常量(上下文, static_cast<const 布尔表达式&>(*全局变量->初始值).值 ? 1 : 0, 32);
@@ -278,7 +278,7 @@ LLVM函数* 人格函数 = 获取模块函数(*模块, "__gxx_personality_seh0")
             llvm::BasicBlock* 入口块 = llvm::BasicBlock::Create(上下文, "entry", main函数);
             设置插入点(*构建器, 入口块);
             llvm中文::创建调用(*构建器, 入口函数, {});
-            创建返回(*构建器, 获取整数常量(上下文, 0, 32));
+            创建返回指令(*构建器, 获取整数常量(上下文, 0, 32));
         }
     }
 }
@@ -418,7 +418,7 @@ void 代码生成器::生成函数(const 函数& 函数) {
                 // 单返回值
                 类型* 返回LLVM类型 = 返回值分配列表[0]->getAllocatedType();
                 LLVM值* 返回值 = 创建加载(*构建器, 返回LLVM类型, 返回值分配列表[0], "返回值");
-                创建返回(*构建器, 返回值);
+                创建返回指令(*构建器, 返回值);
             } else if (返回值分配列表.size() > 1) {
                 // 多返回值：创建结构体
                 std::vector<类型*> 返回类型列表;
@@ -431,7 +431,7 @@ void 代码生成器::生成函数(const 函数& 函数) {
                     LLVM值* 值 = 创建加载(*构建器, 返回值分配列表[j]->getAllocatedType(), 返回值分配列表[j], "返回值" + std::to_string(j));
                     返回结构体 = 创建插入值(*构建器, 返回结构体, 值, {static_cast<unsigned>(j)});
                 }
-                创建返回(*构建器, 返回结构体);
+                创建返回指令(*构建器, 返回结构体);
             } else {
                 创建空返回(*构建器);
             }

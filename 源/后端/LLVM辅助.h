@@ -47,7 +47,7 @@ LLVM值* 查找结构体成员地址(llvm::IRBuilder<>& 构建器, llvm::LLVMCon
 template<typename 返回值列表类型>
 类型* 计算返回类型(llvm::LLVMContext& 上下文, const 返回值列表类型& 返回值列表,
     std::function<类型*(const std::string&)> 类型转换) {
-    类型* 返回LLVM类型 = 空类型(上下文);
+    类型* 返回LLVM类型 = 获取空类型(上下文);
     if (返回值列表.size() == 1 && !返回值列表[0].类型.empty() && 返回值列表[0].类型 != "空") {
         返回LLVM类型 = 类型转换(返回值列表[0].类型);
     } else if (返回值列表.size() > 1) {

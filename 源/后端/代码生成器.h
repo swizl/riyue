@@ -41,7 +41,7 @@ LLVM值* 创建调用无返回(LLVM函数* 函数, llvm::ArrayRef<LLVM值*> 参�
 LLVM值* 创建调用无返回(函数被调用者 函数, llvm::ArrayRef<LLVM值*> 参数);
 LLVM值* 创建间接调用(llvm::FunctionType* 类型, LLVM值* 指针, llvm::ArrayRef<LLVM值*> 参数, const std::string& 名称 = "");
 
-    类型* 类型名到LLVM类型(const std::string& 类型名);
+    类型* 类型名到LLVM类型(const std::string& 类型名称);
 
     void 收集自由变量(const 表达式& 表达式, std::vector<std::string>& 自由变量, const std::vector<std::string>& 局部变量);
     void 收集语句自由变量(const 语句& 语句, std::vector<std::string>& 自由变量, const std::vector<std::string>& 局部变量);

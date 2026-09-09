@@ -19,19 +19,19 @@ struct 闭包信息 {
 };
 
 enum class 变量类型种类 {
-    整数,
-    浮点,
+    类型_整数,
+    类型_浮点,
     字符串,
-    布尔,
+    类型_布尔,
     数组,
     映射,
-    结构体,
+    类型_结构体,
     函数,
-    空
+    类型_空
 };
 
 struct 变量类型信息 {
-    变量类型种类 种类 = 变量类型种类::整数;
+    变量类型种类 种类 = 变量类型种类::类型_整数;
     std::string 结构体名;   // 仅结构体使用
     int 数组大小 = 0;       // 仅数组使用
     bool 是常量 = false;
@@ -94,17 +94,17 @@ public:
     变量类型信息 获取变量类型(const std::string& 名称) const {
         auto it = 类型映射.find(名称);
         if (it != 类型映射.end()) return it->second;
-        return {变量类型种类::整数, "", 0, false};
+        return {变量类型种类::类型_整数, "", 0, false};
     }
 
     // 便捷接口（保持向后兼容）
     void 设置浮点变量(const std::string& 名称) {
-        设置变量类型(名称, {变量类型种类::浮点, "", 0, false});
+        设置变量类型(名称, {变量类型种类::类型_浮点, "", 0, false});
     }
 
     bool 是浮点变量(const std::string& 名称) const {
         auto it = 类型映射.find(名称);
-        return it != 类型映射.end() && it->second.种类 == 变量类型种类::浮点;
+        return it != 类型映射.end() && it->second.种类 == 变量类型种类::类型_浮点;
     }
 
     void 设置指针变量(const std::string& 名称) {
@@ -116,15 +116,15 @@ public:
         return it != 类型映射.end() && (it->second.种类 == 变量类型种类::字符串 || it->second.种类 == 变量类型种类::函数);
     }
 
-    void 设置结构体变量(const std::string& 名称, const std::string& 类型名) {
-        设置变量类型(名称, {变量类型种类::结构体, 类型名, 0, false});
+    void 设置结构体变量(const std::string& 名称, const std::string& 类型名称) {
+        设置变量类型(名称, {变量类型种类::类型_结构体, 类型名称, 0, false});
     }
 
     const std::string& 获取结构体类型(const std::string& 名称) const {
-        static std::string 空;
+        static std::string 空字符串;
         auto it = 类型映射.find(名称);
-        if (it != 类型映射.end() && it->second.种类 == 变量类型种类::结构体) return it->second.结构体名;
-        return 空;
+        if (it != 类型映射.end() && it->second.种类 == 变量类型种类::类型_结构体) return it->second.结构体名;
+        return 空字符串;
     }
 
     void 设置映射变量(const std::string& 名称) {
@@ -213,9 +213,9 @@ public:
         return 结果.empty() ? "空" : 结果;
     }
 
-    void 声明数组(const std::string& 名称, LLVM值* 值, int 大小) {
+    void 声明数组(const std::string& 名称, LLVM值* 值, int 数组大小) {
         声明变量(名称, 值);
-        设置变量类型(名称, {变量类型种类::数组, "", 大小, false});
+        设置变量类型(名称, {变量类型种类::数组, "", 数组大小, false});
     }
 
     int 获取数组大小(const std::string& 名称) const {

@@ -21,11 +21,11 @@ class 字节码编译器 {
     std::unordered_map<std::string, const 函数*> 函数定义映射;
     std::vector<std::unordered_map<std::string, uint8_t>> 作用域栈;
 
-    struct 循环上下文 {
+    struct 迭代上下文 {
         size_t 继续目标;
         std::vector<size_t> 中断跳转;
     };
-    std::vector<循环上下文> 循环栈;
+    std::vector<迭代上下文> 迭代栈;
 
     uint8_t 分配寄存器() {
         uint8_t reg = 下一个寄存器++;

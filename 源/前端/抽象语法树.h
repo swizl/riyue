@@ -6,7 +6,7 @@
 #include <string>
 #include <unordered_map>
 
-enum class 表达式类型 { 整数, 浮点数, 布尔值, 字符, 字符串, 变量, 二元运算, 一元运算, 函数调用, 数组字面量, 下标访问, 匿名函数, 结构体实例, 成员访问, 映射字面量, 枚举成员, 元组字面量, 元组访问, 分片访问, 自增自减, 管道调用, 条件表达式, 空值合并, 数组推导, 方法调用 };
+enum class 表达式类型 { 表达式_整数, 浮点数, 布尔值, 表达式_字符, 字符串, 变量, 二元运算, 一元运算, 函数调用, 数组字面量, 下标访问, 匿名函数, 结构体实例, 成员访问, 映射字面量, 枚举成员, 元组字面量, 元组访问, 分片访问, 自增自减, 管道调用, 条件表达式, 空值合并, 数组推导, 方法调用 };
 enum class 二元操作符 { 加法, 减法, 乘法, 除法, 取模, 等于, 不等于, 小于, 大于, 小于等于, 大于等于, 逻辑与, 逻辑或, 左移, 右移, 位与, 位或, 位异或 };
 enum class 一元操作符 { 逻辑非, 取负 };
 
@@ -21,7 +21,7 @@ protected:
 class 整数表达式 : public 表达式 {
 public:
     int 值;
-    整数表达式(int 值) : 表达式(表达式类型::整数), 值(值) {}
+    整数表达式(int 值) : 表达式(表达式类型::表达式_整数), 值(值) {}
 };
 
 class 浮点表达式 : public 表达式 {
@@ -45,7 +45,7 @@ public:
 class 字符表达式 : public 表达式 {
 public:
     int 值;
-    字符表达式(int 值) : 表达式(表达式类型::字符), 值(值) {}
+    字符表达式(int 值) : 表达式(表达式类型::表达式_字符), 值(值) {}
 };
 
 class 变量表达式 : public 表达式 {
@@ -167,8 +167,8 @@ class 枚举成员表达式 : public 表达式 {
 public:
     std::string 枚举名;
     std::string 成员名;
-    枚举成员表达式(std::string 枚举, std::string 成员)
-        : 表达式(表达式类型::枚举成员), 枚举名(std::move(枚举)), 成员名(std::move(成员)) {}
+    枚举成员表达式(std::string 枚举名称, std::string 成员)
+        : 表达式(表达式类型::枚举成员), 枚举名(std::move(枚举名称)), 成员名(std::move(成员)) {}
 };
 
 class 元组字面量表达式 : public 表达式 {
@@ -500,7 +500,7 @@ struct 返回值描述 {
 
 struct 类型约束 {
     std::string 类型参数名;   // 如 "T"
-    std::string 约束名;       // 如 "可比较"
+    std::string 限制名;       // 如 "可比较"
 };
 
 class 函数 {
@@ -512,10 +512,10 @@ public:
     std::vector<返回值描述> 返回值列表;
     std::vector<std::unique_ptr<语句>> 主体;
     bool 是否协程 = false;
-    函数(std::string 名, std::vector<std::string> 类型参数, std::vector<类型约束> 约束,
+    函数(std::string 名, std::vector<std::string> 类型参数, std::vector<类型约束> 类型约束列表,
          std::vector<函数参数> 参数, std::vector<返回值描述> 返回值,
          std::vector<std::unique_ptr<语句>> body, bool 协程 = false)
-        : 名称(std::move(名)), 类型参数列表(std::move(类型参数)), 约束列表(std::move(约束)),
+        : 名称(std::move(名)), 类型参数列表(std::move(类型参数)), 约束列表(std::move(类型约束列表)),
           参数列表(std::move(参数)), 返回值列表(std::move(返回值)),
           主体(std::move(body)), 是否协程(协程) {}
 };
