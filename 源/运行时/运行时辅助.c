@@ -13,6 +13,27 @@
 #include <shellapi.h>
 #endif
 
+// 用UTF-8路径打开文件（Windows下转换为宽字符路径，支持中文/非ASCII路径）
+static FILE* UTF8打开文件(const char* 路径, const char* 模式) {
+#ifdef _WIN32
+    int 宽长度 = MultiByteToWideChar(CP_UTF8, 0, 路径, -1, NULL, 0);
+    if (宽长度 <= 0) return NULL;
+    wchar_t* 宽路径 = (wchar_t*)malloc(宽长度 * sizeof(wchar_t));
+    if (!宽路径) return NULL;
+    MultiByteToWideChar(CP_UTF8, 0, 路径, -1, 宽路径, 宽长度);
+    int 模式宽长度 = MultiByteToWideChar(CP_UTF8, 0, 模式, -1, NULL, 0);
+    wchar_t* 宽模式 = (wchar_t*)malloc(模式宽长度 * sizeof(wchar_t));
+    if (!宽模式) { free(宽路径); return NULL; }
+    MultiByteToWideChar(CP_UTF8, 0, 模式, -1, 宽模式, 模式宽长度);
+    FILE* fp = _wfopen(宽路径, 宽模式);
+    free(宽路径);
+    free(宽模式);
+    return fp;
+#else
+    return fopen(路径, 模式);
+#endif
+}
+
 // 将UTF-8字符位置转换为字节位置
 int 字符位置到字节位置(const char* str, int char_pos) {
     int byte_pos = 0;
@@ -694,7 +715,7 @@ const char* 获取当前目录() {
 
 // 检查文件是否存在
 int 文件存在(const char* 路径) {
-    FILE* 文件 = fopen(路径, "r");
+    FILE* 文件 = UTF8打开文件(路径, "r");
     if (文件) {
         fclose(文件);
         return 1;
@@ -704,7 +725,7 @@ int 文件存在(const char* 路径) {
 
 // 获取文件大小
 long 获取文件大小(const char* 路径) {
-    FILE* 文件 = fopen(路径, "rb");
+    FILE* 文件 = UTF8打开文件(路径, "rb");
     if (!文件) return -1;
     fseek(文件, 0, SEEK_END);
     long 文件大小 = ftell(文件);
@@ -1050,10 +1071,10 @@ int 删除目录(const char* 路径) {
 
 // 复制文件
 int 复制文件(const char* 源路径, const char* 目标路径) {
-    FILE* 源文件 = fopen(源路径, "rb");
+    FILE* 源文件 = UTF8打开文件(源路径, "rb");
     if (!源文件) return -1;
     
-    FILE* 目标文件 = fopen(目标路径, "wb");
+    FILE* 目标文件 = UTF8打开文件(目标路径, "wb");
     if (!目标文件) {
         fclose(源文件);
         return -1;
@@ -1659,7 +1680,7 @@ const char* HTTP获取(const char* url) {
 
 // 文件写入
 int 写入文件(const char* 路径, const char* 内容) {
-    FILE* fp = fopen(路径, "w");
+    FILE* fp = UTF8打开文件(路径, "w");
     if (!fp) return -1;
     fwrite(内容, 1, strlen(内容), fp);
     fclose(fp);
@@ -1669,7 +1690,7 @@ int 写入文件(const char* 路径, const char* 内容) {
 // 文件读取
 const char* 读取文件(const char* 路径) {
     static char 读取缓冲区[65536];
-    FILE* fp = fopen(路径, "r");
+    FILE* fp = UTF8打开文件(路径, "r");
     if (!fp) {
         读取缓冲区[0] = '\0';
         return 读取缓冲区;
@@ -1707,7 +1728,7 @@ static int IO任务数量 = 0;
 #ifdef _WIN32
 static unsigned __stdcall 异步写入线程(void* arg) {
     IO任务* 任务 = (IO任务*)arg;
-    FILE* fp = fopen(任务->路径, "w");
+    FILE* fp = UTF8打开文件(任务->路径, "w");
     if (fp) {
         fwrite(任务->内容, 1, strlen(任务->内容), fp);
         fclose(fp);
@@ -1722,7 +1743,7 @@ static unsigned __stdcall 异步写入线程(void* arg) {
 static unsigned __stdcall 异步读取线程(void* arg) {
     IO任务* 任务 = (IO任务*)arg;
     static char 读取缓冲区[65536];
-    FILE* fp = fopen(任务->路径, "r");
+    FILE* fp = UTF8打开文件(任务->路径, "r");
     if (fp) {
         size_t 读取 = fread(读取缓冲区, 1, sizeof(读取缓冲区) - 1, fp);
         读取缓冲区[读取] = '\0';
@@ -1739,7 +1760,7 @@ static unsigned __stdcall 异步读取线程(void* arg) {
 #else
 static void* 异步写入线程(void* arg) {
     IO任务* 任务 = (IO任务*)arg;
-    FILE* fp = fopen(任务->路径, "w");
+    FILE* fp = UTF8打开文件(任务->路径, "w");
     if (fp) {
         fwrite(任务->内容, 1, strlen(任务->内容), fp);
         fclose(fp);
@@ -1754,7 +1775,7 @@ static void* 异步写入线程(void* arg) {
 static void* 异步读取线程(void* arg) {
     IO任务* 任务 = (IO任务*)arg;
     static char 读取缓冲区[65536];
-    FILE* fp = fopen(任务->路径, "r");
+    FILE* fp = UTF8打开文件(任务->路径, "r");
     if (fp) {
         size_t 读取 = fread(读取缓冲区, 1, sizeof(读取缓冲区) - 1, fp);
         读取缓冲区[读取] = '\0';

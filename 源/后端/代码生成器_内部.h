@@ -1,63 +1,63 @@
-#ifndef 代码生成器_内部_H
-#define 代码生成器_内部_H
+﻿#如果未定义 代码生成器_内部_H
+#定义 代码生成器_内部_H
 
-#include "代码生成器.h"
-#include "LLVM辅助.h"
-#include "C运行时声明.h"
-#include "../前端/公共.h"
-#include "llvm/IR/Verifier.h"
-#include "llvm/Support/FileSystem.h"
-#include "llvm/Support/CodeGen.h"
-#include "llvm/TargetParser/Host.h"
-#include "llvm/TargetParser/Triple.h"
-#include "llvm/MC/TargetRegistry.h"
-#include "llvm/Support/TargetSelect.h"
-#include "llvm/Target/TargetMachine.h"
-#include "llvm/IR/LegacyPassManager.h"
-#include "llvm/Transforms/Scalar.h"
-#include "llvm/Transforms/Utils.h"
-#include "llvm/Transforms/InstCombine/InstCombine.h"
-#include "llvm/Transforms/Scalar/GVN.h"
-#include <system_error>
-#include <cstdlib>
-#include <cstdio>
-#include <cstring>
-#include <fstream>
-#include <string>
+#包含 "代码生成器.h"
+#包含 "LLVM辅助.h"
+#包含 "C运行时声明.h"
+#包含 "../前端/公共.h"
+#包含 "llvm/IR/Verifier.h"
+#包含 "llvm/Support/FileSystem.h"
+#包含 "llvm/Support/CodeGen.h"
+#包含 "llvm/TargetParser/Host.h"
+#包含 "llvm/TargetParser/Triple.h"
+#包含 "llvm/MC/TargetRegistry.h"
+#包含 "llvm/Support/TargetSelect.h"
+#包含 "llvm/Target/TargetMachine.h"
+#包含 "llvm/IR/LegacyPassManager.h"
+#包含 "llvm/Transforms/Scalar.h"
+#包含 "llvm/Transforms/Utils.h"
+#包含 "llvm/Transforms/InstCombine/InstCombine.h"
+#包含 "llvm/Transforms/Scalar/GVN.h"
+#包含 <system_error>
+#包含 <cstdlib>
+#包含 <cstdio>
+#包含 <cstring>
+#包含 <fstream>
+#包含 <string>
 
-#include "../共享/LLVM中文.h"
+#包含 "../共享/LLVM中文.h"
 
-using namespace llvm中文;
+取用 名域 llvm中文;
 
-extern std::unordered_map<std::string, const 函数*> 全局函数定义映射;
+extern 哈希映射<文本, 恒常 函数*> 全局函数定义映射;
 extern LLVM值* 协程句柄;
-extern std::vector<分配指令*> 返回值变量列表;
+extern 数组向量<分配指令*> 返回值变量列表;
 
 // ============================================================================
 // 命令执行
 // ============================================================================
-#ifdef _WIN32
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#include <windows.h>
-#include <process.h>
-inline int 执行命令(const std::string& 命令) {
+#如果定义 _WIN32
+#如果未定义 WIN32_LEAN_AND_MEAN
+#定义 WIN32_LEAN_AND_MEAN
+#结束
+#包含 <windows.h>
+#包含 <process.h>
+内联 整数型 执行命令(恒常 文本& 命令) {
     // 用宽字符 API 调用，避免 UTF-8 中文命令在 ANSI 代码页下乱码。
-    int 宽长度 = MultiByteToWideChar(CP_UTF8, 0, 命令.c_str(), (int)命令.size(), nullptr, 0);
-    std::vector<wchar_t> 宽命令(宽长度 + 1, 0);
-    MultiByteToWideChar(CP_UTF8, 0, 命令.c_str(), (int)命令.size(), 宽命令.data(), 宽长度);
-    return _wsystem(宽命令.data());
+    整数型 宽长度 = MultiByteToWideChar(CP_UTF8, 0, 命令.c_str(), (整数型)命令.size(), 空针, 0);
+    数组向量<宽字符型> 宽命令(宽长度 + 1, 0);
+    MultiByteToWideChar(CP_UTF8, 0, 命令.c_str(), (整数型)命令.size(), 宽命令.data(), 宽长度);
+    归返 _wsystem(宽命令.data());
 }
-#elif defined(__CYGWIN__)
+#否则如果 已定义(__CYGWIN__)
 // Cygwin：走 POSIX 系统调用（sh），路径为 cygwin 风格。
-#include <unistd.h>
-inline int 执行命令(const std::string& 命令) { return std::system(命令.c_str()); }
-#else
+#包含 <unistd.h>
+内联 整数型 执行命令(恒常 文本& 命令) { 归返 std::system(命令.c_str()); }
+#否则
 // Linux / macOS / 其他 POSIX
-#include <unistd.h>
-inline int 执行命令(const std::string& 命令) { return std::system(命令.c_str()); }
-#endif
+#包含 <unistd.h>
+内联 整数型 执行命令(恒常 文本& 命令) { 归返 std::system(命令.c_str()); }
+#结束
 
 // ============================================================================
 // 运行时辅助对象路径
@@ -71,126 +71,126 @@ inline int 执行命令(const std::string& 命令) { return std::system(命令.c
 //   2) 将它拷贝到一个纯 ASCII 的临时文件；
 //   3) 返回该 ASCII 临时路径，链接命令行中不再出现任何中文路径。
 // ============================================================================
-namespace 运行时路径细节 {
+名域 运行时路径细节 {
 
-#ifdef _WIN32
-inline std::wstring 可执行文件目录宽() {
-    wchar_t 缓冲[MAX_PATH] = {0};
-    DWORD 长度 = GetModuleFileNameW(nullptr, 缓冲, MAX_PATH);
-    if (长度 == 0 || 长度 >= MAX_PATH) return L"";
-    for (DWORD i = 长度; i-- > 0; ) {
-        if (缓冲[i] == L'\\' || 缓冲[i] == L'/') { 缓冲[i] = 0; break; }
+#如果定义 _WIN32
+内联 std::wstring 可执行文件目录宽() {
+    宽字符型 缓冲[MAX_PATH] = {0};
+    DWORD 长度 = GetModuleFileNameW(空针, 缓冲, MAX_PATH);
+    如果 (长度 == 0 || 长度 >= MAX_PATH) 归返 L"";
+    循环 (DWORD i = 长度; i-- > 0; ) {
+        如果 (缓冲[i] == L'\\' || 缓冲[i] == L'/') { 缓冲[i] = 0; 中断; }
     }
-    return std::wstring(缓冲);
+    归返 std::wstring(缓冲);
 }
-inline bool 文件存在宽(const std::wstring& 路径) {
-    return GetFileAttributesW(路径.c_str()) != INVALID_FILE_ATTRIBUTES;
+内联 真假型 文件存在宽(恒常 std::wstring& 路径) {
+    归返 GetFileAttributesW(路径.c_str()) != INVALID_FILE_ATTRIBUTES;
 }
-inline std::wstring 临时文件宽() {
-    wchar_t 临时目录[MAX_PATH] = {0};
+内联 std::wstring 临时文件宽() {
+    宽字符型 临时目录[MAX_PATH] = {0};
     GetTempPathW(MAX_PATH, 临时目录);
-    wchar_t 名[MAX_PATH];
+    宽字符型 名[MAX_PATH];
     wsprintfW(名, L"%sriyue_rt_%lu.o", 临时目录, GetCurrentProcessId());
-    return std::wstring(名);
+    归返 std::wstring(名);
 }
-inline bool 拷贝文件宽(const std::wstring& 源, const std::wstring& 目标) {
-    return CopyFileW(源.c_str(), 目标.c_str(), FALSE) != 0;
+内联 真假型 拷贝文件宽(恒常 std::wstring& 源, 恒常 std::wstring& 目标) {
+    归返 CopyFileW(源.c_str(), 目标.c_str(), 假值) != 0;
 }
-inline std::string 宽转UTF8(const std::wstring& 宽) {
-    if (宽.empty()) return std::string();
-    int 需 = WideCharToMultiByte(CP_UTF8, 0, 宽.c_str(), (int)宽.size(), nullptr, 0, nullptr, nullptr);
-    std::string 窄(需, '\0');
-    WideCharToMultiByte(CP_UTF8, 0, 宽.c_str(), (int)宽.size(), 窄.data(), 需, nullptr, nullptr);
-    return 窄;
+内联 文本 宽转UTF8(恒常 std::wstring& 宽) {
+    如果 (宽.empty()) 归返 文本();
+    整数型 需 = WideCharToMultiByte(CP_UTF8, 0, 宽.c_str(), (整数型)宽.size(), 空针, 0, 空针, 空针);
+    文本 窄(需, '\0');
+    WideCharToMultiByte(CP_UTF8, 0, 宽.c_str(), (整数型)宽.size(), 窄.data(), 需, 空针, 空针);
+    归返 窄;
 }
-#else
-#include <climits>
-#include <sys/stat.h>
-#if defined(__APPLE__)
-#include <mach-o/dyld.h>
-#endif
-inline std::string 可执行文件目录() {
-    char 缓冲[PATH_MAX] = {0};
-    ssize_t n = -1;
-#if defined(__linux__) || defined(__CYGWIN__)
-    n = readlink("/proc/self/exe", 缓冲, sizeof(缓冲) - 1);
-#elif defined(__APPLE__)
-    uint32_t 元素数量 = sizeof(缓冲);
-    if (_NSGetExecutablePath(缓冲, &元素数量) == 0) n = (ssize_t)strlen(缓冲);
-#endif
-    if (n <= 0) return std::string();
-    std::string 路径(缓冲, n);
-    size_t 斜杠 = 路径.find_last_of('/');
-    return (斜杠 == std::string::npos) ? std::string() : 路径.substr(0, 斜杠);
+#否则
+#包含 <climits>
+#包含 <sys/stat.h>
+#如果 已定义(__APPLE__)
+#包含 <mach-o/dyld.h>
+#结束
+内联 文本 可执行文件目录() {
+    字符型 缓冲[PATH_MAX] = {0};
+    s大小类型 n = -1;
+#如果 已定义(__linux__) || defined(__CYGWIN__)
+    n = readlink("/proc/self/exe", 缓冲, 大小计算(缓冲) - 1);
+#否则如果 已定义(__APPLE__)
+    uint32_t 元素数量 = 大小计算(缓冲);
+    如果 (_NSGetExecutablePath(缓冲, &元素数量) == 0) n = (s大小类型)strlen(缓冲);
+#结束
+    如果 (n <= 0) 归返 文本();
+    文本 路径(缓冲, n);
+    大小类型 斜杠 = 路径.find_last_of('/');
+    归返 (斜杠 == 文本::npos) ? 文本() : 路径.substr(0, 斜杠);
 }
-inline bool 文件存在(const std::string& 路径) {
-    struct stat st;
-    return stat(路径.c_str(), &st) == 0 && S_ISREG(st.st_mode);
+内联 真假型 文件存在(恒常 文本& 路径) {
+    构型 stat st;
+    归返 stat(路径.c_str(), &st) == 0 && S_ISREG(st.st_mode);
 }
-inline std::string 临时文件() {
-    const char* 目录 = getenv("TMPDIR");
-    if (!目录 || !*目录) 目录 = "/tmp";
-    return std::string(目录) + "/riyue_rt_" + std::to_string(getpid()) + ".o";
+内联 文本 临时文件() {
+    恒常 字符型* 目录 = getenv("TMPDIR");
+    如果 (!目录 || !*目录) 目录 = "/tmp";
+    归返 文本(目录) + "/riyue_rt_" + 转为文本(getpid()) + ".o";
 }
-inline bool 拷贝文件(const std::string& 源, const std::string& 目标) {
-    std::ifstream 入(源, std::ios::binary);
-    if (!入) return false;
-    std::ofstream 出(目标, std::ios::binary);
-    if (!出) return false;
+内联 真假型 拷贝文件(恒常 文本& 源, 恒常 文本& 目标) {
+    文件输入流 入(源, 标准IO::binary);
+    如果 (!入) 归返 假值;
+    文件输出流 出(目标, 标准IO::binary);
+    如果 (!出) 归返 假值;
     出 << 入.rdbuf();
-    return (bool)出;
+    归返 (真假型)出;
 }
-#endif
+#结束
 
-} // namespace 运行时路径细节
+} // 名域 运行时路径细节
 
 // 返回链接用的运行时对象路径（保证为纯 ASCII 临时文件路径）。
 // 找不到真实 .o 时回退到源码树相对路径（开发场景）。
-inline std::string 运行时对象路径() {
-#ifdef _WIN32
-    using namespace 运行时路径细节;
+内联 文本 运行时对象路径() {
+#如果定义 _WIN32
+    取用 名域 运行时路径细节;
     std::wstring 目录 = 可执行文件目录宽();
     std::wstring 候选;
-    if (!目录.empty()) {
+    如果 (!目录.empty()) {
         std::wstring 旁 = 目录 + L"\\源\\运行时\\运行时辅助.o";
-        if (文件存在宽(旁)) 候选 = 旁;
+        如果 (文件存在宽(旁)) 候选 = 旁;
     }
-    if (候选.empty()) {
+    如果 (候选.empty()) {
         // 开发回退：当前工作目录下的源码树相对路径（宽字符构造）。
         std::wstring 相对 = L"源\\运行时\\运行时辅助.o";
-        if (文件存在宽(相对)) 候选 = 相对;
+        如果 (文件存在宽(相对)) 候选 = 相对;
     }
-    if (!候选.empty()) {
+    如果 (!候选.empty()) {
         std::wstring 临时 = 临时文件宽();
-        if (拷贝文件宽(候选, 临时)) return 宽转UTF8(临时);
+        如果 (拷贝文件宽(候选, 临时)) 归返 宽转UTF8(临时);
         // 拷贝失败则直接返回原始路径（可能链接失败，但保留原行为）
-        return 宽转UTF8(候选);
+        归返 宽转UTF8(候选);
     }
-    return "源/运行时/运行时辅助.o";
-#else
-    using namespace 运行时路径细节;
-    std::string 目录 = 可执行文件目录();
-    std::string 候选;
-    if (!目录.empty()) {
-        std::string 旁 = 目录 + "/源/运行时/运行时辅助.o";
-        if (文件存在(旁)) 候选 = 旁;
+    归返 "源/运行时/运行时辅助.o";
+#否则
+    取用 名域 运行时路径细节;
+    文本 目录 = 可执行文件目录();
+    文本 候选;
+    如果 (!目录.empty()) {
+        文本 旁 = 目录 + "/源/运行时/运行时辅助.o";
+        如果 (文件存在(旁)) 候选 = 旁;
     }
-    if (候选.empty() && 文件存在("源/运行时/运行时辅助.o"))
+    如果 (候选.empty() && 文件存在("源/运行时/运行时辅助.o"))
         候选 = "源/运行时/运行时辅助.o";
-    if (!候选.empty()) {
-        std::string 临时 = 临时文件();
-        if (拷贝文件(候选, 临时)) return 临时;
-        return 候选;
+    如果 (!候选.empty()) {
+        文本 临时 = 临时文件();
+        如果 (拷贝文件(候选, 临时)) 归返 临时;
+        归返 候选;
     }
-    return "源/运行时/运行时辅助.o";
-#endif
+    归返 "源/运行时/运行时辅助.o";
+#结束
 }
 
-inline bool 在列表中(const std::string& 名称, const std::vector<std::string>& 列表) {
-    for (const auto& 项 : 列表) {
-        if (项 == 名称) return true;
+内联 真假型 在列表中(恒常 文本& 名称, 恒常 数组向量<文本>& 列表) {
+    循环 (恒常 自动& 项 : 列表) {
+        如果 (项 == 名称) 归返 真值;
     }
-    return false;
+    归返 假值;
 }
 
-#endif
+#结束

@@ -1,12 +1,13 @@
-#ifndef 字节码_H
-#define 字节码_H
+﻿#如果未定义 字节码_H
+#定义 字节码_H
 
-#include <cstdint>
-#include <vector>
-#include <string>
-#include <unordered_map>
+#包含 <cstdint>
+#包含 <vector>
+#包含 <string>
+#包含 <unordered_map>
+#包含 "../共享/中文C++.h"
 
-enum class 操作码 : uint8_t {
+举型 类别 操作码 : uint8_t {
     停止 = 0,
     加载常量,    // A=寄存器组 B=常量索引
     加载变量,    // A=寄存器组 B=变量索引
@@ -123,7 +124,7 @@ enum class 操作码 : uint8_t {
     // 异常处理
     设置异常处理, // A=偏移到catch块
     清除异常处理,
-    抛出异常,     // A=异常值寄存器组
+    抛出异常码,     // A=异常值寄存器组
 
     // 协程操作
     创建协程,     // A=目标寄存器组 B=函数索引
@@ -140,45 +141,45 @@ enum class 操作码 : uint8_t {
     断点运算,       // 无操作数
 };
 
-std::string 操作码名称(操作码 码);
+文本 操作码名称(操作码 码);
 
-struct 协程状态;
-struct 通道结构;
+构型 协程状态;
+构型 通道结构;
 
 // 值类型：支持整数、浮点数、字符串、数组、闭包、结构体、动态数组、协程、通道
-struct 值 {
-    enum 类型 { 值类型_整数, 值类型_浮点数, 字符串, 数组, 闭包, 值类型_结构体, 动态数组, 协程, 通道 } 类型;
+构型 值 {
+    举型 类型 { 值类型_整数, 值类型_浮点数, 字符串, 数组, 闭包, 值类型_结构体, 动态数组, 协程, 通道 } 类型;
     union {
-        int32_t 整数值;
-        double 浮点值;
+        整数32型 整数值;
+        双精度型 浮点值;
     };
-    std::string 字符串值;
-    std::vector<int32_t> 数组值;
+    文本 字符串值;
+    数组向量<整数32型> 数组值;
     // 闭包数据
-    int 闭包函数索引 = -1;
-    std::vector<值> 捕获变量;
+    整数型 闭包函数索引 = -1;
+    数组向量<值> 捕获变量;
     // 结构体数据
-    std::unordered_map<std::string, 值> 成员映射;
+    哈希映射<文本, 值> 成员映射;
     // 动态数组数据
-    void* 动态数组指针 = nullptr;
+    虚空型* 动态数组指针 = 空针;
     // 协程数据
-    协程状态* 协程指针 = nullptr;
+    协程状态* 协程指针 = 空针;
     // 通道数据
-    通道结构* 通道指针 = nullptr;
+    通道结构* 通道指针 = 空针;
     // 引用计数
-    int* 引用计数 = nullptr;
+    整数型* 引用计数 = 空针;
 
     值() : 类型(值类型_整数), 整数值(0) {}
-    值(int32_t v) : 类型(值类型_整数), 整数值(v) {}
-    值(double v) : 类型(值类型_浮点数), 浮点值(v) {}
-    值(const std::string& s) : 类型(字符串), 字符串值(s) {}
+    值(整数32型 v) : 类型(值类型_整数), 整数值(v) {}
+    值(双精度型 v) : 类型(值类型_浮点数), 浮点值(v) {}
+    值(恒常 文本& s) : 类型(字符串), 字符串值(s) {}
 
     // 拷贝构造：增加引用计数
-    值(const 值& other) : 类型(other.类型), 整数值(other.整数值), 字符串值(other.字符串值),
+    值(恒常 值& other) : 类型(other.类型), 整数值(other.整数值), 字符串值(other.字符串值),
         数组值(other.数组值), 闭包函数索引(other.闭包函数索引), 捕获变量(other.捕获变量),
         成员映射(other.成员映射), 动态数组指针(other.动态数组指针),
         协程指针(other.协程指针), 通道指针(other.通道指针), 引用计数(other.引用计数) {
-        if (引用计数) (*引用计数)++;
+        如果 (引用计数) (*引用计数)++;
     }
 
     // 移动构造：转移所有权
@@ -186,15 +187,15 @@ struct 值 {
         数组值(std::move(other.数组值)), 闭包函数索引(other.闭包函数索引), 捕获变量(std::move(other.捕获变量)),
         成员映射(std::move(other.成员映射)), 动态数组指针(other.动态数组指针),
         协程指针(other.协程指针), 通道指针(other.通道指针), 引用计数(other.引用计数) {
-        other.动态数组指针 = nullptr;
-        other.协程指针 = nullptr;
-        other.通道指针 = nullptr;
-        other.引用计数 = nullptr;
+        other.动态数组指针 = 空针;
+        other.协程指针 = 空针;
+        other.通道指针 = 空针;
+        other.引用计数 = 空针;
     }
 
     // 拷贝赋值
-    值& operator=(const 值& other) {
-        if (this != &other) {
+    值& operator=(恒常 值& other) {
+        如果 (this != &other) {
             释放资源();
             类型 = other.类型;
             整数值 = other.整数值;
@@ -207,14 +208,14 @@ struct 值 {
             协程指针 = other.协程指针;
             通道指针 = other.通道指针;
             引用计数 = other.引用计数;
-            if (引用计数) (*引用计数)++;
+            如果 (引用计数) (*引用计数)++;
         }
         return *this;
     }
 
     // 移动赋值
     值& operator=(值&& other) noexcept {
-        if (this != &other) {
+        如果 (this != &other) {
             释放资源();
             类型 = other.类型;
             整数值 = other.整数值;
@@ -227,10 +228,10 @@ struct 值 {
             协程指针 = other.协程指针;
             通道指针 = other.通道指针;
             引用计数 = other.引用计数;
-            other.动态数组指针 = nullptr;
-            other.协程指针 = nullptr;
-            other.通道指针 = nullptr;
-            other.引用计数 = nullptr;
+            other.动态数组指针 = 空针;
+            other.协程指针 = 空针;
+            other.通道指针 = 空针;
+            other.引用计数 = 空针;
         }
         return *this;
     }
@@ -238,89 +239,89 @@ struct 值 {
     // 析构：减少引用计数，释放资源
     ~值() { 释放资源(); }
 
-private:
-    void 释放资源() {
-        if (引用计数 && --(*引用计数) == 0) {
+私有:
+    虚空型 释放资源() {
+        如果 (引用计数 && --(*引用计数) == 0) {
             delete 引用计数;
             // 动态数组由 C 运行时管理
             // 协程和通道由 VM 管理
         }
-        引用计数 = nullptr;
-        动态数组指针 = nullptr;
-        协程指针 = nullptr;
-        通道指针 = nullptr;
+        引用计数 = 空针;
+        动态数组指针 = 空针;
+        协程指针 = 空针;
+        通道指针 = 空针;
     }
 };
 
-struct 指令 {
+构型 指令 {
     操作码 码;
     uint8_t A = 0;
     uint8_t B = 0;
     uint8_t C = 0;
-    int16_t 偏移 = 0;
+    整数16型 偏移 = 0;
 
-    static 指令 三操作数(操作码 码, uint8_t a, uint8_t b, uint8_t c) {
+    静态 指令 三操作数(操作码 码, uint8_t a, uint8_t b, uint8_t c) {
         指令 i; i.码 = 码; i.A = a; i.B = b; i.C = c; return i;
     }
-    static 指令 双操作数(操作码 码, uint8_t a, uint8_t b) {
+    静态 指令 双操作数(操作码 码, uint8_t a, uint8_t b) {
         指令 i; i.码 = 码; i.A = a; i.B = b; return i;
     }
-    static 指令 单操作数(操作码 码, uint8_t a) {
+    静态 指令 单操作数(操作码 码, uint8_t a) {
         指令 i; i.码 = 码; i.A = a; return i;
     }
-    static 指令 零操作数(操作码 码) {
+    静态 指令 零操作数(操作码 码) {
         指令 i; i.码 = 码; return i;
     }
-    static 指令 跳转指令(操作码 码, int16_t 偏移) {
+    静态 指令 跳转指令(操作码 码, 整数16型 偏移) {
         指令 i; i.码 = 码; i.偏移 = 偏移; return i;
     }
-    static 指令 条件跳转(操作码 码, uint8_t a, int16_t 偏移) {
+    静态 指令 条件跳转(操作码 码, uint8_t a, 整数16型 偏移) {
         指令 i; i.码 = 码; i.A = a; i.偏移 = 偏移; return i;
     }
-    static 指令 调用指令(uint8_t 函数索引, uint8_t 参数数量, uint8_t 返回寄存器组) {
+    静态 指令 调用指令(uint8_t 函数索引, uint8_t 参数数量, uint8_t 返回寄存器组) {
         指令 i; i.码 = 操作码::调用; i.A = 函数索引; i.B = 参数数量; i.C = 返回寄存器组; return i;
     }
 };
 
-struct 函数信息 {
-    std::string 名称;
+构型 函数信息 {
+    文本 名称;
     uint8_t 参数数量 = 0;
     uint8_t 返回值数量 = 0;
     uint8_t 最大寄存器 = 0;
-    std::vector<指令> 指令列表;
+    数组向量<指令> 指令列表;
 };
 
-struct 字节码 {
-    std::vector<值> 常量池;
-    std::vector<函数信息> 函数表;
-    int 入口函数索引 = -1;
+构型 字节码 {
+    数组向量<值> 常量池;
+    数组向量<函数信息> 函数表;
+    整数型 入口函数索引 = -1;
 
-    int 添加常量(int32_t v) {
-        for (size_t i = 0; i < 常量池.size(); i++) {
-            if (常量池[i].类型 == 值::值类型_整数 && 常量池[i].整数值 == v) return static_cast<int>(i);
+    整数型 添加常量(整数32型 v) {
+        循环 (大小类型 i = 0; i < 常量池.size(); i++) {
+            如果 (常量池[i].类型 == 值::值类型_整数 && 常量池[i].整数值 == v) return 静态转换<整数型>(i);
         }
         常量池.push_back(值(v));
-        return static_cast<int>(常量池.size() - 1);
+        return 静态转换<整数型>(常量池.size() - 1);
     }
 
-    int 添加浮点常量(double v) {
-        for (size_t i = 0; i < 常量池.size(); i++) {
-            if (常量池[i].类型 == 值::值类型_浮点数 && 常量池[i].浮点值 == v) return static_cast<int>(i);
+    整数型 添加浮点常量(双精度型 v) {
+        循环 (大小类型 i = 0; i < 常量池.size(); i++) {
+            如果 (常量池[i].类型 == 值::值类型_浮点数 && 常量池[i].浮点值 == v) return 静态转换<整数型>(i);
         }
         常量池.push_back(值(v));
-        return static_cast<int>(常量池.size() - 1);
+        return 静态转换<整数型>(常量池.size() - 1);
     }
 
-    int 添加字符串常量(const std::string& v) {
-        for (size_t i = 0; i < 常量池.size(); i++) {
-            if (常量池[i].类型 == 值::字符串 && 常量池[i].字符串值 == v) return static_cast<int>(i);
+    整数型 添加字符串常量(恒常 文本& v) {
+        循环 (大小类型 i = 0; i < 常量池.size(); i++) {
+            如果 (常量池[i].类型 == 值::字符串 && 常量池[i].字符串值 == v) return 静态转换<整数型>(i);
         }
         常量池.push_back(值(v));
-        return static_cast<int>(常量池.size() - 1);
+        return 静态转换<整数型>(常量池.size() - 1);
     }
 
-    void 输出(const std::string& 文件名) const;
-    static 字节码 读取(const std::string& 文件名);
+    虚空型 输出(恒常 文本& 文件名) 恒常;
+    静态 字节码 读取(恒常 文本& 文件名);
 };
 
-#endif
+#结束

@@ -1,61 +1,61 @@
-#ifndef 代码生成器_H
-#define 代码生成器_H
+﻿#如果未定义 代码生成器_H
+#定义 代码生成器_H
 
-#include "../前端/抽象语法树.h"
-#include "符号表.h"
-#include "llvm/IR/Module.h"
-#include "llvm/IR/IRBuilder.h"
-#include "llvm/IR/LLVMContext.h"
-#include "llvm/ExecutionEngine/ExecutionEngine.h"
-#include "llvm/Support/TargetSelect.h"
-#include "../共享/LLVM中文.h"
-#include <stack>
-#include <unordered_map>
+#包含 "../前端/抽象语法树.h"
+#包含 "符号表.h"
+#包含 "llvm/IR/Module.h"
+#包含 "llvm/IR/IRBuilder.h"
+#包含 "llvm/IR/LLVMContext.h"
+#包含 "llvm/ExecutionEngine/ExecutionEngine.h"
+#包含 "llvm/Support/TargetSelect.h"
+#包含 "../共享/LLVM中文.h"
+#包含 <stack>
+#包含 <unordered_map>
 
-using namespace llvm中文;
+取用 名域 llvm中文;
 
-class 代码生成器 {
+类别 代码生成器 {
     llvm::LLVMContext& 上下文;
-    std::unique_ptr<llvm::Module> 模块;
-    std::unique_ptr<llvm::IRBuilder<>> 构建器;
+    独占指针<llvm::Module> 模块;
+    独占指针<llvm::IRBuilder<>> 构建器;
     符号表 符号表实例;
-    std::string 输出文件名;
-    std::stack<基本块*> 循环继续栈;
-    std::stack<基本块*> 循环退出栈;
-    全局变量类型* 文件表指针 = nullptr;
-    LLVM数组类型* 文件表类型 = nullptr;
-    全局变量类型* 文件句柄计数器 = nullptr;
-    std::unordered_map<std::string, LLVM结构体类型*> 结构体类型映射;
-    std::unordered_map<std::string, std::vector<std::string>> 结构体成员映射;
-    std::unordered_map<std::string, std::vector<std::string>> 结构体成员类型名映射;
-    std::unordered_map<std::string, LLVM结构体类型*> 元组类型映射;
-    std::unordered_map<std::string, std::string> 类型别名映射;
-    bool 启用优化 = false;
+    文本 输出文件名;
+    栈<基本块*> 循环继续栈;
+    栈<基本块*> 循环退出栈;
+    全局变量类型* 文件表指针 = 空针;
+    LLVM数组类型* 文件表类型 = 空针;
+    全局变量类型* 文件句柄计数器 = 空针;
+    哈希映射<文本, LLVM结构体类型*> 结构体类型映射;
+    哈希映射<文本, 数组向量<文本>> 结构体成员映射;
+    哈希映射<文本, 数组向量<文本>> 结构体成员类型名映射;
+    哈希映射<文本, LLVM结构体类型*> 元组类型映射;
+    哈希映射<文本, 文本> 类型别名映射;
+    真假型 启用优化 = 假值;
 
-    基本块* 当前异常处理块 = nullptr;
-    std::string 当前异常变量名;
+    基本块* 当前异常处理块 = 空针;
+    文本 当前异常变量名;
 
-LLVM值* 创建调用(LLVM函数* 函数, llvm::ArrayRef<LLVM值*> 参数, const std::string& 名称 = "");
-LLVM值* 创建调用(函数被调用者 函数, llvm::ArrayRef<LLVM值*> 参数, const std::string& 名称 = "");
+LLVM值* 创建调用(LLVM函数* 函数, llvm::ArrayRef<LLVM值*> 参数, 恒常 文本& 名称 = "");
+LLVM值* 创建调用(函数被调用者 函数, llvm::ArrayRef<LLVM值*> 参数, 恒常 文本& 名称 = "");
 LLVM值* 创建调用无返回(LLVM函数* 函数, llvm::ArrayRef<LLVM值*> 参数);
 LLVM值* 创建调用无返回(函数被调用者 函数, llvm::ArrayRef<LLVM值*> 参数);
-LLVM值* 创建间接调用(llvm::FunctionType* 类型, LLVM值* 指针, llvm::ArrayRef<LLVM值*> 参数, const std::string& 名称 = "");
+LLVM值* 创建间接调用(llvm::FunctionType* 类型, LLVM值* 指针, llvm::ArrayRef<LLVM值*> 参数, 恒常 文本& 名称 = "");
 
-    类型* 类型名到LLVM类型(const std::string& 类型名称);
+    类型* 类型名到LLVM类型(恒常 文本& 类型名称);
 
-    void 收集自由变量(const 表达式& 表达式, std::vector<std::string>& 自由变量, const std::vector<std::string>& 局部变量);
-    void 收集语句自由变量(const 语句& 语句, std::vector<std::string>& 自由变量, const std::vector<std::string>& 局部变量);
-    void 运行优化Pass();
+    虚空型 收集自由变量(恒常 表达式& 表达式, 数组向量<文本>& 自由变量, 恒常 数组向量<文本>& 局部变量);
+    虚空型 收集语句自由变量(恒常 语句& 语句, 数组向量<文本>& 自由变量, 恒常 数组向量<文本>& 局部变量);
+    虚空型 运行优化Pass();
 
-public:
-    代码生成器(llvm::LLVMContext& ctx, const std::string& 输出文件, bool 优化 = false);
+公开:
+    代码生成器(llvm::LLVMContext& ctx, 恒常 文本& 输出文件, 真假型 优化 = 假值);
 
-    void 生成(const 程序& 程序);
-    void 生成函数(const 函数& 函数);
-    void 生成语句(const 语句& 语句);
-    LLVM值* 生成表达式(const 表达式& 表达式);
+    虚空型 生成(恒常 程序& 程序);
+    虚空型 生成函数(恒常 函数& 函数);
+    虚空型 生成语句(恒常 语句& 语句);
+    LLVM值* 生成表达式(恒常 表达式& 表达式);
 
-    void 生成可执行文件();
+    虚空型 生成可执行文件();
 };
 
-#endif
+#结束

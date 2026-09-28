@@ -1,11 +1,7 @@
-# 链接到 D:\src\riyue\llvm\llvm-build 自定义构建的中文 LLVM 23 静态库。
-# 编译器本身用 MSYS2 系统 clang++（不启用中文 C 关键字，避免与源码中的中文
-# 枚举标识符冲突）；生成的 日月.exe 在编译用户 .心 程序时会调用中文 clang。
+# 编译器和 LLVM 库均使用 D:\src\riyue\llvm\llvm-build 自定义构建的中文 LLVM 23。
 # 可用 `make LLVM_CONFIG=/path/to/llvm-config CXX=...` 覆盖。
 LLVM_CONFIG ?= /d/src/riyue/llvm/llvm-build/bin/llvm-config
 
-# 编译器用 MSYS2 系统 clang（不带中文 C 关键字，避免与源码中文标识符冲突）；
-# 仅 LLVM 库/头文件用新构建的中文 LLVM 23。
 CXX = /d/src/riyue/llvm/llvm-build/bin/clang++
 CC = /d/src/riyue/llvm/llvm-build/bin/clang
 LLVM_CXXFLAGS := $(shell $(LLVM_CONFIG) --cxxflags | sed 's/-fno-exceptions//; s/-fno-rtti//')
@@ -30,7 +26,7 @@ ALL_OBJ = $(ALL_CXX_SRC:.cpp=.o) $(运行时_SRC:.c=.o)
 
 TARGET = 日月.exe
 
-.PHONY: all clean 测试 单元测试 运行
+.PHONY: all clean 测试 单元测试 运行 自举
 
 all: $(TARGET)
 
@@ -45,13 +41,13 @@ $(TARGET): $(ALL_OBJ)
 
 # 单元测试
 测试_SRC = 测试/单元测试.cpp
-测试_OBJ = $(测试_SRC:.cpp=.o) $(前端_SRC:.cpp=.o)
+测试_OBJ = $(测试_SRC:.cpp=.o) $(前端_SRC:.cpp=.o) $(后端_SRC:.cpp=.o)
 
 测试/%.o: 测试/%.cpp
 	$(CXX) $(CXXFLAGS) -I源 -c $< -o $@
 
 单元测试.exe: $(测试_OBJ)
-	$(CXX) $(CXXFLAGS) -I源 -o $@ $^
+	$(CXX) $(CXXFLAGS) -I源 -o $@ $^ $(LDFLAGS)
 
 单元测试: 单元测试.exe
 	./单元测试.exe
@@ -63,6 +59,25 @@ $(TARGET): $(ALL_OBJ)
 运行: $(TARGET)
 	./$(TARGET) --调试 示例/简单测试.心 构建/简单测试.exe
 	./构建/简单测试.exe
+
+# 自举 C 不动点验证：
+# 日月.exe 编译 自举/compiler.心 → stage1.exe（Stage1 编译器）；
+# stage1 编译 compiler.心 → c1.c；clang 编译 c1.c+运行时辅助.c → stage2.exe（Stage2 编译器）；
+# stage2 编译 compiler.心 → c2.c；c1.c 与 c2.c 必须完全一致（不动点/自举闭环成立）。
+# 注意：输出路径用 ASCII（stage/），中文目录会让 MSYS2 ld 失败；
+#       clang 需 -Wno-implicit-function-declaration（中文标识符 typo-correction 误报）。
+自举: $(TARGET)
+	./$(TARGET) 自举/compiler.心 stage/stage1.exe
+	cp 自举/compiler.心 stage/compiler_copy.txt
+	./stage/stage1.exe stage/compiler_copy.txt stage/c1.c
+	$(CC) -O0 -finput-charset=UTF-8 -fexec-charset=UTF-8 \
+	      -Wno-implicit-function-declaration -Wno-parentheses-equality \
+	      -c stage/c1.c -o stage/c1.o
+	$(CC) -O0 -finput-charset=UTF-8 -fexec-charset=UTF-8 \
+	      -c 源/运行时/运行时辅助.c -o stage/rt.o
+	$(CC) stage/c1.o stage/rt.o -o stage/stage2.exe -lws2_32 -lm
+	./stage/stage2.exe stage/compiler_copy.txt stage/c2.c
+	diff stage/c1.c stage/c2.c
 
 clean:
 	rm -f $(ALL_OBJ) $(测试_OBJ) $(TARGET) 单元测试.exe out_t.* out2.*

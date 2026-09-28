@@ -1,91 +1,91 @@
-#ifndef 字节码编译器_H
-#define 字节码编译器_H
+﻿#如果未定义 字节码编译器_H
+#定义 字节码编译器_H
 
-#include "../前端/抽象语法树.h"
-#include "字节码.h"
-#include <unordered_map>
-#include <stack>
+#包含 "../前端/抽象语法树.h"
+#包含 "字节码.h"
+#包含 <unordered_map>
+#包含 <stack>
 
-class 字节码编译器 {
+类别 字节码编译器 {
     字节码 结果;
-    int 当前函数索引 = -1;
-    函数信息* 当前函数 = nullptr;
+    整数型 当前函数索引 = -1;
+    函数信息* 当前函数 = 空针;
     uint8_t 下一个寄存器 = 0;
     uint8_t 最大寄存器 = 0;
-    std::unordered_map<std::string, uint8_t> 变量映射;
-    std::unordered_map<std::string, bool> 浮点变量映射;
-    std::unordered_map<std::string, bool> 字符串变量映射;
-    std::unordered_map<std::string, bool> 结构体变量映射;
-    std::unordered_map<std::string, std::unordered_map<std::string, int>> 结构体定义映射;
-    std::unordered_map<std::string, bool> 闭包变量映射;
-    std::unordered_map<std::string, const 函数*> 函数定义映射;
-    std::vector<std::unordered_map<std::string, uint8_t>> 作用域栈;
+    哈希映射<文本, uint8_t> 变量映射;
+    哈希映射<文本, 真假型> 浮点变量映射;
+    哈希映射<文本, 真假型> 字符串变量映射;
+    哈希映射<文本, 真假型> 结构体变量映射;
+    哈希映射<文本, 哈希映射<文本, 整数型>> 结构体定义映射;
+    哈希映射<文本, 真假型> 闭包变量映射;
+    哈希映射<文本, 恒常 函数*> 函数定义映射;
+    数组向量<哈希映射<文本, uint8_t>> 作用域栈;
 
-    struct 迭代上下文 {
-        size_t 继续目标;
-        std::vector<size_t> 中断跳转;
+    构型 迭代上下文 {
+        大小类型 继续目标;
+        数组向量<大小类型> 中断跳转;
     };
-    std::vector<迭代上下文> 迭代栈;
+    数组向量<迭代上下文> 迭代栈;
 
     uint8_t 分配寄存器() {
         uint8_t reg = 下一个寄存器++;
-        if (下一个寄存器 > 最大寄存器) 最大寄存器 = 下一个寄存器;
+        如果 (下一个寄存器 > 最大寄存器) 最大寄存器 = 下一个寄存器;
         return reg;
     }
 
-    void 释放寄存器() {
-        if (下一个寄存器 > 0) 下一个寄存器--;
+    虚空型 释放寄存器() {
+        如果 (下一个寄存器 > 0) 下一个寄存器--;
     }
 
-    void 进入作用域() { 作用域栈.push_back({}); }
-    void 退出作用域() {
-        if (!作用域栈.empty()) {
-            for (const auto& [名, reg] : 作用域栈.back()) {
+    虚空型 进入作用域() { 作用域栈.push_back({}); }
+    虚空型 退出作用域() {
+        如果 (!作用域栈.empty()) {
+            循环 (恒常 auto& [名, reg] : 作用域栈.back()) {
                 变量映射.erase(名);
             }
             作用域栈.pop_back();
         }
     }
 
-    uint8_t 声明变量(const std::string& 名称) {
+    uint8_t 声明变量(恒常 文本& 名称) {
         uint8_t reg = 分配寄存器();
         变量映射[名称] = reg;
-        if (!作用域栈.empty()) 作用域栈.back()[名称] = reg;
+        如果 (!作用域栈.empty()) 作用域栈.back()[名称] = reg;
         return reg;
     }
 
-    void 设置浮点变量(const std::string& 名称) {
-        浮点变量映射[名称] = true;
+    虚空型 设置浮点变量(恒常 文本& 名称) {
+        浮点变量映射[名称] = 真值;
     }
 
-    void 设置字符串变量(const std::string& 名称) {
-        字符串变量映射[名称] = true;
+    虚空型 设置字符串变量(恒常 文本& 名称) {
+        字符串变量映射[名称] = 真值;
     }
 
-    bool 是浮点变量(const std::string& 名称) const {
+    真假型 是浮点变量(恒常 文本& 名称) 恒常 {
         return 浮点变量映射.count(名称) > 0 && 浮点变量映射.at(名称);
     }
 
-    bool 是字符串变量(const std::string& 名称) const {
+    真假型 是字符串变量(恒常 文本& 名称) 恒常 {
         return 字符串变量映射.count(名称) > 0 && 字符串变量映射.at(名称);
     }
 
-    int 查找变量(const std::string& 名称) {
+    整数型 查找变量(恒常 文本& 名称) {
         auto it = 变量映射.find(名称);
         return (it != 变量映射.end()) ? it->second : -1;
     }
 
-    void 发射(指令 i) { 当前函数->指令列表.push_back(i); }
-    size_t 当前位置() { return 当前函数->指令列表.size(); }
-    void 回填跳转(size_t 位置, int16_t 偏移) { 当前函数->指令列表[位置].偏移 = 偏移; }
+    虚空型 发射(指令 i) { 当前函数->指令列表.push_back(i); }
+    大小类型 当前位置() { return 当前函数->指令列表.size(); }
+    虚空型 回填跳转(大小类型 位置, 整数16型 偏移) { 当前函数->指令列表[位置].偏移 = 偏移; }
 
-    void 编译表达式(const 表达式& 表达式, uint8_t 目标寄存器);
-    void 编译语句(const 语句& 语句);
-    void 编译代码块(const std::vector<std::unique_ptr<语句>>& 语句列表);
-    int 编译匿名函数(const 匿名函数表达式& 匿名, const std::vector<std::string>& 捕获变量名);
+    虚空型 编译表达式(恒常 表达式& 表达式, uint8_t 目标寄存器);
+    虚空型 编译语句(恒常 语句& 语句);
+    虚空型 编译代码块(恒常 数组向量<独占指针<语句>>& 语句列表);
+    整数型 编译匿名函数(恒常 匿名函数表达式& 匿名, 恒常 数组向量<文本>& 捕获变量名);
 
-public:
-    字节码 编译(const 程序& 程序);
+公开:
+    字节码 编译(恒常 程序& 程序);
 };
 
-#endif
+#结束

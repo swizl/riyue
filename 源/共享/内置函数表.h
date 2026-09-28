@@ -1,16 +1,16 @@
-#ifndef 内置函数表_H
-#define 内置函数表_H
+﻿#如果未定义 内置函数表_H
+#定义 内置函数表_H
 
-#include "llvm/IR/IRBuilder.h"
-#include "llvm/IR/Module.h"
-#include "llvm/IR/LLVMContext.h"
-#include "LLVM中文.h"
-#include <string>
-#include <vector>
+#包含 "llvm/IR/IRBuilder.h"
+#包含 "llvm/IR/Module.h"
+#包含 "llvm/IR/LLVMContext.h"
+#包含 "LLVM中文.h"
+#包含 <string>
+#包含 <vector>
 
-using namespace llvm中文;
+取用 名域 llvm中文;
 
-enum class 内置参数类型 {
+举型 类别 内置参数类型 {
     参数空,
     参数整数,
     参数浮点,
@@ -19,15 +19,15 @@ enum class 内置参数类型 {
     任意
 };
 
-struct 内置函数描述 {
-    const char* 名称;
-    const char* C函数名;
-    int 参数数量;
+构型 内置函数描述 {
+    恒常 字符型* 名称;
+    恒常 字符型* C函数名;
+    整数型 参数数量;
     内置参数类型 返回类型;
     内置参数类型 参数类型[4];
 };
 
-static const 内置函数描述 内置函数列表[] = {
+静态 恒常 内置函数描述 内置函数列表[] = {
     // 无参数函数
     {"获取时间戳", "获取时间戳", 0, 内置参数类型::参数整数, {}},
     {"获取年份", "获取年份", 0, 内置参数类型::参数整数, {}},
@@ -138,41 +138,41 @@ static const 内置函数描述 内置函数列表[] = {
     {"释放动态数组", "释放动态数组", 1, 内置参数类型::参数空, {内置参数类型::字符串}},
 };
 
-inline 类型* 获取LLVM类型(llvm::LLVMContext& 上下文, 内置参数类型 类型) {
-    switch (类型) {
-        case 内置参数类型::参数整数: return 整型32(上下文);
-        case 内置参数类型::参数浮点: return 双精度浮点(上下文);
-        case 内置参数类型::字符串: return 获取指针类型(上下文);
-        case 内置参数类型::参数布尔: return 整型1(上下文);
-        default: return 获取空类型(上下文);
+内联 类型* 获取LLVM类型(llvm::LLVMContext& 上下文, 内置参数类型 类型) {
+    切换 (类型) {
+        情况 内置参数类型::参数整数: return 整型32(上下文);
+        情况 内置参数类型::参数浮点: return 双精度浮点(上下文);
+        情况 内置参数类型::字符串: return 获取指针类型(上下文);
+        情况 内置参数类型::参数布尔: return 整型1(上下文);
+        默认: return 获取空类型(上下文);
     }
 }
 
-inline bool 尝试调用内置函数(llvm::IRBuilder<>& 构建器, llvm::LLVMContext& 上下文, llvm::Module& 模块,
-    const std::string& 函数名, const std::vector<LLVM值*>& 参数值, LLVM值*& 结果) {
-    for (const auto& 描述 : 内置函数列表) {
-        if (函数名 == 描述.名称 && 参数值.size() == static_cast<size_t>(描述.参数数量)) {
-            std::vector<LLVM值*> 最终参数 = 参数值;
-            if (描述.返回类型 == 内置参数类型::参数浮点) {
-                for (size_t i = 0; i < 最终参数.size(); i++) {
-                    if (描述.参数类型[i] == 内置参数类型::参数浮点 && 最终参数[i]->getType()->isIntegerTy()) {
+内联 真假型 尝试调用内置函数(llvm::IRBuilder<>& 构建器, llvm::LLVMContext& 上下文, llvm::Module& 模块,
+    恒常 文本& 函数名, 恒常 数组向量<LLVM值*>& 参数值, LLVM值*& 结果) {
+    循环 (恒常 自动& 描述 : 内置函数列表) {
+        如果 (函数名 == 描述.名称 && 参数值.size() == 静态转换<大小类型>(描述.参数数量)) {
+            数组向量<LLVM值*> 最终参数 = 参数值;
+            如果 (描述.返回类型 == 内置参数类型::参数浮点) {
+                循环 (大小类型 i = 0; i < 最终参数.size(); i++) {
+                    如果 (描述.参数类型[i] == 内置参数类型::参数浮点 && 最终参数[i]->getType()->isIntegerTy()) {
                         最终参数[i] = 创建整数转浮点(构建器, 最终参数[i], 双精度浮点(上下文));
                     }
                 }
             }
 
             类型* 返回类型 = 获取LLVM类型(上下文, 描述.返回类型);
-            std::vector<类型*> 参数类型;
-            for (int i = 0; i < 描述.参数数量; i++) {
+            数组向量<类型*> 参数类型;
+            循环 (整数型 i = 0; i < 描述.参数数量; i++) {
                 参数类型.push_back(获取LLVM类型(上下文, 描述.参数类型[i]));
             }
-            llvm::FunctionType* 函数类型 = llvm::FunctionType::get(返回类型, 参数类型, false);
+            llvm::FunctionType* 函数类型 = llvm::FunctionType::get(返回类型, 参数类型, 假值);
             获取或插入函数(模块, 描述.C函数名, 函数类型);
             结果 = 创建调用(构建器, 获取模块函数(模块, 描述.C函数名), 最终参数);
-            return true;
+            return 真值;
         }
     }
-    return false;
+    return 假值;
 }
 
-#endif
+#结束

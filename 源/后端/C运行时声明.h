@@ -1,33 +1,33 @@
-#ifndef C运行时声明_H
-#define C运行时声明_H
+﻿#如果未定义 C运行时声明_H
+#定义 C运行时声明_H
 
-#include "llvm/IR/IRBuilder.h"
-#include "llvm/IR/Module.h"
-#include "llvm/IR/LLVMContext.h"
-#include "../共享/LLVM中文.h"
+#包含 "llvm/IR/IRBuilder.h"
+#包含 "llvm/IR/Module.h"
+#包含 "llvm/IR/LLVMContext.h"
+#包含 "../共享/LLVM中文.h"
 
-using namespace llvm中文;
+取用 名域 llvm中文;
 
-struct C运行时函数 {
-    static void 预声明全部(llvm::LLVMContext& 上下文, llvm::Module& 模块) {
+构型 C运行时函数 {
+    静态 虚空型 预声明全部(llvm::LLVMContext& 上下文, llvm::Module& 模块) {
         类型* i8Ptr = 获取指针类型(上下文);
         类型* i32 = 整型32(上下文);
         类型* i64 = 整型64(上下文);
         类型* f64 = 双精度浮点(上下文);
 
-        auto 声明 = [&](const std::string& 名称, 类型* 返回类型, std::vector<类型*> 参数类型, bool 变长 = false) {
-            函数类型* 类型 = 函数类型::get(返回类型, 参数类型, 变长);
+        自动 声明 = [&](恒常 文本& 名称, 类型* 返回类型, 数组向量<类型*> 参数类型, 真假型 变长 = 假值) {
+            函数类型* 类型 = 获取函数类型(返回类型, 参数类型, 变长);
             获取或插入函数(模块, 名称, 类型);
         };
 
         声明("malloc", i8Ptr, {i64});
         声明("strlen", i64, {i8Ptr});
-        声明("sprintf", i32, {i8Ptr, i8Ptr}, true);
-        声明("printf", i32, {i8Ptr}, true);
+        声明("sprintf", i32, {i8Ptr, i8Ptr}, 真值);
+        声明("printf", i32, {i8Ptr}, 真值);
         声明("fopen", i8Ptr, {i8Ptr, i8Ptr});
         声明("fclose", i32, {i8Ptr});
-        声明("fprintf", i32, {i8Ptr, i8Ptr}, true);
-        声明("fscanf", i32, {i8Ptr, i8Ptr}, true);
+        声明("fprintf", i32, {i8Ptr, i8Ptr}, 真值);
+        声明("fscanf", i32, {i8Ptr, i8Ptr}, 真值);
         声明("fgets", i8Ptr, {i8Ptr, i32, i8Ptr});
         声明("strcmp", i32, {i8Ptr, i8Ptr});
         声明("strcpy", i8Ptr, {i8Ptr, i8Ptr});
@@ -45,9 +45,9 @@ struct C运行时函数 {
         声明("log", f64, {f64});
         声明("log10", f64, {f64});
 
-        声明("__gxx_personality_seh0", i32, {}, true);
+        声明("__gxx_personality_seh0", i32, {}, 真值);
         声明("__cxa_allocate_exception", i8Ptr, {i64});
-        声明("__cxa_throw", 获取空类型(上下文), {i8Ptr, i8Ptr, i8Ptr}, false);
+        声明("__cxa_throw", 获取空类型(上下文), {i8Ptr, i8Ptr, i8Ptr}, 假值);
         声明("__cxa_begin_catch", i8Ptr, {i8Ptr});
         声明("__cxa_end_catch", 获取空类型(上下文), {});
         声明("_Unwind_Resume", 获取空类型(上下文), {i8Ptr});
@@ -94,4 +94,4 @@ struct C运行时函数 {
     }
 };
 
-#endif
+#结束

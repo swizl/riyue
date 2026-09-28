@@ -26,3 +26,19 @@ test_full.ming
 
 # 包管理器产物
 packages/
+
+# 自举构建产物
+stage/
+
+# 调试/临时散件
+*.log
+*.txt
+probe_*.心
+test_pp*.c
+test_simple.c
+list_fails.ps1
+.mimocode/
+build_test.log
+build_llvm23.log
+test23_err.log
+test23_result.log

@@ -1,532 +1,533 @@
-#ifndef 语法树_H
-#define 语法树_H
+﻿#如果未定义 语法树_H
+#定义 语法树_H
 
-#include <memory>
-#include <vector>
-#include <string>
-#include <unordered_map>
+#包含 <memory>
+#包含 <vector>
+#包含 <string>
+#包含 <unordered_map>
+#包含 "../共享/中文C++.h"
 
-enum class 表达式类型 { 表达式_整数, 浮点数, 布尔值, 表达式_字符, 字符串, 变量, 二元运算, 一元运算, 函数调用, 数组字面量, 下标访问, 匿名函数, 结构体实例, 成员访问, 映射字面量, 枚举成员, 元组字面量, 元组访问, 分片访问, 自增自减, 管道调用, 条件表达式, 空值合并, 数组推导, 方法调用 };
-enum class 二元操作符 { 加法, 减法, 乘法, 除法, 取模, 等于, 不等于, 小于, 大于, 小于等于, 大于等于, 逻辑与, 逻辑或, 左移, 右移, 位与, 位或, 位异或 };
-enum class 一元操作符 { 逻辑非, 取负 };
+举型 类别 表达式类型 { 表达式_整数, 浮点数, 布尔值, 表达式_字符, 字符串, 变量, 二元运算, 一元运算, 函数调用, 数组字面量, 下标访问, 匿名函数, 结构体实例, 成员访问, 映射字面量, 枚举成员, 元组字面量, 元组访问, 分片访问, 自增自减, 管道调用, 条件表达式, 空值合并, 数组推导, 方法调用 };
+举型 类别 二元操作符 { 加法, 减法, 乘法, 除法, 取模, 等于, 不等于, 小于, 大于, 小于等于, 大于等于, 逻辑与, 逻辑或, 左移, 右移, 位与, 位或, 位异或 };
+举型 类别 一元操作符 { 逻辑非, 取负 };
 
-class 表达式 {
-public:
+类别 表达式 {
+公开:
     表达式类型 类型;
     virtual ~表达式() = default;
-protected:
+保护:
     表达式(表达式类型 类型) : 类型(类型) {}
 };
 
-class 整数表达式 : public 表达式 {
-public:
-    int 值;
-    整数表达式(int 值) : 表达式(表达式类型::表达式_整数), 值(值) {}
+类别 整数表达式 : public 表达式 {
+公开:
+    整数型 值;
+    整数表达式(整数型 值) : 表达式(表达式类型::表达式_整数), 值(值) {}
 };
 
-class 浮点表达式 : public 表达式 {
-public:
-    double 值;
-    浮点表达式(double 值) : 表达式(表达式类型::浮点数), 值(值) {}
+类别 浮点表达式 : public 表达式 {
+公开:
+    双精度型 值;
+    浮点表达式(双精度型 值) : 表达式(表达式类型::浮点数), 值(值) {}
 };
 
-class 布尔表达式 : public 表达式 {
-public:
-    bool 值;
-    布尔表达式(bool 值) : 表达式(表达式类型::布尔值), 值(值) {}
+类别 布尔表达式 : public 表达式 {
+公开:
+    真假型 值;
+    布尔表达式(真假型 值) : 表达式(表达式类型::布尔值), 值(值) {}
 };
 
-class 字符串表达式 : public 表达式 {
-public:
-    std::string 值;
-    字符串表达式(std::string 值) : 表达式(表达式类型::字符串), 值(std::move(值)) {}
+类别 字符串表达式 : public 表达式 {
+公开:
+    文本 值;
+    字符串表达式(文本 值) : 表达式(表达式类型::字符串), 值(移动(值)) {}
 };
 
-class 字符表达式 : public 表达式 {
-public:
-    int 值;
-    字符表达式(int 值) : 表达式(表达式类型::表达式_字符), 值(值) {}
+类别 字符表达式 : public 表达式 {
+公开:
+    整数型 值;
+    字符表达式(整数型 值) : 表达式(表达式类型::表达式_字符), 值(值) {}
 };
 
-class 变量表达式 : public 表达式 {
-public:
-    std::string 名称;
-    变量表达式(std::string 名称) : 表达式(表达式类型::变量), 名称(std::move(名称)) {}
+类别 变量表达式 : public 表达式 {
+公开:
+    文本 名称;
+    变量表达式(文本 名称) : 表达式(表达式类型::变量), 名称(移动(名称)) {}
 };
 
-class 二元运算表达式 : public 表达式 {
-public:
+类别 二元运算表达式 : public 表达式 {
+公开:
     二元操作符 操作符;
-    std::unique_ptr<表达式> 左操作数;
-    std::unique_ptr<表达式> 右操作数;
-    二元运算表达式(二元操作符 op, std::unique_ptr<表达式> 左, std::unique_ptr<表达式> 右)
-        : 表达式(表达式类型::二元运算), 操作符(op), 左操作数(std::move(左)), 右操作数(std::move(右)) {}
+    独占指针<表达式> 左操作数;
+    独占指针<表达式> 右操作数;
+    二元运算表达式(二元操作符 op, 独占指针<表达式> 左, 独占指针<表达式> 右)
+        : 表达式(表达式类型::二元运算), 操作符(op), 左操作数(移动(左)), 右操作数(移动(右)) {}
 };
 
-class 一元运算表达式 : public 表达式 {
-public:
+类别 一元运算表达式 : public 表达式 {
+公开:
     一元操作符 操作符;
-    std::unique_ptr<表达式> 操作数;
-    一元运算表达式(一元操作符 op, std::unique_ptr<表达式> 操作数_)
-        : 表达式(表达式类型::一元运算), 操作符(op), 操作数(std::move(操作数_)) {}
+    独占指针<表达式> 操作数;
+    一元运算表达式(一元操作符 op, 独占指针<表达式> 操作数_)
+        : 表达式(表达式类型::一元运算), 操作符(op), 操作数(移动(操作数_)) {}
 };
 
-class 函数调用表达式 : public 表达式 {
-public:
-    std::string 函数名;
-    std::vector<std::unique_ptr<表达式>> 参数列表;
-    函数调用表达式(std::string 名, std::vector<std::unique_ptr<表达式>> 参数)
-        : 表达式(表达式类型::函数调用), 函数名(std::move(名)), 参数列表(std::move(参数)) {}
+类别 函数调用表达式 : public 表达式 {
+公开:
+    文本 函数名;
+    数组向量<独占指针<表达式>> 参数列表;
+    函数调用表达式(文本 名, 数组向量<独占指针<表达式>> 参数)
+        : 表达式(表达式类型::函数调用), 函数名(移动(名)), 参数列表(移动(参数)) {}
 };
 
-class 数组字面量表达式 : public 表达式 {
-public:
-    std::vector<std::unique_ptr<表达式>> 元素列表;
-    数组字面量表达式(std::vector<std::unique_ptr<表达式>> 元素)
-        : 表达式(表达式类型::数组字面量), 元素列表(std::move(元素)) {}
+类别 数组字面量表达式 : public 表达式 {
+公开:
+    数组向量<独占指针<表达式>> 元素列表;
+    数组字面量表达式(数组向量<独占指针<表达式>> 元素)
+        : 表达式(表达式类型::数组字面量), 元素列表(移动(元素)) {}
 };
 
-class 数组推导表达式 : public 表达式 {
-public:
-    std::unique_ptr<表达式> 表达式体;
-    std::string 变量名;
-    bool 是范围;
-    std::unique_ptr<表达式> 开始值;
-    std::unique_ptr<表达式> 结束值;
-    std::unique_ptr<表达式> 步长值;
-    std::string 数组名;
-    std::unique_ptr<表达式> 过滤条件;
+类别 数组推导表达式 : public 表达式 {
+公开:
+    独占指针<表达式> 表达式体;
+    文本 变量名;
+    真假型 是范围;
+    独占指针<表达式> 开始值;
+    独占指针<表达式> 结束值;
+    独占指针<表达式> 步长值;
+    文本 数组名;
+    独占指针<表达式> 过滤条件;
 
-    数组推导表达式(std::unique_ptr<表达式> 体, std::string 变量)
-        : 表达式(表达式类型::数组推导), 表达式体(std::move(体)), 变量名(std::move(变量)), 是范围(false) {}
+    数组推导表达式(独占指针<表达式> 体, 文本 变量)
+        : 表达式(表达式类型::数组推导), 表达式体(移动(体)), 变量名(移动(变量)), 是范围(假值) {}
 };
 
-class 下标访问表达式 : public 表达式 {
-public:
-    std::string 数组名;
-    std::unique_ptr<表达式> 索引;
-    下标访问表达式(std::string 名, std::unique_ptr<表达式> idx)
-        : 表达式(表达式类型::下标访问), 数组名(std::move(名)), 索引(std::move(idx)) {}
+类别 下标访问表达式 : public 表达式 {
+公开:
+    文本 数组名;
+    独占指针<表达式> 索引;
+    下标访问表达式(文本 名, 独占指针<表达式> idx)
+        : 表达式(表达式类型::下标访问), 数组名(移动(名)), 索引(移动(idx)) {}
 };
 
-class 分片访问表达式 : public 表达式 {
-public:
-    std::string 数组名;
-    std::unique_ptr<表达式> 开始索引;
-    std::unique_ptr<表达式> 结束索引;
-    分片访问表达式(std::string 名, std::unique_ptr<表达式> 开始, std::unique_ptr<表达式> 结束)
-        : 表达式(表达式类型::分片访问), 数组名(std::move(名)), 开始索引(std::move(开始)), 结束索引(std::move(结束)) {}
+类别 分片访问表达式 : public 表达式 {
+公开:
+    文本 数组名;
+    独占指针<表达式> 开始索引;
+    独占指针<表达式> 结束索引;
+    分片访问表达式(文本 名, 独占指针<表达式> 开始, 独占指针<表达式> 结束)
+        : 表达式(表达式类型::分片访问), 数组名(移动(名)), 开始索引(移动(开始)), 结束索引(移动(结束)) {}
 };
 
-struct 函数参数;
-struct 返回值描述;
-class 语句;
+构型 函数参数;
+构型 返回值描述;
+类别 语句;
 
-class 匿名函数表达式 : public 表达式 {
-public:
-    std::vector<函数参数> 参数列表;
-    std::vector<返回值描述> 返回值列表;
-    std::vector<std::unique_ptr<语句>> 主体;
-    匿名函数表达式(std::vector<函数参数> 参数, std::vector<返回值描述> 返回值, std::vector<std::unique_ptr<语句>> body)
-        : 表达式(表达式类型::匿名函数), 参数列表(std::move(参数)), 返回值列表(std::move(返回值)), 主体(std::move(body)) {}
+类别 匿名函数表达式 : public 表达式 {
+公开:
+    数组向量<函数参数> 参数列表;
+    数组向量<返回值描述> 返回值列表;
+    数组向量<独占指针<语句>> 主体;
+    匿名函数表达式(数组向量<函数参数> 参数, 数组向量<返回值描述> 返回值, 数组向量<独占指针<语句>> body)
+        : 表达式(表达式类型::匿名函数), 参数列表(移动(参数)), 返回值列表(移动(返回值)), 主体(移动(body)) {}
 };
 
-class 结构体实例表达式 : public 表达式 {
-public:
-    std::string 结构体名;
-    std::vector<std::pair<std::string, std::unique_ptr<表达式>>> 成员列表;
-    结构体实例表达式(std::string 名, std::vector<std::pair<std::string, std::unique_ptr<表达式>>> 成员)
-        : 表达式(表达式类型::结构体实例), 结构体名(std::move(名)), 成员列表(std::move(成员)) {}
+类别 结构体实例表达式 : public 表达式 {
+公开:
+    文本 结构体名;
+    数组向量<std::pair<文本, 独占指针<表达式>>> 成员列表;
+    结构体实例表达式(文本 名, 数组向量<std::pair<文本, 独占指针<表达式>>> 成员)
+        : 表达式(表达式类型::结构体实例), 结构体名(移动(名)), 成员列表(移动(成员)) {}
 };
 
-class 成员访问表达式 : public 表达式 {
-public:
-    std::string 对象名;
-    std::string 成员名;
-    成员访问表达式(std::string 对象, std::string 成员)
-        : 表达式(表达式类型::成员访问), 对象名(std::move(对象)), 成员名(std::move(成员)) {}
+类别 成员访问表达式 : public 表达式 {
+公开:
+    文本 对象名;
+    文本 成员名;
+    成员访问表达式(文本 对象, 文本 成员)
+        : 表达式(表达式类型::成员访问), 对象名(移动(对象)), 成员名(移动(成员)) {}
 };
 
-class 方法调用表达式 : public 表达式 {
-public:
-    std::string 对象名;
-    std::string 方法名;
-    std::vector<std::unique_ptr<表达式>> 参数列表;
-    方法调用表达式(std::string 对象, std::string 方法, std::vector<std::unique_ptr<表达式>> 参数)
-        : 表达式(表达式类型::方法调用), 对象名(std::move(对象)), 方法名(std::move(方法)), 参数列表(std::move(参数)) {}
+类别 方法调用表达式 : public 表达式 {
+公开:
+    文本 对象名;
+    文本 方法名;
+    数组向量<独占指针<表达式>> 参数列表;
+    方法调用表达式(文本 对象, 文本 方法, 数组向量<独占指针<表达式>> 参数)
+        : 表达式(表达式类型::方法调用), 对象名(移动(对象)), 方法名(移动(方法)), 参数列表(移动(参数)) {}
 };
 
-class 映射字面量表达式 : public 表达式 {
-public:
-    std::vector<std::pair<std::unique_ptr<表达式>, std::unique_ptr<表达式>>> 键值对列表;
-    映射字面量表达式(std::vector<std::pair<std::unique_ptr<表达式>, std::unique_ptr<表达式>>> 键值对)
-        : 表达式(表达式类型::映射字面量), 键值对列表(std::move(键值对)) {}
+类别 映射字面量表达式 : public 表达式 {
+公开:
+    数组向量<std::pair<独占指针<表达式>, 独占指针<表达式>>> 键值对列表;
+    映射字面量表达式(数组向量<std::pair<独占指针<表达式>, 独占指针<表达式>>> 键值对)
+        : 表达式(表达式类型::映射字面量), 键值对列表(移动(键值对)) {}
 };
 
-class 枚举成员表达式 : public 表达式 {
-public:
-    std::string 枚举名;
-    std::string 成员名;
-    枚举成员表达式(std::string 枚举名称, std::string 成员)
-        : 表达式(表达式类型::枚举成员), 枚举名(std::move(枚举名称)), 成员名(std::move(成员)) {}
+类别 枚举成员表达式 : public 表达式 {
+公开:
+    文本 枚举名;
+    文本 成员名;
+    枚举成员表达式(文本 枚举名称, 文本 成员)
+        : 表达式(表达式类型::枚举成员), 枚举名(移动(枚举名称)), 成员名(移动(成员)) {}
 };
 
-class 元组字面量表达式 : public 表达式 {
-public:
-    std::vector<std::unique_ptr<表达式>> 元素列表;
-    元组字面量表达式(std::vector<std::unique_ptr<表达式>> 元素)
-        : 表达式(表达式类型::元组字面量), 元素列表(std::move(元素)) {}
+类别 元组字面量表达式 : public 表达式 {
+公开:
+    数组向量<独占指针<表达式>> 元素列表;
+    元组字面量表达式(数组向量<独占指针<表达式>> 元素)
+        : 表达式(表达式类型::元组字面量), 元素列表(移动(元素)) {}
 };
 
-class 元组访问表达式 : public 表达式 {
-public:
-    std::string 元组名;
-    int 索引;
-    元组访问表达式(std::string 名, int idx)
-        : 表达式(表达式类型::元组访问), 元组名(std::move(名)), 索引(idx) {}
+类别 元组访问表达式 : public 表达式 {
+公开:
+    文本 元组名;
+    整数型 索引;
+    元组访问表达式(文本 名, 整数型 idx)
+        : 表达式(表达式类型::元组访问), 元组名(移动(名)), 索引(idx) {}
 };
 
-class 自增自减表达式 : public 表达式 {
-public:
-    std::string 变量名;
-    bool 是自增;
-    自增自减表达式(std::string 名, bool 增)
-        : 表达式(表达式类型::自增自减), 变量名(std::move(名)), 是自增(增) {}
+类别 自增自减表达式 : public 表达式 {
+公开:
+    文本 变量名;
+    真假型 是自增;
+    自增自减表达式(文本 名, 真假型 增)
+        : 表达式(表达式类型::自增自减), 变量名(移动(名)), 是自增(增) {}
 };
 
-class 管道调用表达式 : public 表达式 {
-public:
-    std::unique_ptr<表达式> 左表达式;  // 管道左边的表达式（通常是函数调用）
-    std::string 右函数名;               // 管道右边的函数名
-    std::vector<std::unique_ptr<表达式>> 右参数列表;  // 右边函数的额外参数
-    std::unordered_map<std::string, std::string> 参数映射;  // 左返回值名 -> 右参数名映射
+类别 管道调用表达式 : public 表达式 {
+公开:
+    独占指针<表达式> 左表达式;  // 管道左边的表达式（通常是函数调用）
+    文本 右函数名;               // 管道右边的函数名
+    数组向量<独占指针<表达式>> 右参数列表;  // 右边函数的额外参数
+    哈希映射<文本, 文本> 参数映射;  // 左返回值名 -> 右参数名映射
 
-    管道调用表达式(std::unique_ptr<表达式> 左, std::string 右名,
-                   std::vector<std::unique_ptr<表达式>> 右参数,
-                   std::unordered_map<std::string, std::string> 映射)
-        : 表达式(表达式类型::管道调用), 左表达式(std::move(左)), 右函数名(std::move(右名)),
-          右参数列表(std::move(右参数)), 参数映射(std::move(映射)) {}
+    管道调用表达式(独占指针<表达式> 左, 文本 右名,
+                   数组向量<独占指针<表达式>> 右参数,
+                   哈希映射<文本, 文本> 映射)
+        : 表达式(表达式类型::管道调用), 左表达式(移动(左)), 右函数名(移动(右名)),
+          右参数列表(移动(右参数)), 参数映射(移动(映射)) {}
 };
 
-class 条件表达式 : public 表达式 {
-public:
-    std::unique_ptr<表达式> 条件;
-    std::unique_ptr<表达式> 真值;
-    std::unique_ptr<表达式> 假值;
+类别 条件表达式 : public 表达式 {
+公开:
+    独占指针<表达式> 条件;
+    独占指针<表达式> 真分支;
+    独占指针<表达式> 假分支;
 
-    条件表达式(std::unique_ptr<表达式> 条件, std::unique_ptr<表达式> 真值, std::unique_ptr<表达式> 假值)
-        : 表达式(表达式类型::条件表达式), 条件(std::move(条件)), 真值(std::move(真值)), 假值(std::move(假值)) {}
+    条件表达式(独占指针<表达式> 条件, 独占指针<表达式> 真分支, 独占指针<表达式> 假分支)
+        : 表达式(表达式类型::条件表达式), 条件(移动(条件)), 真分支(移动(真分支)), 假分支(移动(假分支)) {}
 };
 
-class 空值合并表达式 : public 表达式 {
-public:
-    std::unique_ptr<表达式> 左表达式;
-    std::unique_ptr<表达式> 右表达式;
+类别 空值合并表达式 : public 表达式 {
+公开:
+    独占指针<表达式> 左表达式;
+    独占指针<表达式> 右表达式;
 
-    空值合并表达式(std::unique_ptr<表达式> 左, std::unique_ptr<表达式> 右)
-        : 表达式(表达式类型::空值合并), 左表达式(std::move(左)), 右表达式(std::move(右)) {}
+    空值合并表达式(独占指针<表达式> 左, 独占指针<表达式> 右)
+        : 表达式(表达式类型::空值合并), 左表达式(移动(左)), 右表达式(移动(右)) {}
 };
 
-enum class 语句类型 { 变量声明, 常量声明, 赋值语句, 下标赋值语句, 解构赋值, 复合赋值, 如果语句, 循环语句, 当循环语句, 做循环语句, 中断语句, 继续语句, 打印语句, 返回语句, 表达式语句, 代码块, 匹配语句, 遍历语句, 结构体定义, 枚举定义, 导入语句, 类型别名, 尝试语句, 抛出语句, 让出语句 };
+举型 类别 语句类型 { 变量声明, 常量声明, 赋值语句, 下标赋值语句, 解构赋值, 复合赋值, 如果语句, 循环语句, 当循环语句, 做循环语句, 中断语句, 继续语句, 打印语句, 返回语句, 表达式语句, 代码块, 匹配语句, 遍历语句, 结构体定义, 枚举定义, 导入语句, 类型别名, 尝试语句, 抛出语句, 让出语句 };
 
-class 语句 {
-public:
+类别 语句 {
+公开:
     语句类型 类型;
-    int 行号 = 0;
+    整数型 行号 = 0;
     virtual ~语句() = default;
-protected:
+保护:
     语句(语句类型 类型) : 类型(类型) {}
 };
 
-class 变量声明 : public 语句 {
-public:
-    std::string 变量名;
-    std::string 类型标注;  // 可选：类型注解（如 ": 整数"）
-    std::unique_ptr<表达式> 初始值;
-    变量声明(std::string 名, std::unique_ptr<表达式> 值, std::string 类型 = "")
-        : 语句(语句类型::变量声明), 变量名(std::move(名)), 类型标注(std::move(类型)), 初始值(std::move(值)) {}
+类别 变量声明 : public 语句 {
+公开:
+    文本 变量名;
+    文本 类型标注;  // 可选：类型注解（如 ": 整数"）
+    独占指针<表达式> 初始值;
+    变量声明(文本 名, 独占指针<表达式> 值, 文本 类型 = "")
+        : 语句(语句类型::变量声明), 变量名(移动(名)), 类型标注(移动(类型)), 初始值(移动(值)) {}
 };
 
-class 常量声明 : public 语句 {
-public:
-    std::string 常量名;
-    std::unique_ptr<表达式> 初始值;
-    常量声明(std::string 名, std::unique_ptr<表达式> 值)
-        : 语句(语句类型::常量声明), 常量名(std::move(名)), 初始值(std::move(值)) {}
+类别 常量声明 : public 语句 {
+公开:
+    文本 常量名;
+    独占指针<表达式> 初始值;
+    常量声明(文本 名, 独占指针<表达式> 值)
+        : 语句(语句类型::常量声明), 常量名(移动(名)), 初始值(移动(值)) {}
 };
 
-class 赋值语句 : public 语句 {
-public:
-    std::string 变量名;
-    std::unique_ptr<表达式> 值表达式;
-    赋值语句(std::string 名, std::unique_ptr<表达式> expr)
-        : 语句(语句类型::赋值语句), 变量名(std::move(名)), 值表达式(std::move(expr)) {}
+类别 赋值语句 : public 语句 {
+公开:
+    文本 变量名;
+    独占指针<表达式> 值表达式;
+    赋值语句(文本 名, 独占指针<表达式> expr)
+        : 语句(语句类型::赋值语句), 变量名(移动(名)), 值表达式(移动(expr)) {}
 };
 
-class 复合赋值语句 : public 语句 {
-public:
-    std::string 变量名;
+类别 复合赋值语句 : public 语句 {
+公开:
+    文本 变量名;
     二元操作符 操作;
-    std::unique_ptr<表达式> 值表达式;
-    复合赋值语句(std::string 名, 二元操作符 op, std::unique_ptr<表达式> expr)
-        : 语句(语句类型::复合赋值), 变量名(std::move(名)), 操作(op), 值表达式(std::move(expr)) {}
+    独占指针<表达式> 值表达式;
+    复合赋值语句(文本 名, 二元操作符 op, 独占指针<表达式> expr)
+        : 语句(语句类型::复合赋值), 变量名(移动(名)), 操作(op), 值表达式(移动(expr)) {}
 };
 
-class 下标赋值语句 : public 语句 {
-public:
-    std::string 数组名;
-    std::unique_ptr<表达式> 索引;
-    std::unique_ptr<表达式> 值表达式;
-    下标赋值语句(std::string 名, std::unique_ptr<表达式> idx, std::unique_ptr<表达式> val)
-        : 语句(语句类型::下标赋值语句), 数组名(std::move(名)), 索引(std::move(idx)), 值表达式(std::move(val)) {}
+类别 下标赋值语句 : public 语句 {
+公开:
+    文本 数组名;
+    独占指针<表达式> 索引;
+    独占指针<表达式> 值表达式;
+    下标赋值语句(文本 名, 独占指针<表达式> idx, 独占指针<表达式> val)
+        : 语句(语句类型::下标赋值语句), 数组名(移动(名)), 索引(移动(idx)), 值表达式(移动(val)) {}
 };
 
-struct 否则如果分支 {
-    std::unique_ptr<表达式> 条件;
-    std::vector<std::unique_ptr<语句>> 主体;
+构型 否则如果分支 {
+    独占指针<表达式> 条件;
+    数组向量<独占指针<语句>> 主体;
 };
 
-class 如果语句 : public 语句 {
-public:
-    std::unique_ptr<语句> 初始化;  // 可选：条件中的变量声明
-    std::unique_ptr<表达式> 条件;
-    std::vector<std::unique_ptr<语句>> then块;
-    std::vector<否则如果分支> 否则如果列表;
-    std::vector<std::unique_ptr<语句>> else块;
-    如果语句(std::unique_ptr<表达式> cond, std::vector<std::unique_ptr<语句>> then,
-             std::vector<否则如果分支> elifs, std::vector<std::unique_ptr<语句>> else_)
-        : 语句(语句类型::如果语句), 条件(std::move(cond)), then块(std::move(then)),
-          否则如果列表(std::move(elifs)), else块(std::move(else_)) {}
-    如果语句(std::unique_ptr<语句> init, std::unique_ptr<表达式> cond, std::vector<std::unique_ptr<语句>> then,
-             std::vector<否则如果分支> elifs, std::vector<std::unique_ptr<语句>> else_)
-        : 语句(语句类型::如果语句), 初始化(std::move(init)), 条件(std::move(cond)), then块(std::move(then)),
-          否则如果列表(std::move(elifs)), else块(std::move(else_)) {}
+类别 如果语句 : public 语句 {
+公开:
+    独占指针<语句> 初始化;  // 可选：条件中的变量声明
+    独占指针<表达式> 条件;
+    数组向量<独占指针<语句>> then块;
+    数组向量<否则如果分支> 否则如果列表;
+    数组向量<独占指针<语句>> else块;
+    如果语句(独占指针<表达式> cond, 数组向量<独占指针<语句>> then,
+             数组向量<否则如果分支> elifs, 数组向量<独占指针<语句>> else_)
+        : 语句(语句类型::如果语句), 条件(移动(cond)), then块(移动(then)),
+          否则如果列表(移动(elifs)), else块(移动(else_)) {}
+    如果语句(独占指针<语句> init, 独占指针<表达式> cond, 数组向量<独占指针<语句>> then,
+             数组向量<否则如果分支> elifs, 数组向量<独占指针<语句>> else_)
+        : 语句(语句类型::如果语句), 初始化(移动(init)), 条件(移动(cond)), then块(移动(then)),
+          否则如果列表(移动(elifs)), else块(移动(else_)) {}
 };
 
-class 循环语句 : public 语句 {
-public:
-    std::unique_ptr<语句> 初始化;  // 可选
-    std::unique_ptr<表达式> 条件;    // 可选
-    std::unique_ptr<语句> 步进;      // 可选
-    std::vector<std::unique_ptr<语句>> 主体;
-    循环语句(std::vector<std::unique_ptr<语句>> body)
-        : 语句(语句类型::循环语句), 主体(std::move(body)) {}
-    循环语句(std::unique_ptr<语句> init, std::unique_ptr<表达式> cond,
-             std::unique_ptr<语句> step, std::vector<std::unique_ptr<语句>> body)
-        : 语句(语句类型::循环语句), 初始化(std::move(init)), 条件(std::move(cond)),
-          步进(std::move(step)), 主体(std::move(body)) {}
+类别 循环语句 : public 语句 {
+公开:
+    独占指针<语句> 初始化;  // 可选
+    独占指针<表达式> 条件;    // 可选
+    独占指针<语句> 步进;      // 可选
+    数组向量<独占指针<语句>> 主体;
+    循环语句(数组向量<独占指针<语句>> body)
+        : 语句(语句类型::循环语句), 主体(移动(body)) {}
+    循环语句(独占指针<语句> init, 独占指针<表达式> cond,
+             独占指针<语句> step, 数组向量<独占指针<语句>> body)
+        : 语句(语句类型::循环语句), 初始化(移动(init)), 条件(移动(cond)),
+          步进(移动(step)), 主体(移动(body)) {}
 };
 
-class 当循环语句 : public 语句 {
-public:
-    std::unique_ptr<表达式> 条件;
-    std::vector<std::unique_ptr<语句>> 主体;
-    当循环语句(std::unique_ptr<表达式> cond, std::vector<std::unique_ptr<语句>> body)
-        : 语句(语句类型::当循环语句), 条件(std::move(cond)), 主体(std::move(body)) {}
+类别 当循环语句 : public 语句 {
+公开:
+    独占指针<表达式> 条件;
+    数组向量<独占指针<语句>> 主体;
+    当循环语句(独占指针<表达式> cond, 数组向量<独占指针<语句>> body)
+        : 语句(语句类型::当循环语句), 条件(移动(cond)), 主体(移动(body)) {}
 };
 
-class 做循环语句 : public 语句 {
-public:
-    std::unique_ptr<表达式> 条件;
-    std::vector<std::unique_ptr<语句>> 主体;
-    bool 是当循环; // true = do-while, false = do-until
-    做循环语句(std::unique_ptr<表达式> cond, std::vector<std::unique_ptr<语句>> body, bool 是当)
-        : 语句(语句类型::做循环语句), 条件(std::move(cond)), 主体(std::move(body)), 是当循环(是当) {}
+类别 做循环语句 : public 语句 {
+公开:
+    独占指针<表达式> 条件;
+    数组向量<独占指针<语句>> 主体;
+    真假型 是当循环; // 真值 = do-while, 假值 = do-until
+    做循环语句(独占指针<表达式> cond, 数组向量<独占指针<语句>> body, 真假型 是当)
+        : 语句(语句类型::做循环语句), 条件(移动(cond)), 主体(移动(body)), 是当循环(是当) {}
 };
 
-class 中断语句 : public 语句 {
-public:
+类别 中断语句 : public 语句 {
+公开:
     中断语句() : 语句(语句类型::中断语句) {}
 };
 
-class 继续语句 : public 语句 {
-public:
+类别 继续语句 : public 语句 {
+公开:
     继续语句() : 语句(语句类型::继续语句) {}
 };
 
-class 打印语句 : public 语句 {
-public:
-    std::unique_ptr<表达式> 值表达式;
-    打印语句(std::unique_ptr<表达式> expr)
-        : 语句(语句类型::打印语句), 值表达式(std::move(expr)) {}
+类别 打印语句 : public 语句 {
+公开:
+    独占指针<表达式> 值表达式;
+    打印语句(独占指针<表达式> expr)
+        : 语句(语句类型::打印语句), 值表达式(移动(expr)) {}
 };
 
-class 返回语句 : public 语句 {
-public:
-    std::unique_ptr<表达式> 返回值;
-    返回语句(std::unique_ptr<表达式> 值)
-        : 语句(语句类型::返回语句), 返回值(std::move(值)) {}
+类别 返回语句 : public 语句 {
+公开:
+    独占指针<表达式> 返回值;
+    返回语句(独占指针<表达式> 值)
+        : 语句(语句类型::返回语句), 返回值(移动(值)) {}
 };
 
-class 表达式语句 : public 语句 {
-public:
-    std::unique_ptr<表达式> 值表达式;
-    表达式语句(std::unique_ptr<表达式> expr)
-        : 语句(语句类型::表达式语句), 值表达式(std::move(expr)) {}
+类别 表达式语句 : public 语句 {
+公开:
+    独占指针<表达式> 值表达式;
+    表达式语句(独占指针<表达式> expr)
+        : 语句(语句类型::表达式语句), 值表达式(移动(expr)) {}
 };
 
-class 解构赋值语句 : public 语句 {
-public:
-    std::vector<std::string> 变量名列表;
-    std::unique_ptr<表达式> 值表达式;
-    解构赋值语句(std::vector<std::string> 变量名, std::unique_ptr<表达式> 值)
-        : 语句(语句类型::解构赋值), 变量名列表(std::move(变量名)), 值表达式(std::move(值)) {}
+类别 解构赋值语句 : public 语句 {
+公开:
+    数组向量<文本> 变量名列表;
+    独占指针<表达式> 值表达式;
+    解构赋值语句(数组向量<文本> 变量名, 独占指针<表达式> 值)
+        : 语句(语句类型::解构赋值), 变量名列表(移动(变量名)), 值表达式(移动(值)) {}
 };
 
-class 代码块语句 : public 语句 {
-public:
-    std::vector<std::unique_ptr<语句>> 语句列表;
-    代码块语句(std::vector<std::unique_ptr<语句>> stmts)
-        : 语句(语句类型::代码块), 语句列表(std::move(stmts)) {}
+类别 代码块语句 : public 语句 {
+公开:
+    数组向量<独占指针<语句>> 语句列表;
+    代码块语句(数组向量<独占指针<语句>> stmts)
+        : 语句(语句类型::代码块), 语句列表(移动(stmts)) {}
 };
 
-struct 匹配分支 {
-    std::unique_ptr<表达式> 条件;  // nullptr 表示默认分支
-    std::vector<std::unique_ptr<语句>> 主体;
+构型 匹配分支 {
+    独占指针<表达式> 条件;  // 空针 表示默认分支
+    数组向量<独占指针<语句>> 主体;
 };
 
-class 匹配语句 : public 语句 {
-public:
-    std::unique_ptr<表达式> 匹配值;
-    std::vector<匹配分支> 分支列表;
-    匹配语句(std::unique_ptr<表达式> val, std::vector<匹配分支> branches)
-        : 语句(语句类型::匹配语句), 匹配值(std::move(val)), 分支列表(std::move(branches)) {}
+类别 匹配语句 : public 语句 {
+公开:
+    独占指针<表达式> 匹配值;
+    数组向量<匹配分支> 分支列表;
+    匹配语句(独占指针<表达式> val, 数组向量<匹配分支> branches)
+        : 语句(语句类型::匹配语句), 匹配值(移动(val)), 分支列表(移动(branches)) {}
 };
 
-class 遍历语句 : public 语句 {
-public:
-    std::string 变量名;
-    std::unique_ptr<表达式> 数组表达式;
-    std::vector<std::unique_ptr<语句>> 主体;
-    遍历语句(std::string 名, std::unique_ptr<表达式> arr, std::vector<std::unique_ptr<语句>> body)
-        : 语句(语句类型::遍历语句), 变量名(std::move(名)), 数组表达式(std::move(arr)), 主体(std::move(body)) {}
+类别 遍历语句 : public 语句 {
+公开:
+    文本 变量名;
+    独占指针<表达式> 数组表达式;
+    数组向量<独占指针<语句>> 主体;
+    遍历语句(文本 名, 独占指针<表达式> arr, 数组向量<独占指针<语句>> body)
+        : 语句(语句类型::遍历语句), 变量名(移动(名)), 数组表达式(移动(arr)), 主体(移动(body)) {}
 };
 
-struct 结构体成员 {
-    std::string 名称;
-    std::string 类型;
+构型 结构体成员 {
+    文本 名称;
+    文本 类型;
 };
 
-struct 结构体方法 {
-    std::string 名称;
-    std::vector<函数参数> 参数列表;
-    std::vector<返回值描述> 返回值列表;
-    std::vector<std::unique_ptr<语句>> 主体;
+构型 结构体方法 {
+    文本 名称;
+    数组向量<函数参数> 参数列表;
+    数组向量<返回值描述> 返回值列表;
+    数组向量<独占指针<语句>> 主体;
 };
 
-class 结构体定义语句 : public 语句 {
-public:
-    std::string 名称;
-    std::string 基类名;  // 继承的基类名（空表示无继承）
-    std::vector<结构体成员> 成员列表;
-    std::vector<结构体方法> 方法列表;
-    结构体定义语句(std::string 名, std::vector<结构体成员> 成员, std::vector<结构体方法> 方法 = {}, std::string 基类 = "")
-        : 语句(语句类型::结构体定义), 名称(std::move(名)), 基类名(std::move(基类)),
-          成员列表(std::move(成员)), 方法列表(std::move(方法)) {}
+类别 结构体定义语句 : public 语句 {
+公开:
+    文本 名称;
+    文本 基类名;  // 继承的基类名（空表示无继承）
+    数组向量<结构体成员> 成员列表;
+    数组向量<结构体方法> 方法列表;
+    结构体定义语句(文本 名, 数组向量<结构体成员> 成员, 数组向量<结构体方法> 方法 = {}, 文本 基类 = "")
+        : 语句(语句类型::结构体定义), 名称(移动(名)), 基类名(移动(基类)),
+          成员列表(移动(成员)), 方法列表(移动(方法)) {}
 };
 
-class 导入语句 : public 语句 {
-public:
-    std::string 模块名;
-    导入语句(std::string 名)
-        : 语句(语句类型::导入语句), 模块名(std::move(名)) {}
+类别 导入语句 : public 语句 {
+公开:
+    文本 模块名;
+    导入语句(文本 名)
+        : 语句(语句类型::导入语句), 模块名(移动(名)) {}
 };
 
-struct 枚举成员 {
-    std::string 名称;
-    int 值;
+构型 枚举成员 {
+    文本 名称;
+    整数型 值;
 };
 
-class 枚举定义语句 : public 语句 {
-public:
-    std::string 名称;
-    std::vector<枚举成员> 成员列表;
-    枚举定义语句(std::string 名, std::vector<枚举成员> 成员)
-        : 语句(语句类型::枚举定义), 名称(std::move(名)), 成员列表(std::move(成员)) {}
+类别 枚举定义语句 : public 语句 {
+公开:
+    文本 名称;
+    数组向量<枚举成员> 成员列表;
+    枚举定义语句(文本 名, 数组向量<枚举成员> 成员)
+        : 语句(语句类型::枚举定义), 名称(移动(名)), 成员列表(移动(成员)) {}
 };
 
-class 类型别名语句 : public 语句 {
-public:
-    std::string 别名;
-    std::string 原始类型;
-    类型别名语句(std::string 别, std::string 原)
-        : 语句(语句类型::类型别名), 别名(std::move(别)), 原始类型(std::move(原)) {}
+类别 类型别名语句 : public 语句 {
+公开:
+    文本 别名;
+    文本 原始类型;
+    类型别名语句(文本 别, 文本 原)
+        : 语句(语句类型::类型别名), 别名(移动(别)), 原始类型(移动(原)) {}
 };
 
-class 尝试语句 : public 语句 {
-public:
-    std::vector<std::unique_ptr<语句>> 尝试主体;
-    std::string 异常变量名;
-    std::vector<std::unique_ptr<语句>> 捕获主体;
-    std::vector<std::unique_ptr<语句>> 最终主体;
-    尝试语句(std::vector<std::unique_ptr<语句>> 试体, std::string 变量名,
-             std::vector<std::unique_ptr<语句>> 捕体, std::vector<std::unique_ptr<语句>> 终体)
-        : 语句(语句类型::尝试语句), 尝试主体(std::move(试体)), 异常变量名(std::move(变量名)),
-          捕获主体(std::move(捕体)), 最终主体(std::move(终体)) {}
+类别 尝试语句 : public 语句 {
+公开:
+    数组向量<独占指针<语句>> 尝试主体;
+    文本 异常变量名;
+    数组向量<独占指针<语句>> 捕获主体;
+    数组向量<独占指针<语句>> 最终主体;
+    尝试语句(数组向量<独占指针<语句>> 试体, 文本 变量名,
+             数组向量<独占指针<语句>> 捕体, 数组向量<独占指针<语句>> 终体)
+        : 语句(语句类型::尝试语句), 尝试主体(移动(试体)), 异常变量名(移动(变量名)),
+          捕获主体(移动(捕体)), 最终主体(移动(终体)) {}
 };
 
-class 抛出语句 : public 语句 {
-public:
-    std::unique_ptr<表达式> 异常值;
-    抛出语句(std::unique_ptr<表达式> 值)
-        : 语句(语句类型::抛出语句), 异常值(std::move(值)) {}
+类别 抛出语句 : public 语句 {
+公开:
+    独占指针<表达式> 异常值;
+    抛出语句(独占指针<表达式> 值)
+        : 语句(语句类型::抛出语句), 异常值(移动(值)) {}
 };
 
-class 让出语句 : public 语句 {
-public:
-    std::unique_ptr<表达式> 值表达式;
-    让出语句(std::unique_ptr<表达式> 值)
-        : 语句(语句类型::让出语句), 值表达式(std::move(值)) {}
+类别 让出语句 : public 语句 {
+公开:
+    独占指针<表达式> 值表达式;
+    让出语句(独占指针<表达式> 值)
+        : 语句(语句类型::让出语句), 值表达式(移动(值)) {}
 };
 
-struct 全局变量声明 {
-    std::string 变量名;
-    std::unique_ptr<表达式> 初始值;
+构型 全局变量声明 {
+    文本 变量名;
+    独占指针<表达式> 初始值;
 };
 
-struct 函数参数 {
-    std::string 名称;
-    std::string 类型;
-    std::unique_ptr<表达式> 默认值;
-    bool 是否变长 = false;
-    bool 是否数组 = false;
+构型 函数参数 {
+    文本 名称;
+    文本 类型;
+    独占指针<表达式> 默认值;
+    真假型 是否变长 = 假值;
+    真假型 是否数组 = 假值;
 };
 
-struct 返回值描述 {
-    std::string 名称;
-    std::string 类型;
-    std::unique_ptr<表达式> 默认值;
+构型 返回值描述 {
+    文本 名称;
+    文本 类型;
+    独占指针<表达式> 默认值;
 };
 
-struct 类型约束 {
-    std::string 类型参数名;   // 如 "T"
-    std::string 限制名;       // 如 "可比较"
+构型 类型约束 {
+    文本 类型参数名;   // 如 "T"
+    文本 限制名;       // 如 "可比较"
 };
 
-class 函数 {
-public:
-    std::string 名称;
-    std::vector<std::string> 类型参数列表;
-    std::vector<类型约束> 约束列表;
-    std::vector<函数参数> 参数列表;
-    std::vector<返回值描述> 返回值列表;
-    std::vector<std::unique_ptr<语句>> 主体;
-    bool 是否协程 = false;
-    函数(std::string 名, std::vector<std::string> 类型参数, std::vector<类型约束> 类型约束列表,
-         std::vector<函数参数> 参数, std::vector<返回值描述> 返回值,
-         std::vector<std::unique_ptr<语句>> body, bool 协程 = false)
-        : 名称(std::move(名)), 类型参数列表(std::move(类型参数)), 约束列表(std::move(类型约束列表)),
-          参数列表(std::move(参数)), 返回值列表(std::move(返回值)),
-          主体(std::move(body)), 是否协程(协程) {}
+类别 函数 {
+公开:
+    文本 名称;
+    数组向量<文本> 类型参数列表;
+    数组向量<类型约束> 约束列表;
+    数组向量<函数参数> 参数列表;
+    数组向量<返回值描述> 返回值列表;
+    数组向量<独占指针<语句>> 主体;
+    真假型 是否协程 = 假值;
+    函数(文本 名, 数组向量<文本> 类型参数, 数组向量<类型约束> 类型约束列表,
+         数组向量<函数参数> 参数, 数组向量<返回值描述> 返回值,
+         数组向量<独占指针<语句>> body, 真假型 协程 = 假值)
+        : 名称(移动(名)), 类型参数列表(移动(类型参数)), 约束列表(移动(类型约束列表)),
+          参数列表(移动(参数)), 返回值列表(移动(返回值)),
+          主体(移动(body)), 是否协程(协程) {}
 };
 
-struct 程序 {
-    std::vector<std::unique_ptr<全局变量声明>> 全局变量;
-    std::vector<std::unique_ptr<函数>> 函数列表;
-    std::vector<std::tuple<std::string, std::vector<结构体成员>, std::string>> 结构体定义列表;  // 名称, 成员, 基类名
-    std::vector<std::pair<std::string, std::vector<枚举成员>>> 枚举定义列表;
-    std::vector<std::unique_ptr<函数>> 方法列表;  // 结构体方法（已转换为普通函数）
-    std::vector<std::pair<std::string, std::string>> 类型别名列表;  // 别名 -> 原始类型
+构型 程序 {
+    数组向量<独占指针<全局变量声明>> 全局变量;
+    数组向量<独占指针<函数>> 函数列表;
+    数组向量<std::tuple<文本, 数组向量<结构体成员>, 文本>> 结构体定义列表;  // 名称, 成员, 基类名
+    数组向量<std::pair<文本, 数组向量<枚举成员>>> 枚举定义列表;
+    数组向量<独占指针<函数>> 方法列表;  // 结构体方法（已转换为普通函数）
+    数组向量<std::pair<文本, 文本>> 类型别名列表;  // 别名 -> 原始类型
 };
 
-#endif
+#结束
