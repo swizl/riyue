@@ -1687,18 +1687,40 @@ int 写入文件(const char* 路径, const char* 内容) {
     return 0;
 }
 
-// 文件读取
-const char* 读取文件(const char* 路径) {
-    static char 读取缓冲区[65536];
+// 读取整个文件（返回 malloc 的缓冲区，调用方拥有；失败返回 NULL）
+static char* 读取整文件(const char* 路径) {
     FILE* fp = UTF8打开文件(路径, "r");
-    if (!fp) {
-        读取缓冲区[0] = '\0';
-        return 读取缓冲区;
+    size_t 容量 = 65536;
+    size_t 长度 = 0;
+    char* 缓冲;
+    if (!fp) return NULL;
+    缓冲 = (char*)malloc(容量);
+    if (!缓冲) { fclose(fp); return NULL; }
+    for (;;) {
+        if (长度 + 1 >= 容量) {
+            char* 新缓冲;
+            容量 = 容量 * 2;
+            新缓冲 = (char*)realloc(缓冲, 容量);
+            if (!新缓冲) { free(缓冲); fclose(fp); return NULL; }
+            缓冲 = 新缓冲;
+        }
+        size_t n = fread(缓冲 + 长度, 1, 容量 - 1 - 长度, fp);
+        长度 += n;
+        if (n == 0) break;
     }
-    size_t 读取 = fread(读取缓冲区, 1, sizeof(读取缓冲区) - 1, fp);
-    读取缓冲区[读取] = '\0';
+    缓冲[长度] = '\0';
     fclose(fp);
-    return 读取缓冲区;
+    return 缓冲;
+}
+
+// 文件读取（静态缓冲，调用方无需释放）
+const char* 读取文件(const char* 路径) {
+    static char* 缓冲 = NULL;
+    char* 临时 = 读取整文件(路径);
+    if (!临时) return "";
+    free(缓冲);
+    缓冲 = 临时;
+    return 缓冲;
 }
 
 // 异步IO支持
@@ -1742,13 +1764,9 @@ static unsigned __stdcall 异步写入线程(void* arg) {
 
 static unsigned __stdcall 异步读取线程(void* arg) {
     IO任务* 任务 = (IO任务*)arg;
-    static char 读取缓冲区[65536];
-    FILE* fp = UTF8打开文件(任务->路径, "r");
-    if (fp) {
-        size_t 读取 = fread(读取缓冲区, 1, sizeof(读取缓冲区) - 1, fp);
-        读取缓冲区[读取] = '\0';
-        fclose(fp);
-        任务->读取结果 = strdup(读取缓冲区);
+    char* 读取缓冲区 = 读取整文件(任务->路径);
+    if (读取缓冲区) {
+        任务->读取结果 = 读取缓冲区;
         任务->结果 = 0;
     } else {
         任务->读取结果 = NULL;
@@ -1774,13 +1792,9 @@ static void* 异步写入线程(void* arg) {
 
 static void* 异步读取线程(void* arg) {
     IO任务* 任务 = (IO任务*)arg;
-    static char 读取缓冲区[65536];
-    FILE* fp = UTF8打开文件(任务->路径, "r");
-    if (fp) {
-        size_t 读取 = fread(读取缓冲区, 1, sizeof(读取缓冲区) - 1, fp);
-        读取缓冲区[读取] = '\0';
-        fclose(fp);
-        任务->读取结果 = strdup(读取缓冲区);
+    char* 读取缓冲区 = 读取整文件(任务->路径);
+    if (读取缓冲区) {
+        任务->读取结果 = 读取缓冲区;
         任务->结果 = 0;
     } else {
         任务->读取结果 = NULL;
