@@ -61,16 +61,16 @@ $(TARGET): $(ALL_OBJ)
 	./构建/简单测试.exe
 
 # 自举 IR 不动点验证：
-# 日月.exe 编译 自举/compiler.心 → stage1.exe；stage1 编译自身 → ir1.ll；
+# 日月.exe 编译 自举/编译器.心 → stage1.exe；stage1 编译自身 → ir1.ll；
 # llvm-as/llc 汇编为 ir1.o；与运行时辅助.o 经 ld.lld 链接 → stage2.exe；
 # stage2 编译自身 → ir2.ll；ir1.ll 与 ir2.ll 必须完全一致（不动点/自举闭环成立）。
-# 注意：MSYS2_ARG_CONV_EXCL='*' 禁止参数路径转换（否则 自举/compiler.心 被改写导致打不开）；
+# 注意：MSYS2_ARG_CONV_EXCL='*' 禁止参数路径转换（否则 自举/编译器.心 被改写导致打不开）；
 #       代价是原生工具参数不再转换，故 crt2.o 与 -L 用 Windows 形式；llc 需 -filetype=obj。
 自举: $(TARGET)
 	export MSYS2_ARG_CONV_EXCL='*'; \
 	PATH=/d/src/riyue/llvm/llvm-build/bin:/c/tools/msys64/mingw64/bin:$$PATH; export PATH; \
-	./$(TARGET) 自举/compiler.心 stage/stage1.exe && \
-	cp 自举/compiler.心 stage/compiler_copy.txt && \
+	./$(TARGET) 自举/编译器.心 stage/stage1.exe && \
+	cp 自举/编译器.心 stage/compiler_copy.txt && \
 	./stage/stage1.exe stage/compiler_copy.txt stage/ir1.ll && \
 	llvm-as stage/ir1.ll -o stage/ir1.bc && \
 	llc -mtriple=x86_64-w64-windows-gnu -filetype=obj stage/ir1.bc -o stage/ir1.o && \
