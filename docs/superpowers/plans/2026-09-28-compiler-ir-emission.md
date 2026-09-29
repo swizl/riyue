@@ -598,7 +598,7 @@ git commit -m "feat: compiler.心 全局层 IR 化（前导/字符串常量/全�
 
 **Interfaces:**
 - Consumes: Task 1 的 `转义标识符`/`取地址`/`提取行名`/`提取行码`/`新寄存器`/`类型转IR`；Task 2 的 `发射字符串常量表`。
-- Produces: IR 版 `解析函数签名`（输入参数IR/输入参数表/输出参数表）、`发射局部声明`、`发射输入参数复制`、`发射输出参数声明`、`发射函数定义`；`解析并发射语句` 中 `返回` 分支；新全局 `输入参数IR`/`输入参数表`/`输出参数表`。
+- Produces: IR 版 `解析函数签名`（输入参数IR/输入参数表/输出参数表）、`收集函数原型`（删除 C 原型发射，仅保留 函数返回表 记录与跳体）、`发射局部声明`、`发射输入参数复制`、`发射输出参数声明`、`发射函数定义`；`解析并发射语句` 中 `返回` 分支；新全局 `输入参数IR`/`输入参数表`/`输出参数表`/`参数类型IR`。
 
 - [ ] **Step 1: 新增全局**
 
@@ -606,7 +606,10 @@ git commit -m "feat: compiler.心 全局层 IR 化（前导/字符串常量/全�
 "" = 变量 输入参数IR;
 "" = 变量 输入参数表;
 "" = 变量 输出参数表;
+"" = 变量 参数类型IR;
 ```
+
+> 注：`参数类型IR` 被 `解析函数签名`（Step 2）的嵌套 `如果` 块赋值、随后在块外读取。日月 局部变量是块作用域的，嵌套块内首次赋值不会在块外可见，故必须声明为全局（Task 4 亦复用该全局）。
 
 - [ ] **Step 2: 重写 `解析函数签名` 收集 IR 参数/输出表**
 
@@ -758,7 +761,27 @@ git commit -m "feat: compiler.心 全局层 IR 化（前导/字符串常量/全�
 }
 ```
 
-- [ ] **Step 7: 装配验证「全局 + 空函数」样例**
+- [ ] **Step 7: 重写 `收集函数原型` — 删除 C 原型发射（不发射声明）**
+
+将 `收集函数原型` 中原 C 原型发射段：
+
+```
+    // 发射原型
+    "" = 返回类型C;
+    如果 (返回类型名 ?= "整数") { "int " = 返回类型C; }
+    否则如果 (返回类型名 ?= "字符串") { "char* " = 返回类型C; }
+    否则 { "void " = 返回类型C; }
+    (返回类型C + 原型名 + "( " + 输入声明C + " );")发射;
+```
+
+整段删除（不发射任何声明行）。理由（已实证）：
+
+- LLVM 模块级符号允许前向引用 —— 调用方可以先引用 `@foo`，`@foo` 的定义稍后出现在同一模块；因此用户函数无需声明。
+- 用户函数在第二遍以 `定义 内部` 定义；而 `llvm-as` **不允许**为 `内部` 链接的函数写 `声明`（实测报 `invalid linkage for function declaration`）。
+
+保留其后的 `函数返回表` 记录（`(原型名, "S")函数返回表添加` 等）与跳体逻辑不变。
+
+- [ ] **Step 8: 装配验证「全局 + 空函数」样例**
 
 创建 `stage/t3_main.xin`：
 ```
@@ -766,21 +789,23 @@ git commit -m "feat: compiler.心 全局层 IR 化（前导/字符串常量/全�
 函数 主程序 {
 }
 ```
-Run（bash，PATH 含 mingw64/bin）：
+Run（bash，PATH 含 mingw64/bin；设 `export MSYS2_ARG_CONV_EXCL='*'` 禁路径转换，故 crt2.o/`-L` 用 Windows 形式）：
 ```
 ./stage/stage1.exe stage/t3_main.xin stage/t3_out.ll
 llvm-as stage/t3_out.ll -o stage/t3_out.bc
-llc -mtriple=x86_64-w64-windows-gnu stage/t3_out.bc -o stage/t3_out.o
-cp /c/tools/msys64/mingw64/lib/crt2.o stage/crt2.o
+llc -mtriple=x86_64-w64-windows-gnu -filetype=obj stage/t3_out.bc -o stage/t3_out.o
+cp 'C:/tools/msys64/mingw64/lib/crt2.o' stage/crt2.o
 /d/src/riyue/llvm/llvm-build/bin/clang -O0 -finput-charset=UTF-8 -fexec-charset=UTF-8 -c 源/运行时/运行时辅助.c -o stage/rt.o
-ld.lld stage/crt2.o stage/t3_out.o stage/rt.o -o stage/t3_main.exe -L/c/tools/msys64/mingw64/lib -L/c/tools/msys64/mingw64/lib/gcc/x86_64-w64-mingw32/16.1.0 -lmingw32 -lmingwex -lmsvcrt -lgcc -lmoldname -lws2_32 -lm -ladvapi32 -lshell32 -luser32 -lkernel32
+ld.lld stage/crt2.o stage/t3_out.o stage/rt.o -o stage/t3_main.exe -LC:/tools/msys64/mingw64/lib -LC:/tools/msys64/mingw64/lib/gcc/x86_64-w64-mingw32/16.1.0 -lmingw32 -lmingwex -lmsvcrt -lgcc -lmoldname -lws2_32 -lm -ladvapi32 -lshell32 -luser32 -lkernel32
 ./stage/t3_main.exe
 ```
 Expected: llvm-as 通过（无 `use of undefined value` 等错误）；`t3_main.exe` 运行退出码 0。
 
+> 装配要点（已实证）：`llc` 必须加 `-filetype=obj`（默认输出汇编文本，否则 `ld.lld` 报 `unknown file type`）；`ld.lld`/`clang` 是原生程序，`-L`/`-I` 等参数一律用 Windows 形式（`C:/...`），尤其当设置了 `MSYS2_ARG_CONV_EXCL='*'` 时 `/c/...` 不会被转换；`cp` 会解析到 Git coreutils（`/c/Program Files/coreutils/bin/cp`），源路径也需 Windows 形式。
+
 > 若 llvm-as 报错（如 `align`/块终结/寄存器名问题），逐一修复 emission 文本后重跑。
 
-- [ ] **Step 8: 提交**
+- [ ] **Step 9: 提交**
 
 ```bash
 git add 自举/compiler.心
@@ -796,12 +821,11 @@ git commit -m "feat: compiler.心 函数定义/签名/局部声明改发射 IR"
 
 **Interfaces:**
 - Consumes: Task 1 的 `新寄存器`/`类型转IR`/`取地址`/`转义标识符`/`存字符串常量`/`查函数返回类型`；Task 1 预计算转义全局 `转义_获取字符数`/`转义_字符码`/`转义_读取文件`/`转义_写入文件`/`转义_获取参数`/`转义_获取参数数量`/`转义_输出错误`/`转义_字符串开头`/`转义_分割行数`/`转义_获取行`。
-- Produces: IR 版表达式链（`解析原子`/`解析括号或调用`/`解析加减`/`解析乘除`/`解析比较`/`解析与`/`解析或`/`解析一元`）；IR 版 `发射表达式语句`；新全局 `参数类型IR`。
+- Produces: IR 版表达式链（`解析原子`/`解析括号或调用`/`解析加减`/`解析乘除`/`解析比较`/`解析与`/`解析或`/`解析一元`）；IR 版 `发射表达式语句`；新全局 `参数前缀文本`（`参数类型IR` 已由 Task 3 声明为全局）。
 
 - [ ] **Step 1: 新增全局**
 
 ```
-"" = 变量 参数类型IR;
 "" = 变量 参数前缀文本;
 ```
 
@@ -1501,20 +1525,22 @@ git commit -m "feat: compiler.心 控制流语句改发射 IR 标签与分支"
 
 ```
 自举: $(TARGET)
+	export MSYS2_ARG_CONV_EXCL='*'; \
 	PATH=/d/src/riyue/llvm/llvm-build/bin:/c/tools/msys64/mingw64/bin:$$PATH; export PATH; \
 	./$(TARGET) 自举/compiler.心 stage/stage1.exe && \
 	cp 自举/compiler.心 stage/compiler_copy.txt && \
 	./stage/stage1.exe stage/compiler_copy.txt stage/ir1.ll && \
 	llvm-as stage/ir1.ll -o stage/ir1.bc && \
-	llc -mtriple=x86_64-w64-windows-gnu stage/ir1.bc -o stage/ir1.o && \
+	llc -mtriple=x86_64-w64-windows-gnu -filetype=obj stage/ir1.bc -o stage/ir1.o && \
 	$(CC) -O0 -finput-charset=UTF-8 -fexec-charset=UTF-8 -c 源/运行时/运行时辅助.c -o stage/rt.o && \
-	cp /c/tools/msys64/mingw64/lib/crt2.o stage/crt2.o && \
-	ld.lld stage/crt2.o stage/ir1.o stage/rt.o -o stage/stage2.exe -L/c/tools/msys64/mingw64/lib -L/c/tools/msys64/mingw64/lib/gcc/x86_64-w64-mingw32/16.1.0 -lmingw32 -lmingwex -lmsvcrt -lgcc -lmoldname -lws2_32 -lm -ladvapi32 -lshell32 -luser32 -lkernel32 && \
+	cp 'C:/tools/msys64/mingw64/lib/crt2.o' stage/crt2.o && \
+	ld.lld stage/crt2.o stage/ir1.o stage/rt.o -o stage/stage2.exe -LC:/tools/msys64/mingw64/lib -LC:/tools/msys64/mingw64/lib/gcc/x86_64-w64-mingw32/16.1.0 -lmingw32 -lmingwex -lmsvcrt -lgcc -lmoldname -lws2_32 -lm -ladvapi32 -lshell32 -luser32 -lkernel32 && \
 	./stage/stage2.exe stage/compiler_copy.txt stage/ir2.ll && \
 	diff stage/ir1.ll stage/ir2.ll
 ```
 
 > 依赖 `/d/src/riyue/llvm/llvm-build/bin/llvm-as`、`llc` 存在（自定义中文 LLVM 23 构建产物）；`ld.lld` 用 PATH 中的 mingw64 版本。
+> `MSYS2_ARG_CONV_EXCL='*'` 禁止 MSYS2 参数路径转换：否则含中文首段的相对路径（`自举/compiler.心`）会被改写成 `自举C:/...` 而导致 日月.exe 打不开文件。代价是原生工具（llvm-as/llc/ld.lld/clang/cp）的参数不再自动转换，故 `crt2.o` 与 `-L` 一律用 Windows 形式（`C:/...`）。`llc` 必须加 `-filetype=obj`（默认输出汇编文本）。`cp` 解析到 Git coreutils，源路径也需 Windows 形式。
 
 - [ ] **Step 2: 运行完整自举**
 
