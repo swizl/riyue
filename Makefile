@@ -60,24 +60,25 @@ $(TARGET): $(ALL_OBJ)
 	./$(TARGET) --调试 示例/简单测试.心 构建/简单测试.exe
 	./构建/简单测试.exe
 
-# 自举 C 不动点验证：
-# 日月.exe 编译 自举/compiler.心 → stage1.exe（Stage1 编译器）；
-# stage1 编译 compiler.心 → c1.c；clang 编译 c1.c+运行时辅助.c → stage2.exe（Stage2 编译器）；
-# stage2 编译 compiler.心 → c2.c；c1.c 与 c2.c 必须完全一致（不动点/自举闭环成立）。
-# 注意：输出路径用 ASCII（stage/），中文目录会让 MSYS2 ld 失败；
-#       clang 需 -Wno-implicit-function-declaration（中文标识符 typo-correction 误报）。
+# 自举 IR 不动点验证：
+# 日月.exe 编译 自举/compiler.心 → stage1.exe；stage1 编译自身 → ir1.ll；
+# llvm-as/llc 汇编为 ir1.o；与运行时辅助.o 经 ld.lld 链接 → stage2.exe；
+# stage2 编译自身 → ir2.ll；ir1.ll 与 ir2.ll 必须完全一致（不动点/自举闭环成立）。
+# 注意：MSYS2_ARG_CONV_EXCL='*' 禁止参数路径转换（否则 自举/compiler.心 被改写导致打不开）；
+#       代价是原生工具参数不再转换，故 crt2.o 与 -L 用 Windows 形式；llc 需 -filetype=obj。
 自举: $(TARGET)
-	./$(TARGET) 自举/compiler.心 stage/stage1.exe
-	cp 自举/compiler.心 stage/compiler_copy.txt
-	./stage/stage1.exe stage/compiler_copy.txt stage/c1.c
-	$(CC) -O0 -finput-charset=UTF-8 -fexec-charset=UTF-8 \
-	      -Wno-implicit-function-declaration -Wno-parentheses-equality \
-	      -c stage/c1.c -o stage/c1.o
-	$(CC) -O0 -finput-charset=UTF-8 -fexec-charset=UTF-8 \
-	      -c 源/运行时/运行时辅助.c -o stage/rt.o
-	$(CC) stage/c1.o stage/rt.o -o stage/stage2.exe -lws2_32 -lm
-	./stage/stage2.exe stage/compiler_copy.txt stage/c2.c
-	diff stage/c1.c stage/c2.c
+	export MSYS2_ARG_CONV_EXCL='*'; \
+	PATH=/d/src/riyue/llvm/llvm-build/bin:/c/tools/msys64/mingw64/bin:$$PATH; export PATH; \
+	./$(TARGET) 自举/compiler.心 stage/stage1.exe && \
+	cp 自举/compiler.心 stage/compiler_copy.txt && \
+	./stage/stage1.exe stage/compiler_copy.txt stage/ir1.ll && \
+	llvm-as stage/ir1.ll -o stage/ir1.bc && \
+	llc -mtriple=x86_64-w64-windows-gnu -filetype=obj stage/ir1.bc -o stage/ir1.o && \
+	$(CC) -O0 -finput-charset=UTF-8 -fexec-charset=UTF-8 -c 源/运行时/运行时辅助.c -o stage/rt.o && \
+	cp 'C:/tools/msys64/mingw64/lib/crt2.o' stage/crt2.o && \
+	ld.lld stage/crt2.o stage/ir1.o stage/rt.o -o stage/stage2.exe -LC:/tools/msys64/mingw64/lib -LC:/tools/msys64/mingw64/lib/gcc/x86_64-w64-mingw32/16.1.0 -lmingw32 -lmingwex -lmsvcrt -lgcc -lmoldname -lws2_32 -lm -ladvapi32 -lshell32 -luser32 -lkernel32 && \
+	./stage/stage2.exe stage/compiler_copy.txt stage/ir2.ll && \
+	diff stage/ir1.ll stage/ir2.ll
 
 clean:
 	rm -f $(ALL_OBJ) $(测试_OBJ) $(TARGET) 单元测试.exe out_t.* out2.*
