@@ -13,22 +13,23 @@
 #include <shellapi.h>
 #endif
 
-// 用UTF-8路径打开文件（Windows下转换为宽字符路径，支持中文/非ASCII路径）
+// 用路径打开文件（Windows 下转换为宽字符路径）。
+// Windows 传给 main 的 argv 是本地代码页(CP_ACP, 如 GBK)字节，而源码/字符串常量里
+// 通常是 UTF-8 字节，故先按 UTF-8 转换打开，失败再按本地代码页重试。
 static FILE* UTF8打开文件(const char* 路径, const char* 模式) {
 #ifdef _WIN32
-    int 宽长度 = MultiByteToWideChar(CP_UTF8, 0, 路径, -1, NULL, 0);
-    if (宽长度 <= 0) return NULL;
-    wchar_t* 宽路径 = (wchar_t*)malloc(宽长度 * sizeof(wchar_t));
-    if (!宽路径) return NULL;
-    MultiByteToWideChar(CP_UTF8, 0, 路径, -1, 宽路径, 宽长度);
-    int 模式宽长度 = MultiByteToWideChar(CP_UTF8, 0, 模式, -1, NULL, 0);
-    wchar_t* 宽模式 = (wchar_t*)malloc(模式宽长度 * sizeof(wchar_t));
-    if (!宽模式) { free(宽路径); return NULL; }
-    MultiByteToWideChar(CP_UTF8, 0, 模式, -1, 宽模式, 模式宽长度);
-    FILE* fp = _wfopen(宽路径, 宽模式);
-    free(宽路径);
-    free(宽模式);
-    return fp;
+    wchar_t 宽路径[1024];
+    wchar_t 宽模式[64];
+    UINT 代码页表[2] = { CP_UTF8, CP_ACP };
+    int 索引;
+    if (MultiByteToWideChar(CP_UTF8, 0, 模式, -1, 宽模式, 64) <= 0) return NULL;
+    for (索引 = 0; 索引 < 2; 索引++) {
+        if (MultiByteToWideChar(代码页表[索引], 0, 路径, -1, 宽路径, 1024) > 0) {
+            FILE* fp = _wfopen(宽路径, 宽模式);
+            if (fp) return fp;
+        }
+    }
+    return NULL;
 #else
     return fopen(路径, 模式);
 #endif
