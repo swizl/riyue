@@ -9,6 +9,7 @@ set LDFLAGS=-LD:/src/riyue/llvm/llvm-build/lib -lLLVMX86TargetMCA -lLLVMMCA -lLL
 echo === 编译前端 ===
 clang++ %CXXFLAGS% -c "源/前端/词法分析器.cpp" -o "源/前端/词法分析器.o" || exit /b 1
 clang++ %CXXFLAGS% -c "源/前端/语法分析器.cpp" -o "源/前端/语法分析器.o" || exit /b 1
+clang++ %CXXFLAGS% -c "源/前端/模块合并器.cpp" -o "源/前端/模块合并器.o" || exit /b 1
 clang++ %CXXFLAGS% -c "源/前端/诊断.cpp" -o "源/前端/诊断.o" || exit /b 1
 
 echo === 编译后端 ===
@@ -29,7 +30,7 @@ echo === 编译运行时 ===
 clang %CFLAGS% -c "源/运行时/运行时辅助.c" -o "源/运行时/运行时辅助.o" || exit /b 1
 
 echo === 链接 ===
-clang++ -o "日月.exe" "源/前端/词法分析器.o" "源/前端/语法分析器.o" "源/前端/诊断.o" "源/后端/代码生成器.o" "源/后端/代码生成器_表达式.o" "源/后端/代码生成器_语句.o" "源/后端/LLVM辅助.o" "源/虚拟机/字节码.o" "源/虚拟机/字节码编译器.o" "源/虚拟机/虚拟机.o" "源/主程序.o" "源/运行时/运行时辅助.o" %LDFLAGS% || exit /b 1
+clang++ -o "日月.exe" "源/前端/词法分析器.o" "源/前端/语法分析器.o" "源/前端/模块合并器.o" "源/前端/诊断.o" "源/后端/代码生成器.o" "源/后端/代码生成器_表达式.o" "源/后端/代码生成器_语句.o" "源/后端/LLVM辅助.o" "源/虚拟机/字节码.o" "源/虚拟机/字节码编译器.o" "源/虚拟机/虚拟机.o" "源/主程序.o" "源/运行时/运行时辅助.o" %LDFLAGS% || exit /b 1
 
 echo === 编译成功 ===
 dir "日月.exe"
