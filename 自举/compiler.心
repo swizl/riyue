@@ -1636,9 +1636,8 @@
     ("  %t10 = 调用 ptr (ptr, ptr, i64) @memcpy(ptr %t9, ptr %a, i64 %t8)")发射;
     ("  %t11 = 加载 i64, ptr %la, align 8")发射;
     ("  %t12 = 加载 i64, ptr %lb, align 8")发射;
-    ("  %t13 = 加 i64 %t11, %t12")发射;
     ("  %t14 = 加载 ptr, ptr %r, align 8")发射;
-    ("  %t15 = 获取元素指针 i8, ptr %t14, i64 %t13")发射;
+    ("  %t15 = 获取元素指针 i8, ptr %t14, i64 %t11")发射;
     ("  %t16 = 调用 ptr (ptr, ptr, i64) @memcpy(ptr %t15, ptr %b, i64 %t12)")发射;
     ("  %t17 = 加载 i64, ptr %la, align 8")发射;
     ("  %t18 = 加载 i64, ptr %lb, align 8")发射;
