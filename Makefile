@@ -16,7 +16,7 @@ CFLAGS = -Wall -g -finput-charset=UTF-8 -fexec-charset=UTF-8
 LDFLAGS = $(LLVM_LDFLAGS) $(LLVM_LIBS) $(LLVM_SYSLIBS) -lshell32 -lws2_32 -lpthread
 
 # 源文件
-前端_SRC = 源/前端/词法分析器.cpp 源/前端/语法分析器.cpp 源/前端/诊断.cpp
+前端_SRC = 源/前端/词法分析器.cpp 源/前端/语法分析器.cpp 源/前端/模块合并器.cpp 源/前端/诊断.cpp
 后端_SRC = 源/后端/代码生成器.cpp 源/后端/代码生成器_表达式.cpp 源/后端/代码生成器_语句.cpp 源/后端/LLVM辅助.cpp
 虚拟机_SRC = 源/虚拟机/字节码.cpp 源/虚拟机/字节码编译器.cpp 源/虚拟机/虚拟机.cpp
 运行时_SRC = 源/运行时/运行时辅助.c
