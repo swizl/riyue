@@ -1586,6 +1586,185 @@ git commit -m "feat: compiler.心 词法器支持复合赋值与浮点字面量"
 
 ---
 
+### Task 4.6: 运行时 读取文件 改为动态读整文件（解除 64KB 截断）
+
+**Why:** `源/运行时/运行时辅助.c` 的 `读取文件`（:1691）与两个 `异步读取线程`（:1743 Win32 / :1775 POSIX）用 `static char 读取缓冲区[65536]` + **单次 `fread`**，会**静默截断超过 65535 字节的文件**。宿主 `日月.exe` 用 C++ ifstream 读源文件、不受影响；但**日月自举出的 stage1/stage2 用 `读取文件` 读源码**。`compiler.心` 现为 74784 字节（> 65535）→ stage1 只读到前 65535 字节；截断点落在构造体中间（`compiler.心` 字符串词法 `当(真)`（:226-244）无 EOF 检查），进入失控循环 → **STATUS_STACK_OVERFLOW (0xC00000FD)**。实证：仅把 `读取缓冲区[65536]` 改成 `[1048576]`、重编 rt.o、以 **2MB 栈**重链 stage1 后，编译完整 74784 字节源码 **exit=0**（产出 309593 字节 IR）。此缺陷同时阻塞 Task 6 的自举不动点。
+
+**Files:**
+- Modify: `源/运行时/运行时辅助.c`
+
+**Interfaces:**
+- Consumes: `UTF8打开文件`（:17）、`malloc`/`realloc`/`free`（`<stdlib.h>` 已包含）。
+- Produces: 新增文件内 static helper `读取整文件(const char* 路径) -> char*`（malloc 全文件，调用方拥有，失败返回 NULL）；`读取文件(const char*) -> const char*` 保持原契约（可直接使用、调用方不释放）。
+
+**Global Constraints:** 不改变 `读取文件` 的返回契约（返回可直接使用的字符串，调用方无需 free）；不改动打开模式（仍用 `"r"`）。
+
+- [ ] **Step 1: 新增 helper 读取整文件，并把 读取文件 改为调用它**
+
+Replace（`源/运行时/运行时辅助.c:1690-1702`）:
+
+```c
+// 文件读取
+const char* 读取文件(const char* 路径) {
+    static char 读取缓冲区[65536];
+    FILE* fp = UTF8打开文件(路径, "r");
+    if (!fp) {
+        读取缓冲区[0] = '\0';
+        return 读取缓冲区;
+    }
+    size_t 读取 = fread(读取缓冲区, 1, sizeof(读取缓冲区) - 1, fp);
+    读取缓冲区[读取] = '\0';
+    fclose(fp);
+    return 读取缓冲区;
+}
+```
+
+with:
+
+```c
+// 读取整个文件（返回 malloc 的缓冲区，调用方拥有；失败返回 NULL）
+static char* 读取整文件(const char* 路径) {
+    FILE* fp = UTF8打开文件(路径, "r");
+    size_t 容量 = 65536;
+    size_t 长度 = 0;
+    char* 缓冲;
+    if (!fp) return NULL;
+    缓冲 = (char*)malloc(容量);
+    if (!缓冲) { fclose(fp); return NULL; }
+    for (;;) {
+        if (长度 + 1 >= 容量) {
+            char* 新缓冲;
+            容量 = 容量 * 2;
+            新缓冲 = (char*)realloc(缓冲, 容量);
+            if (!新缓冲) { free(缓冲); fclose(fp); return NULL; }
+            缓冲 = 新缓冲;
+        }
+        size_t n = fread(缓冲 + 长度, 1, 容量 - 1 - 长度, fp);
+        长度 += n;
+        if (n == 0) break;
+    }
+    缓冲[长度] = '\0';
+    fclose(fp);
+    return 缓冲;
+}
+
+// 文件读取（静态缓冲，调用方无需释放）
+const char* 读取文件(const char* 路径) {
+    static char* 缓冲 = NULL;
+    char* 临时 = 读取整文件(路径);
+    if (!临时) return "";
+    free(缓冲);
+    缓冲 = 临时;
+    return 缓冲;
+}
+```
+
+- [ ] **Step 2: 改造两个 异步读取线程 使用 读取整文件**
+
+Replace（Win32 变体，`源/运行时/运行时辅助.c:1743-1759`）:
+
+```c
+static unsigned __stdcall 异步读取线程(void* arg) {
+    IO任务* 任务 = (IO任务*)arg;
+    static char 读取缓冲区[65536];
+    FILE* fp = UTF8打开文件(任务->路径, "r");
+    if (fp) {
+        size_t 读取 = fread(读取缓冲区, 1, sizeof(读取缓冲区) - 1, fp);
+        读取缓冲区[读取] = '\0';
+        fclose(fp);
+        任务->读取结果 = strdup(读取缓冲区);
+        任务->结果 = 0;
+    } else {
+        任务->读取结果 = NULL;
+        任务->结果 = -1;
+    }
+    任务->完成 = 1;
+    return 0;
+}
+```
+
+with:
+
+```c
+static unsigned __stdcall 异步读取线程(void* arg) {
+    IO任务* 任务 = (IO任务*)arg;
+    char* 读取缓冲区 = 读取整文件(任务->路径);
+    if (读取缓冲区) {
+        任务->读取结果 = 读取缓冲区;
+        任务->结果 = 0;
+    } else {
+        任务->读取结果 = NULL;
+        任务->结果 = -1;
+    }
+    任务->完成 = 1;
+    return 0;
+}
+```
+
+Replace（POSIX 变体，`源/运行时/运行时辅助.c:1775-1791`）:
+
+```c
+static void* 异步读取线程(void* arg) {
+    IO任务* 任务 = (IO任务*)arg;
+    static char 读取缓冲区[65536];
+    FILE* fp = UTF8打开文件(任务->路径, "r");
+    if (fp) {
+        size_t 读取 = fread(读取缓冲区, 1, sizeof(读取缓冲区) - 1, fp);
+        读取缓冲区[读取] = '\0';
+        fclose(fp);
+        任务->读取结果 = strdup(读取缓冲区);
+        任务->结果 = 0;
+    } else {
+        任务->读取结果 = NULL;
+        任务->结果 = -1;
+    }
+    任务->完成 = 1;
+    return NULL;
+}
+```
+
+with:
+
+```c
+static void* 异步读取线程(void* arg) {
+    IO任务* 任务 = (IO任务*)arg;
+    char* 读取缓冲区 = 读取整文件(任务->路径);
+    if (读取缓冲区) {
+        任务->读取结果 = 读取缓冲区;
+        任务->结果 = 0;
+    } else {
+        任务->读取结果 = NULL;
+        任务->结果 = -1;
+    }
+    任务->完成 = 1;
+    return NULL;
+}
+```
+
+- [ ] **Step 3: 构建 + 自举回归验证**
+
+重建宿主与运行时，再让自举 stage1 编译**完整**的 `自举/compiler.心`：
+
+```bash
+make 日月.exe                      # 重编宿主 + 运行时（若 make 默认目标非宿主，改用对应目标）
+cp 自举/compiler.心 stage/compiler_copy.txt
+./日月.exe 自举/compiler.心 stage/stage1.exe
+./stage/stage1.exe stage/compiler_copy.txt stage/ir1.ll; echo exit=$?
+wc -c stage/ir1.ll
+```
+
+Expected: `exit=0`；`stage/ir1.ll` 约 309593 字节（完整、非截断；不再出现 0xC00000FD）。
+回归：`./stage/stage1.exe stage/t45.xin stage/t45_out.ll` → 装配/运行输出 `7/6/18/9/1/1`、exit 0。
+
+- [ ] **Step 4: 提交**
+
+```bash
+git add 源/运行时/运行时辅助.c docs/superpowers/plans/2026-09-28-compiler-ir-emission.md
+git commit -m "fix: 运行时 读取文件/异步读取 改为动态读整文件（解除 64KB 截断）"
+```
+
+---
+
 ### Task 5: 控制流 IR 化（如果/当/循环/中断/继续/代码块）
 
 **Files:**
