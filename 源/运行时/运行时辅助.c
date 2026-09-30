@@ -21,10 +21,11 @@ static FILE* UTF8打开文件(const char* 路径, const char* 模式) {
     wchar_t 宽路径[1024];
     wchar_t 宽模式[64];
     UINT 代码页表[2] = { CP_UTF8, CP_ACP };
+    DWORD 标志表[2] = { MB_ERR_INVALID_CHARS, 0 };
     int 索引;
     if (MultiByteToWideChar(CP_UTF8, 0, 模式, -1, 宽模式, 64) <= 0) return NULL;
     for (索引 = 0; 索引 < 2; 索引++) {
-        if (MultiByteToWideChar(代码页表[索引], 0, 路径, -1, 宽路径, 1024) > 0) {
+        if (MultiByteToWideChar(代码页表[索引], 标志表[索引], 路径, -1, 宽路径, 1024) > 0) {
             FILE* fp = _wfopen(宽路径, 宽模式);
             if (fp) return fp;
         }
@@ -739,7 +740,37 @@ long 获取文件大小(const char* 路径) {
 static int 全局参数数量 = 0;
 static const char** 全局参数列表 = NULL;
 
+// 将宽字符参数转换为 UTF-8 副本
+static char* 宽参数转UTF8(const wchar_t* 宽参数) {
+    int 长度 = WideCharToMultiByte(CP_UTF8, 0, 宽参数, -1, NULL, 0, NULL, NULL);
+    char* 结果 = (char*)malloc(长度 ? 长度 : 1);
+    if (结果) WideCharToMultiByte(CP_UTF8, 0, 宽参数, -1, 结果, 长度, NULL, NULL);
+    return 结果;
+}
+
 void 设置参数(int argc, const char** argv) {
+#ifdef _WIN32
+    // 自举产物（一级.exe/二级.exe）的 main 由 IR 发射，其 argv 来自 CRT 窄字符
+    // （本地代码页 GBK/ACP 字节）。此处改用宽命令行重新解析并转 UTF-8，
+    // 保证与宿主（主程序.cpp 用 CommandLineToArgvW 传 UTF-8）行为一致，
+    // 避免「GBK 目录 + UTF-8 模块名」拼接出混合编码路径导致找不到模块。
+    (void)argc; (void)argv;
+    int 宽数量 = 0;
+    LPWSTR* 宽参数 = CommandLineToArgvW(GetCommandLineW(), &宽数量);
+    if (宽参数 && 宽数量 > 0) {
+        static char** UTF8参数 = NULL;
+        static char* 参数缓冲[64];
+        if (宽数量 <= 64) {
+            int i;
+            for (i = 0; i < 宽数量; i++) 参数缓冲[i] = 宽参数转UTF8(宽参数[i]);
+            全局参数数量 = 宽数量;
+            全局参数列表 = (const char**)参数缓冲;
+            LocalFree(宽参数);
+            return;
+        }
+        LocalFree(宽参数);
+    }
+#endif
     全局参数数量 = argc;
     全局参数列表 = argv;
 }

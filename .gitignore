@@ -28,6 +28,7 @@ test_full.ming
 packages/
 
 # 自举构建产物
+阶段/
 stage/
 
 # 调试/临时散件
