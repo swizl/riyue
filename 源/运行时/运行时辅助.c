@@ -82,7 +82,7 @@ int 获取字符数(const char* str) {
 }
 
 // 映射辅助函数
-// 键数组和值数组是平行的，大小固定为256
+// 键数组和值数组是平行的，大小固定为1024
 
 // 在键数组中查找键，返回索引，未找到返回-1
 int 映射查找(const char** keys, int size, const char* key) {
@@ -101,7 +101,7 @@ int 映射设置(const char** keys, const char** values, int size, const char* k
         values[idx] = value;
         return size;
     }
-    if (size < 256) {
+    if (size < 1024) {
         keys[size] = key;
         values[size] = value;
         return size + 1;
