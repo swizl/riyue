@@ -12,6 +12,40 @@ LLVM值* 协程句柄 = 空针;
     llvm::InitializeNativeTargetAsmPrinter();
 }
 
+// 将函数内非入口块的静态分配（alloca）提升到入口块。
+// 日月后端在“当前插入点”为局部变量创建 alloca；若声明落在循环体内，该 alloca
+// 会留在循环基本块中。LLVM 仅把入口块中常量大小的 alloca 当作静态分配，其余按
+// 动态分配处理——每轮迭代都执行一次栈指针下移，且函数返回前不回收，于是栈用量随
+// 循环次数增长，大输入下触发栈溢出（STATUS_STACK_OVERFLOW）。把常量大小的 alloca
+// 统一前移到入口块即可降级为静态分配，栈帧大小与循环次数无关。
+静态 虚空型 提升分配到入口块(llvm::Function* 函数) {
+    如果 (!函数 || 函数->isDeclaration()) 归返;
+    llvm::BasicBlock& 入口 = 函数->getEntryBlock();
+    分配指令* 插入点 = 空针;
+    循环 (自动& 指令 : 入口) {
+        分配指令* 分配 = llvm::dyn_cast<llvm::AllocaInst>(&指令);
+        如果 (!分配) 中断;
+        插入点 = 分配;
+    }
+    数组向量<分配指令*> 待提升;
+    循环 (自动& 块 : *函数) {
+        如果 (&块 == &入口) 继续;
+        循环 (自动& 指令 : 块) {
+            分配指令* 分配 = llvm::dyn_cast<llvm::AllocaInst>(&指令);
+            如果 (分配 && llvm::isa<llvm::ConstantInt>(分配->getArraySize()))
+                待提升.push_back(分配);
+        }
+    }
+    循环 (自动* 分配 : 待提升) {
+        如果 (插入点) {
+            分配->moveAfter(插入点->getIterator());
+        } 否则 {
+            分配->moveBefore(入口.getFirstInsertionPt());
+        }
+        插入点 = 分配;
+    }
+}
+
 类型* 代码生成器::类型名到LLVM类型(恒常 文本& 类型名称) {
     // 递归解析类型别名（最多10层，防止循环）
     文本 解析后类型名 = 类型名称;
@@ -450,6 +484,7 @@ LLVM函数* 人格函数 = 获取模块函数(*模块, "__gxx_personality_seh0")
         }
     } // 作用域守卫在此析构，自动退出作用域
 
+    提升分配到入口块(llvm函数);
     验证函数(*llvm函数);
 }
 
