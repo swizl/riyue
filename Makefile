@@ -69,14 +69,14 @@ $(TARGET): $(ALL_OBJ)
 自举: $(TARGET)
 	export MSYS2_ARG_CONV_EXCL='*'; \
 	PATH=/d/src/riyue/llvm/llvm-build/bin:/c/tools/msys64/mingw64/bin:$$PATH; export PATH; \
-	./$(TARGET) 自举/编译器.心 阶段/一级.exe && \
-	./阶段/一级.exe 自举/编译器.心 阶段/中间码1.ll && \
+	./$(TARGET) 自举/主入口.心 阶段/一级.exe && \
+	./阶段/一级.exe 自举/主入口.心 阶段/中间码1.ll && \
 	llvm-as 阶段/中间码1.ll -o 阶段/中间码1.bc && \
 	llc -mtriple=x86_64-w64-windows-gnu -filetype=obj 阶段/中间码1.bc -o 阶段/中间码1.o && \
 	$(CC) -O0 -finput-charset=UTF-8 -fexec-charset=UTF-8 -c 源/运行时/运行时辅助.c -o 阶段/运行时.o && \
 	cp 'C:/tools/msys64/mingw64/lib/crt2.o' 阶段/启动.o && \
 	ld.lld 阶段/启动.o 阶段/中间码1.o 阶段/运行时.o -o 阶段/二级.exe -LC:/tools/msys64/mingw64/lib -LC:/tools/msys64/mingw64/lib/gcc/x86_64-w64-mingw32/16.1.0 -lmingw32 -lmingwex -lmsvcrt -lgcc -lmoldname -lws2_32 -lm -ladvapi32 -lshell32 -luser32 -lkernel32 && \
-	./阶段/二级.exe 自举/编译器.心 阶段/中间码2.ll && \
+	./阶段/二级.exe 自举/主入口.心 阶段/中间码2.ll && \
 	diff 阶段/中间码1.ll 阶段/中间码2.ll
 
 clean:
