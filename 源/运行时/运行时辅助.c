@@ -651,6 +651,12 @@ int 内建最大值(int 甲, int 乙) {
     return 甲 > 乙 ? 甲 : 乙;
 }
 
+// 查找子串（返回字节偏移，未找到为 -1）
+int 查找(const char* 主串, const char* 子串) {
+    const char* 位置 = strstr(主串, 子串);
+    return 位置 ? (int)(位置 - 主串) : -1;
+}
+
 // 平方根
 double 平方根(double 数) {
     return sqrt(数);
