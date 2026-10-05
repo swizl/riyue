@@ -636,6 +636,21 @@ double 幂运算(double 底数, double 指数) {
     return pow(底数, 指数);
 }
 
+// 绝对值（自举编译器统一按双精度处理）
+double 绝对值(double 值) {
+    return 值 < 0.0 ? -值 : 值;
+}
+
+// 最小值（自举编译器内建，整数）
+int 内建最小值(int 甲, int 乙) {
+    return 甲 < 乙 ? 甲 : 乙;
+}
+
+// 最大值（自举编译器内建，整数）
+int 内建最大值(int 甲, int 乙) {
+    return 甲 > 乙 ? 甲 : 乙;
+}
+
 // 平方根
 double 平方根(double 数) {
     return sqrt(数);
@@ -699,9 +714,21 @@ const char* 获取环境变量(const char* 名称) {
     return 值 ? 值 : "";
 }
 
-// 执行系统命令
+// 执行系统命令（命令字符串为 UTF-8；Windows 下转宽字符后用 _wsystem，
+// 以免命令行里的中文路径被本地代码页曲解）
 int 执行系统命令(const char* 命令) {
+#ifdef _WIN32
+    int 宽长 = MultiByteToWideChar(CP_UTF8, 0, 命令, -1, NULL, 0);
+    if (宽长 <= 0) { return system(命令); }
+    wchar_t* 宽命令 = (wchar_t*)malloc((size_t)宽长 * sizeof(wchar_t));
+    if (!宽命令) { return system(命令); }
+    MultiByteToWideChar(CP_UTF8, 0, 命令, -1, 宽命令, 宽长);
+    int 结果 = _wsystem(宽命令);
+    free(宽命令);
+    return 结果;
+#else
     return system(命令);
+#endif
 }
 
 // 获取当前工作目录

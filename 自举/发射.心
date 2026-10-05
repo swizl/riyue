@@ -463,6 +463,18 @@
     ("声明 void @动态字符串数组删除(ptr, i32)")发射;
     ("声明 void @动态字符串数组插入(ptr, i32, ptr)")发射;
     ("声明 i32 @动态字符串数组大小(ptr)")发射;
+    ("声明 double @幂运算(double, double)")发射;
+    ("声明 double @平方根(double)")发射;
+    ("声明 double @正弦(double)")发射;
+    ("声明 double @余弦(double)")发射;
+    ("声明 double @正切(double)")发射;
+    ("声明 double @自然对数(double)")发射;
+    ("声明 double @常用对数(double)")发射;
+    ("声明 double @角度转弧度(double)")发射;
+    ("声明 double @弧度转角度(double)")发射;
+    ("声明 double @绝对值(double)")发射;
+    ("声明 i32 @内建最小值(i32, i32)")发射;
+    ("声明 i32 @内建最大值(i32, i32)")发射;
     ("")发射;
     ()发射辅助函数定义;
     ("")发射;

@@ -24,14 +24,27 @@ LDFLAGS = $(LLVM_LDFLAGS) $(LLVM_LIBS) $(LLVM_SYSLIBS) -lshell32 -lws2_32 -lpthr
 ALL_CXX_SRC = $(前端_SRC) $(后端_SRC) $(虚拟机_SRC) 源/主程序.cpp
 ALL_OBJ = $(ALL_CXX_SRC:.cpp=.o) $(运行时_SRC:.c=.o)
 
-TARGET = 日月.exe
+# S4.6 路线2 构建链重排：
+#   引导.exe = 宿主 C++ 编译器（仅作引导种子）
+#   日月.exe = 由 引导.exe 编译 自举/主入口.心 产出的自举编译器（第一代自举）
+TARGET = 引导.exe
+SELFHOST_SRC = $(wildcard 自举/*.心) $(wildcard 工具/peg/*.心) 工具/日月/日月.文法
 
-.PHONY: all clean 测试 单元测试 运行 自举
+.PHONY: all clean 测试 单元测试 运行 自举 引导
 
-all: $(TARGET)
+# 默认产出：自举 日月.exe（引导.exe 仅作前置种子）
+all: 日月.exe
+
+引导: $(TARGET)
 
 $(TARGET): $(ALL_OBJ)
 	$(CXX) -o $@ $^ $(LDFLAGS)
+
+# 自举 日月.exe：种子编译器 引导.exe 编译自举编译器源码 → 原生可执行文件
+日月.exe: $(TARGET) $(SELFHOST_SRC)
+	export MSYS2_ARG_CONV_EXCL='*'; \
+	PATH=/d/src/riyue/llvm/llvm-build/bin:/c/tools/msys64/mingw64/bin:$$PATH; export PATH; \
+	./$(TARGET) 自举/主入口.心 日月.exe
 
 %.o: %.cpp
 	$(CXX) $(CXXFLAGS) -c $< -o $@
@@ -52,19 +65,19 @@ $(TARGET): $(ALL_OBJ)
 单元测试: 单元测试.exe
 	./单元测试.exe
 
-# 端到端测试
-测试: $(TARGET)
+# 端到端测试（默认用自举 日月.exe）
+测试: 日月.exe
 	bash run_tests.sh
 
-运行: $(TARGET)
-	./$(TARGET) --调试 示例/简单测试.心 构建/简单测试.exe
+运行: 日月.exe
+	./日月.exe 示例/简单测试.心 构建/简单测试.exe
 	./构建/简单测试.exe
 
-# 自举 IR 不动点验证：
-# 日月.exe 编译 自举/编译器.心 → 一级.exe；一级 编译自身 → 中间码1.ll；
+# 自举 IR 不动点验证（种子 引导.exe）：
+# 引导.exe 编译 自举/主入口.心 → 一级.exe；一级 编译自身 → 中间码1.ll；
 # llvm-as/llc 汇编为 中间码1.o；与 运行时.o 经 ld.lld 链接 → 二级.exe；
 # 二级 编译自身 → 中间码2.ll；中间码1.ll 与 中间码2.ll 必须完全一致（不动点/自举闭环成立）。
-# 注意：MSYS2_ARG_CONV_EXCL='*' 禁止参数路径转换（否则 自举/编译器.心 被改写导致打不开）；
+# 注意：MSYS2_ARG_CONV_EXCL='*' 禁止参数路径转换（否则 自举/主入口.心 被改写导致打不开）；
 #       代价是原生工具参数不再转换，故 启动.o 与 -L 用 Windows 形式；llc 需 -filetype=obj。
 自举: $(TARGET)
 	export MSYS2_ARG_CONV_EXCL='*'; \
@@ -80,4 +93,4 @@ $(TARGET): $(ALL_OBJ)
 	diff 阶段/中间码1.ll 阶段/中间码2.ll
 
 clean:
-	rm -f $(ALL_OBJ) $(测试_OBJ) $(TARGET) 单元测试.exe out_t.* out2.*
+	rm -f $(ALL_OBJ) $(测试_OBJ) $(TARGET) 日月.exe 单元测试.exe out_t.* out2.*
