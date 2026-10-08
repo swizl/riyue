@@ -65,6 +65,7 @@
     内联 llvm::Type* 整型8(llvm::LLVMContext& 上下文) { 归返 llvm::Type::getInt8Ty(上下文); }
     内联 llvm::Type* 整型16(llvm::LLVMContext& 上下文) { 归返 llvm::Type::getInt16Ty(上下文); }
     内联 llvm::Type* 整型1(llvm::LLVMContext& 上下文) { 归返 llvm::Type::getInt1Ty(上下文); }
+    内联 llvm::Type* 单精度浮点(llvm::LLVMContext& 上下文) { 归返 llvm::Type::getFloatTy(上下文); }
     内联 llvm::Type* 双精度浮点(llvm::LLVMContext& 上下文) { 归返 llvm::Type::getDoubleTy(上下文); }
     内联 llvm::Type* 获取空类型(llvm::LLVMContext& 上下文) { 归返 llvm::Type::getVoidTy(上下文); }
     内联 llvm::Type* 获取指针类型(llvm::LLVMContext& 上下文, 无符号 地址空间 = 0) { 归返 llvm::PointerType::get(上下文, 地址空间); }
@@ -163,6 +164,8 @@
     内联 llvm::Value* 创建截断(llvm::IRBuilder<>& 构建器, llvm::Value* 值, llvm::Type* 目标类型, 恒常 llvm::Twine& 名称 = "") { 归返 构建器.CreateTrunc(值, 目标类型, 名称); }
     内联 llvm::Value* 创建整数转浮点(llvm::IRBuilder<>& 构建器, llvm::Value* 值, llvm::Type* 目标类型, 恒常 llvm::Twine& 名称 = "") { 归返 构建器.CreateSIToFP(值, 目标类型, 名称); }
     内联 llvm::Value* 创建浮点转整数(llvm::IRBuilder<>& 构建器, llvm::Value* 值, llvm::Type* 目标类型, 恒常 llvm::Twine& 名称 = "") { 归返 构建器.CreateFPToSI(值, 目标类型, 名称); }
+    内联 llvm::Value* 创建扩展浮点(llvm::IRBuilder<>& 构建器, llvm::Value* 值, llvm::Type* 目标类型, 恒常 llvm::Twine& 名称 = "") { 归返 构建器.CreateFPExt(值, 目标类型, 名称); }
+    内联 llvm::Value* 创建截断浮点(llvm::IRBuilder<>& 构建器, llvm::Value* 值, llvm::Type* 目标类型, 恒常 llvm::Twine& 名称 = "") { 归返 构建器.CreateFPTrunc(值, 目标类型, 名称); }
     内联 llvm::Value* 创建指针转整数(llvm::IRBuilder<>& 构建器, llvm::Value* 值, llvm::Type* 目标类型, 恒常 llvm::Twine& 名称 = "") { 归返 构建器.CreatePtrToInt(值, 目标类型, 名称); }
     内联 llvm::Value* 创建整数转指针(llvm::IRBuilder<>& 构建器, llvm::Value* 值, llvm::Type* 目标类型, 恒常 llvm::Twine& 名称 = "") { 归返 构建器.CreateIntToPtr(值, 目标类型, 名称); }
     内联 llvm::Value* 创建位转换(llvm::IRBuilder<>& 构建器, llvm::Value* 值, llvm::Type* 目标类型, 恒常 llvm::Twine& 名称 = "") { 归返 构建器.CreateBitCast(值, 目标类型, 名称); }

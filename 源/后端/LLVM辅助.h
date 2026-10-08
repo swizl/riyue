@@ -64,4 +64,35 @@ LLVM值* 查找结构体成员地址(llvm::IRBuilder<>& 构建器, llvm::LLVMCon
     归返 返回LLVM类型;
 }
 
+// 整数位宽：非整数类型返回 0
+内联 整数型 整数位宽(llvm::Type* 类型) {
+    如果 (类型->isIntegerTy()) 归返 类型->getIntegerBitWidth();
+    归返 0;
+}
+
+// 按目标类型转换值：整数族 符号扩展/截断；浮点族 扩展/截断；整数↔浮点 sitofp/fptosi
+内联 LLVM值* 转换值(llvm::IRBuilder<>& 构建器, llvm::LLVMContext& 上下文, LLVM值* 值, 类型* 目标类型) {
+    类型* 源类型 = 值->getType();
+    如果 (源类型 == 目标类型) 归返 值;
+    如果 (源类型->isIntegerTy() && 目标类型->isIntegerTy()) {
+        如果 (整数位宽(源类型) < 整数位宽(目标类型)) {
+            归返 创建符号扩展(构建器, 值, 目标类型);
+        }
+        归返 创建截断(构建器, 值, 目标类型);
+    }
+    如果 (源类型->isFloatingPointTy() && 目标类型->isFloatingPointTy()) {
+        如果 (源类型->getPrimitiveSizeInBits() < 目标类型->getPrimitiveSizeInBits()) {
+            归返 创建扩展浮点(构建器, 值, 目标类型);
+        }
+        归返 创建截断浮点(构建器, 值, 目标类型);
+    }
+    如果 (源类型->isIntegerTy() && 目标类型->isFloatingPointTy()) {
+        归返 创建整数转浮点(构建器, 值, 目标类型);
+    }
+    如果 (源类型->isFloatingPointTy() && 目标类型->isIntegerTy()) {
+        归返 创建浮点转整数(构建器, 值, 目标类型);
+    }
+    归返 值;
+}
+
 #结束
