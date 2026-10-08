@@ -1788,6 +1788,55 @@ const char* 读取文件(const char* 路径) {
     return 缓冲;
 }
 
+// ===== 文件句柄 IO（供自举编译器内建 打开/关闭/写入/读取/读取行） =====
+static FILE* 文件句柄缓冲[256];
+static int 文件句柄计数 = 0;
+
+int 文件打开(const char* 路径, const char* 模式) {
+    FILE* fp;
+    if (文件句柄计数 >= 256) return -1;
+    fp = UTF8打开文件(路径, 模式);
+    if (!fp) return -1;
+    文件句柄缓冲[文件句柄计数] = fp;
+    return 文件句柄计数++;
+}
+
+int 文件关闭(int 句柄) {
+    if (句柄 < 0 || 句柄 >= 文件句柄计数 || !文件句柄缓冲[句柄]) return -1;
+    fclose(文件句柄缓冲[句柄]);
+    文件句柄缓冲[句柄] = NULL;
+    return 0;
+}
+
+int 文件写入(int 句柄, const char* 内容) {
+    if (句柄 < 0 || 句柄 >= 文件句柄计数 || !文件句柄缓冲[句柄]) return -1;
+    if (!内容) return -1;
+    fputs(内容, 文件句柄缓冲[句柄]);
+    return 0;
+}
+
+// 读取一行并剥离行尾换行；返回每次新分配的副本（调用方拥有）
+const char* 文件读取行(int 句柄) {
+    static char 行缓冲[8192];
+    size_t 长;
+    char* 副本;
+    if (句柄 < 0 || 句柄 >= 文件句柄计数 || !文件句柄缓冲[句柄]) return "";
+    if (!fgets(行缓冲, sizeof(行缓冲), 文件句柄缓冲[句柄])) return "";
+    长 = strlen(行缓冲);
+    while (长 > 0 && (行缓冲[长 - 1] == '\n' || 行缓冲[长 - 1] == '\r')) 行缓冲[--长] = '\0';
+    副本 = (char*)malloc(长 + 1);
+    if (!副本) return "";
+    memcpy(副本, 行缓冲, 长 + 1);
+    return 副本;
+}
+
+int 文件读取(int 句柄) {
+    int 值 = 0;
+    if (句柄 < 0 || 句柄 >= 文件句柄计数 || !文件句柄缓冲[句柄]) return 0;
+    if (fscanf(文件句柄缓冲[句柄], "%d", &值) != 1) return 0;
+    return 值;
+}
+
 // 异步IO支持
 // 真异步IO：基于线程的异步执行
 #ifdef _WIN32
