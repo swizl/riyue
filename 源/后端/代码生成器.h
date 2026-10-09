@@ -56,6 +56,7 @@ LLVM值* 创建间接调用(llvm::FunctionType* 类型, LLVM值* 指针, llvm::A
     LLVM值* 生成表达式(恒常 表达式& 表达式);
 
     虚空型 生成可执行文件();
+    虚空型 输出LLVMIR();
 };
 
 #结束

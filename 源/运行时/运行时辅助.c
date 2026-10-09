@@ -1778,11 +1778,73 @@ static char* 读取整文件(const char* 路径) {
     return 缓冲;
 }
 
-// 文件读取（静态缓冲，调用方无需释放）
+// 判断字节串是否为合法 UTF-8（用长度限定，避免读到越界）
+static int 是合法UTF8(const char* 数据, size_t 长度) {
+    size_t i = 0;
+    while (i < 长度) {
+        unsigned char c = (unsigned char)数据[i];
+        if (c < 0x80) {
+            i++;
+        } else if ((c & 0xE0) == 0xC0) {
+            if (i + 1 >= 长度 || ((unsigned char)数据[i + 1] & 0xC0) != 0x80) return 0;
+            i += 2;
+        } else if ((c & 0xF0) == 0xE0) {
+            if (i + 2 >= 长度 || ((unsigned char)数据[i + 1] & 0xC0) != 0x80 ||
+                ((unsigned char)数据[i + 2] & 0xC0) != 0x80) return 0;
+            i += 3;
+        } else if ((c & 0xF8) == 0xF0) {
+            if (i + 3 >= 长度 || ((unsigned char)数据[i + 1] & 0xC0) != 0x80 ||
+                ((unsigned char)数据[i + 2] & 0xC0) != 0x80 ||
+                ((unsigned char)数据[i + 3] & 0xC0) != 0x80) return 0;
+            i += 4;
+        } else {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+#ifdef _WIN32
+// 将本地 ANSI(CP_ACP，如 GBK) 编码文本转换为 UTF-8，返回 malloc 缓冲区（调用方拥有）
+static char* ANSI转UTF8(const char* 输入, size_t 输入长度, size_t* 输出长度) {
+    int 宽长度 = MultiByteToWideChar(CP_ACP, 0, 输入, (int)输入长度, NULL, 0);
+    wchar_t* 宽缓冲;
+    int 转换长度;
+    char* 结果;
+    if (宽长度 <= 0) return NULL;
+    宽缓冲 = (wchar_t*)malloc((size_t)宽长度 * sizeof(wchar_t));
+    if (!宽缓冲) return NULL;
+    MultiByteToWideChar(CP_ACP, 0, 输入, (int)输入长度, 宽缓冲, 宽长度);
+    转换长度 = WideCharToMultiByte(CP_UTF8, 0, 宽缓冲, 宽长度, NULL, 0, NULL, NULL);
+    if (转换长度 <= 0) { free(宽缓冲); return NULL; }
+    结果 = (char*)malloc((size_t)转换长度 + 1);
+    if (!结果) { free(宽缓冲); return NULL; }
+    WideCharToMultiByte(CP_UTF8, 0, 宽缓冲, 宽长度, 结果, 转换长度, NULL, NULL);
+    free(宽缓冲);
+    结果[转换长度] = '\0';
+    *输出长度 = (size_t)转换长度;
+    return 结果;
+}
+#endif
+
+// 文件读取（静态缓冲，调用方无需释放；自动兼容 UTF-8/GBK 源码）
 const char* 读取文件(const char* 路径) {
     static char* 缓冲 = NULL;
     char* 临时 = 读取整文件(路径);
     if (!临时) return "";
+    // 去除 UTF-8 BOM（EF BB BF）
+    if (strlen(临时) >= 3 && (unsigned char)临时[0] == 0xEF &&
+        (unsigned char)临时[1] == 0xBB && (unsigned char)临时[2] == 0xBF) {
+        memmove(临时, 临时 + 3, strlen(临时 + 3) + 1);
+    }
+    // 非合法 UTF-8 时按本地 ANSI(GBK) 编码转换为 UTF-8
+    if (!是合法UTF8(临时, strlen(临时))) {
+#ifdef _WIN32
+        size_t 新长度 = 0;
+        char* 转换 = ANSI转UTF8(临时, strlen(临时), &新长度);
+        if (转换) { free(临时); 临时 = 转换; }
+#endif
+    }
     free(缓冲);
     缓冲 = 临时;
     return 缓冲;

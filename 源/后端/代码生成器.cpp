@@ -639,3 +639,29 @@ LLVM函数* 人格函数 = 获取模块函数(*模块, "__gxx_personality_seh0")
     文本 链接命令 = "clang++ " + 目标文件名 + " " + 运行时对象路径() + " -o " + 输出文件名 + " -lshell32 -lws2_32 -lm -lstdc++";
     如果 (执行命令(链接命令) != 0) 抛出 运行时异常("链接失败");
 }
+
+虚空型 代码生成器::输出LLVMIR() {
+    如果 (启用优化) {
+        运行优化Pass();
+    }
+
+    三元组 目标三元组(llvm::sys::getDefaultTargetTriple());
+    文本 错误信息;
+    恒常 llvm::Target* 目标 = llvm::TargetRegistry::lookupTarget(目标三元组, 错误信息);
+    如果 (目标) {
+        目标选项 选项;
+        自动 目标机器 = 独占指针<llvm::TargetMachine>(
+            目标->createTargetMachine(目标三元组, "generic", "", 选项, llvm::Reloc::PIC_));
+        如果 (目标机器) {
+            模块->setDataLayout(目标机器->createDataLayout());
+        }
+    }
+    模块->setTargetTriple(目标三元组);
+
+    错误码 错误码;
+    原始输出流 输出(输出文件名, 错误码, llvm::sys::fs::OF_Text);
+    如果 (错误码) 抛出 运行时异常("无法写入IR文件: " + 错误码.message());
+    模块->print(输出, 空针);
+    输出.flush();
+    输出.close();
+}
