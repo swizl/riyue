@@ -57,27 +57,33 @@
                     输出路径 + ".ll" = 临时ll;
                     "" = 临时bc;
                     输出路径 + ".bc" = 临时bc;
-                    "" = 临时o;
-                    输出路径 + ".o" = 临时o;
                     (临时ll, 生成代码)写入文件 = 结果;
-                    // 工具链用绝对目录，避免依赖环境变量 PATH
+                    // 工具链用绝对目录，避免依赖环境变量 PATH。
+                    // 关键：clang++ 调用 ld 时，命令行里交给 ld 的非 ASCII（中文）路径
+                    // 会被按本地代码页（GBK）曲解成乱码（ld: cannot open ... 乱码）。
+                    // 因此凡是要交给 clang++/ld 的路径——运行时 .o、输入 .o、输出 exe
+                    // ——一律改用纯 ASCII 临时名，再用 move 改名为（可能含中文的）目标
+                    // 路径。%RANDOM% 在同一命令行里每次出现都会取到不同的值，不能重复
+                    // 书写；故用 for 把它捕获一次，之后统一引用 %i。llvm-as/llc 不经过
+                    // ld，可正确读写中文路径，故临时 .ll/.bc 仍放在输出路径旁。
                     "" = 链接前置;
                     链接前置 + "set \"PATH=D:\\src\\riyue\\llvm\\llvm-build\\bin;C:\\tools\\msys64\\mingw64\\bin;%PATH%\" && " = 链接前置;
+                    链接前置 + "for /f %i in (\"%RANDOM%\") do " = 链接前置;
                     "" = 链接命令;
                     链接前置 + 链接命令 = 链接命令;
-                    链接命令 + "llvm-as " = 链接命令;
+                    链接命令 + "copy /Y \"源\\运行时\\运行时辅助.o\" riyue_rt_%i.o >nul && llvm-as " = 链接命令;
                     链接命令 + 临时ll = 链接命令;
                     链接命令 + " -o " = 链接命令;
                     链接命令 + 临时bc = 链接命令;
                     链接命令 + " && llc -mtriple=x86_64-w64-windows-gnu -filetype=obj " = 链接命令;
                     链接命令 + 临时bc = 链接命令;
-                    链接命令 + " -o " = 链接命令;
-                    链接命令 + 临时o = 链接命令;
-                    链接命令 + " && clang++ " = 链接命令;
-                    链接命令 + 临时o = 链接命令;
-                    链接命令 + " 源/运行时/运行时辅助.o -o " = 链接命令;
-                    链接命令 + 输出路径 = 链接命令;
-                    链接命令 + " -lshell32 -lws2_32 -lm -lstdc++" = 链接命令;
+                    链接命令 + " -o riyue_obj_%i.o && clang++ riyue_obj_%i.o riyue_rt_%i.o -o riyue_out_%i.exe -lshell32 -lws2_32 -lm -lstdc++ && move /Y riyue_out_%i.exe " = 链接命令;
+                    如果 (出后缀 ?= "exe") {
+                        链接命令 + "\"" + 输出路径 + "\"" = 链接命令;
+                    } 否则 {
+                        链接命令 + "\"" + 输出路径 + ".exe\"" = 链接命令;
+                    }
+                    链接命令 + " && del riyue_rt_%i.o riyue_obj_%i.o" = 链接命令;
                     (链接命令)执行命令 = 链接结果;
                 }
             }

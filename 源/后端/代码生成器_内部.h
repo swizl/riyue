@@ -1,4 +1,4 @@
-﻿#如果未定义 代码生成器_内部_H
+#如果未定义 代码生成器_内部_H
 #定义 代码生成器_内部_H
 
 #包含 "代码生成器.h"
@@ -103,6 +103,18 @@ extern 数组向量<分配指令*> 返回值变量列表;
     WideCharToMultiByte(CP_UTF8, 0, 宽.c_str(), (整数型)宽.size(), 窄.data(), 需, 空针, 空针);
     归返 窄;
 }
+内联 std::wstring UTF8转宽(恒常 文本& 窄) {
+    如果 (窄.empty()) 归返 std::wstring();
+    整数型 需 = MultiByteToWideChar(CP_UTF8, 0, 窄.c_str(), (整数型)窄.size(), 空针, 0);
+    std::wstring 宽(需, L'\0');
+    MultiByteToWideChar(CP_UTF8, 0, 窄.c_str(), (整数型)窄.size(), &宽[0], 需);
+    归返 宽;
+}
+// 用宽字符 API 改名/移动：目标路径可能含中文，窄字符 API 会按 ANSI 解析而失败。
+内联 真假型 移动文件宽(恒常 std::wstring& 源, 恒常 std::wstring& 目标) {
+    归返 MoveFileExW(源.c_str(), 目标.c_str(),
+        MOVEFILE_REPLACE_EXISTING | MOVEFILE_COPY_ALLOWED) != 0;
+}
 #否则
 #包含 <climits>
 #包含 <sys/stat.h>
@@ -183,6 +195,28 @@ extern 数组向量<分配指令*> 返回值变量列表;
         归返 候选;
     }
     归返 "源/运行时/运行时辅助.o";
+#结束
+}
+
+内联 文本 进程标识文本() {
+#如果定义 _WIN32
+    归返 转为文本((整数型)_getpid());
+#否则
+    归返 转为文本((整数型)getpid());
+#结束
+}
+
+// 把编译产物从 ASCII 临时路径移动到（可能含中文的）真实目标路径。
+// 链接命令行必须保持纯 ASCII：clang++/ld 会把命令行中的非 ASCII 路径按
+// ANSI 代码页解析而乱码（ld: cannot open output file <乱码>），因此先链接到
+// ASCII 临时名，再用宽字符 API 改名到目标路径。
+内联 真假型 移动编译产物(恒常 文本& 源, 恒常 文本& 目标) {
+    如果 (源 == 目标) 归返 真值;
+#如果定义 _WIN32
+    取用 名域 运行时路径细节;
+    归返 移动文件宽(UTF8转宽(源), UTF8转宽(目标));
+#否则
+    归返 std::rename(源.c_str(), 目标.c_str()) == 0;
 #结束
 }
 

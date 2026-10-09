@@ -609,8 +609,14 @@ LLVM函数* 人格函数 = 获取模块函数(*模块, "__gxx_personality_seh0")
         运行优化Pass();
     }
 
-    // 使用 TargetMachine 直接生成目标文件，避免中文 LLVM 的 IR/汇编输出问题
-    文本 目标文件名 = 输出文件名 + ".o";
+    // 链接命令行只使用纯 ASCII 临时路径：clang++/ld 无法正确处理命令行中的
+    // 非 ASCII（中文）路径，会把 UTF-8 字节按 ANSI 代码页解析而乱码
+    // （ld: cannot open output file <乱码>: No such file or directory）。
+    // 故：LLVM 直接写 ASCII 临时对象 → 链接为 ASCII 临时可执行 → 改名为目标路径。
+    文本 唯一 = 进程标识文本();
+    文本 临时对象名 = "riyue_obj_" + 唯一 + ".o";
+    文本 临时可执行名 = "riyue_link_" + 唯一 + ".exe";
+
     三元组 目标三元组(llvm::sys::getDefaultTargetTriple());
     文本 错误信息;
     恒常 llvm::Target* 目标 = llvm::TargetRegistry::lookupTarget(目标三元组, 错误信息);
@@ -625,7 +631,7 @@ LLVM函数* 人格函数 = 获取模块函数(*模块, "__gxx_personality_seh0")
     模块->setTargetTriple(目标三元组);
 
     错误码 错误码;
-    原始输出流 目标文件流(目标文件名, 错误码, llvm::sys::fs::OF_None);
+    原始输出流 目标文件流(临时对象名, 错误码, llvm::sys::fs::OF_None);
     如果 (错误码) 抛出 运行时异常("无法写入目标文件: " + 错误码.message());
 
     llvm::legacy::PassManager 管理器;
@@ -636,8 +642,22 @@ LLVM函数* 人格函数 = 获取模块函数(*模块, "__gxx_personality_seh0")
     目标文件流.close();
 
     // 链接目标文件与运行时
-    文本 链接命令 = "clang++ " + 目标文件名 + " " + 运行时对象路径() + " -o " + 输出文件名 + " -lshell32 -lws2_32 -lm -lstdc++";
-    如果 (执行命令(链接命令) != 0) 抛出 运行时异常("链接失败");
+    文本 链接命令 = "clang++ " + 临时对象名 + " " + 运行时对象路径() + " -o " + 临时可执行名 + " -lshell32 -lws2_32 -lm -lstdc++";
+    整数型 链接结果 = 执行命令(链接命令);
+    std::remove(临时对象名.c_str());
+    如果 (链接结果 != 0) 抛出 运行时异常("链接失败");
+
+    文本 最终输出 = 输出文件名;
+#如果定义 _WIN32
+    // MinGW 的 ld 对无扩展名的 -o 会自动补 .exe；改用 ASCII 临时名后由本函数改名，
+    // 需显式补齐 .exe，才能与既有行为（如 -o out_t 产出 out_t.exe）保持一致。
+    如果 (最终输出.size() < 4 || 最终输出.substr(最终输出.size() - 4) != ".exe") {
+        最终输出 += ".exe";
+    }
+#结束
+    如果 (!移动编译产物(临时可执行名, 最终输出)) {
+        抛出 运行时异常("无法写出可执行文件: " + 最终输出);
+    }
 }
 
 虚空型 代码生成器::输出LLVMIR() {
