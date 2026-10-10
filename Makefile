@@ -30,7 +30,7 @@ ALL_OBJ = $(ALL_CXX_SRC:.cpp=.o) $(运行时_SRC:.c=.o)
 TARGET = 引导.exe
 SELFHOST_SRC = $(wildcard 自举/*.心) $(wildcard 工具/peg/*.心) 工具/日月/日月.文法
 
-.PHONY: all clean 测试 单元测试 运行 自举 引导
+.PHONY: all clean 测试 单元测试 运行 自举 引导 重生成解析器 标准库冒烟
 
 # 默认产出：自举 日月.exe（引导.exe 仅作前置种子）
 all: 日月.exe
@@ -69,6 +69,14 @@ $(TARGET): $(ALL_OBJ)
 测试: 日月.exe
 	bash run_tests.sh
 
+# 标准库冒烟：示例/标准库聚合测试.心 经 所有.心 导入全部标准库模块，
+# 编译后运行，验证聚合链路（导入解析 + 跨模块调用 + 内建发射）无错误。
+标准库冒烟: 日月.exe
+	export MSYS2_ARG_CONV_EXCL='*'; \
+	PATH=/d/src/riyue/llvm/llvm-build/bin:/c/tools/msys64/mingw64/bin:$$PATH; export PATH; \
+	./日月.exe 示例/标准库聚合测试.心 阶段/标准库冒烟.exe && \
+	./阶段/标准库冒烟.exe
+
 运行: 日月.exe
 	./日月.exe 示例/简单测试.心 构建/简单测试.exe
 	./构建/简单测试.exe
@@ -94,3 +102,11 @@ $(TARGET): $(ALL_OBJ)
 
 clean:
 	rm -f $(ALL_OBJ) $(测试_OBJ) $(TARGET) 日月.exe 单元测试.exe out_t.* out2.*
+
+# 从文法重新生成自举解析器（改动 工具/peg/*.心 或 工具/日月/日月.文法 后必须执行一次；
+# 该再生成无自动依赖，故独立成目标以免遗漏）。
+重生成解析器: 日月.exe
+	export MSYS2_ARG_CONV_EXCL='*'; \
+	PATH=/d/src/riyue/llvm/llvm-build/bin:/c/tools/msys64/mingw64/bin:$$PATH; export PATH; \
+	./日月.exe 工具/peg/主程序.心 阶段/peg_cli.exe && \
+	阶段/peg_cli.exe 生成自举库 工具/日月/日月.文法 自举/解析器.心

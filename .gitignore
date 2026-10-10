@@ -3,7 +3,10 @@
 *.exe
 *.ll
 *.s
+*.bc
 *.riue
+*.dll
+*.so
 构建/
 out_t
 out_t.exe
