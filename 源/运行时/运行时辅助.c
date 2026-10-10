@@ -13,6 +13,33 @@
 #include <shellapi.h>
 #endif
 
+// T5：关键字 / 文本标志 的权威 token id 表与完美哈希（宿主与自举共用同一实现）
+#include "../共享/标记标识.h"
+#include "../共享/标记标识表.h"
+
+// FNV-1a 完美哈希：按生成器选定的偏移/质数/模数取桶，桶内单次比较。
+static int 完美哈希查表(const char* 文本,
+                        const char* const* 表, const signed char* 桶, int 桶长,
+                        unsigned int 偏移, unsigned int 质数, int id起) {
+    unsigned int h = 偏移;
+    const unsigned char* p = (const unsigned char*)文本;
+    while (*p) { h ^= (unsigned int)*p++; h *= 质数; }
+    int 位 = (int)(h % (unsigned int)桶长);
+    int 项 = (int)桶[位];
+    if (项 >= 0 && strcmp(文本, 表[项]) == 0) return 项 + id起;
+    return 0;
+}
+
+int 关键字标识(const char* 标识符) {
+    return 完美哈希查表(标识符, 关键字表, 关键字桶, 关键字桶长,
+                        关键字桶偏移, 关键字桶质数, 1);
+}
+
+int 文本标志标识(const char* 文本) {
+    return 完美哈希查表(文本, 文本标志表, 文本标志桶, 文本标志桶长,
+                        文本标志桶偏移, 文本标志桶质数, 101);
+}
+
 // 用路径打开文件（Windows 下转换为宽字符路径）。
 // Windows 传给 main 的 argv 是本地代码页(CP_ACP, 如 GBK)字节，而源码/字符串常量里
 // 通常是 UTF-8 字节，故先按 UTF-8 转换打开，失败再按本地代码页重试。
@@ -1209,11 +1236,8 @@ const char* 连接路径(const char* 路径1, const char* 路径2) {
 int 分割行数(const char* 文本) {
     int 行数 = 0;
     const char* p = 文本;
-    while (*p) {
-        if (*p == '\n') 行数++;
-        p++;
-    }
-    if (p > 文本 && *(p-1) != '\n') 行数++;  // 最后一行没有换行
+    while (*p) { if (*p == '\n') 行数++; p++; }
+    if (p > 文本 && *(p - 1) != '\n') 行数++;
     return 行数;
 }
 
@@ -1221,11 +1245,9 @@ int 分割行数(const char* 文本) {
 const char* 获取行(const char* 文本, int 行号) {
     static char 缓冲区[4096];
     缓冲区[0] = '\0';
-
     int 当前行 = 0;
     const char* 开始 = 文本;
     const char* p = 文本;
-
     while (*p) {
         if (*p == '\n') {
             if (当前行 == 行号) {
@@ -1240,8 +1262,6 @@ const char* 获取行(const char* 文本, int 行号) {
         }
         p++;
     }
-
-    // 最后一行
     if (当前行 == 行号 && p > 开始) {
         int 长度 = (int)(p - 开始);
         if (长度 >= 4096) 长度 = 4095;
@@ -1249,9 +1269,450 @@ const char* 获取行(const char* 文本, int 行号) {
         缓冲区[长度] = '\0';
         return 缓冲区;
     }
-
     return "";
 }
+
+// ==================== 文本缓冲 ====================
+// 发射层用「整数句柄」指向 C 侧可增长缓冲，以 O(1) 摊薄追加替代日月字符串的
+// 整串拼接（日月 `+` 每次都 malloc 新串，导致发射期 O(n²)）。句柄从 1 开始；
+// 句柄 0 视为「空缓冲」：追加无效、取整体返回 ""、作追加源无效。
+typedef struct { char* 数据; long 长度; long 容量; } 文本缓冲;
+static 文本缓冲* 文本缓冲表 = NULL;
+static int 文本缓冲数 = 0;
+static int 文本缓冲上限 = 0;
+
+static 文本缓冲* 取文本缓冲(int 句柄) {
+    if (句柄 <= 0 || 句柄 > 文本缓冲数) return NULL;
+    文本缓冲* b = &文本缓冲表[句柄 - 1];
+    return b->数据 ? b : NULL;
+}
+
+static void 文本缓冲预留(文本缓冲* b, long 额外) {
+    long 需求 = b->长度 + 额外 + 1;
+    if (需求 <= b->容量) return;
+    long 新容量 = b->容量 ? b->容量 : 256;
+    while (新容量 < 需求) 新容量 *= 2;
+    char* 新数据 = (char*)realloc(b->数据, (size_t)新容量);
+    if (!新数据) return;
+    b->数据 = 新数据;
+    b->容量 = 新容量;
+}
+
+int 新建文本缓冲(void) {
+    if (文本缓冲数 >= 文本缓冲上限) {
+        int 新上限 = 文本缓冲上限 ? 文本缓冲上限 * 2 : 1024;
+        文本缓冲* 新表 = (文本缓冲*)realloc(文本缓冲表, (size_t)新上限 * sizeof(文本缓冲));
+        if (!新表) return 0;
+        文本缓冲表 = 新表;
+        文本缓冲上限 = 新上限;
+    }
+    文本缓冲数++;
+    文本缓冲* b = &文本缓冲表[文本缓冲数 - 1];
+    b->数据 = NULL;
+    b->长度 = 0;
+    b->容量 = 0;
+    文本缓冲预留(b, 0);
+    if (b->数据) b->数据[0] = '\0';
+    return 文本缓冲数;
+}
+
+void 文本缓冲追加(int 句柄, const char* 文本) {
+    文本缓冲* b = 取文本缓冲(句柄);
+    if (!b || !文本) return;
+    long 长 = (long)strlen(文本);
+    if (长 == 0) return;
+    文本缓冲预留(b, 长);
+    if (!b->数据) return;
+    memcpy(b->数据 + b->长度, 文本, (size_t)长);
+    b->长度 += 长;
+    b->数据[b->长度] = '\0';
+}
+
+void 文本缓冲追加换行(int 句柄) {
+    文本缓冲追加(句柄, "\n");
+}
+
+void 文本缓冲追加缓冲(int 目标, int 源) {
+    文本缓冲* 目标b = 取文本缓冲(目标);
+    文本缓冲* 源b = 取文本缓冲(源);
+    if (!目标b || !源b || 源b->长度 == 0) return;
+    文本缓冲预留(目标b, 源b->长度);
+    if (!目标b->数据) return;
+    memcpy(目标b->数据 + 目标b->长度, 源b->数据, (size_t)源b->长度);
+    目标b->长度 += 源b->长度;
+    目标b->数据[目标b->长度] = '\0';
+}
+
+void 文本缓冲从文本(int 句柄, const char* 文本) {
+    文本缓冲* b = 取文本缓冲(句柄);
+    if (!b) return;
+    b->长度 = 0;
+    if (b->数据) b->数据[0] = '\0';
+    文本缓冲追加(句柄, 文本);
+}
+
+const char* 文本缓冲取整体(int 句柄) {
+    文本缓冲* b = 取文本缓冲(句柄);
+    if (!b || !b->数据) return "";
+    return b->数据;
+}
+
+// ==================== 哈希表基建（T1-B / T5） ====================
+// 自举编译器需要「名→值」登记表。旧实现把表存成 "名:值\n" 文本串，每次查表都要
+// 分割行数 + 逐行 获取行：单次 O(行数 × 串长)，表一大就退化到 O(n²) 卡死。
+// 这里用 C 侧开放寻址哈希表 + 整数句柄替代：查/插/删均 O(1) 摊薄。
+// 句柄从 1 开始；句柄 0 视为「空表」：一切读写均为空操作。
+
+// ── 文本表：字符串 → 字符串 ──
+typedef struct {
+    char** 键;
+    char** 值;
+    unsigned char* 占用;   // 0=空 1=占用 2=墓碑
+    long 容量;
+    long 数量;
+    long 墓碑;
+    char** 序键;           // 按插入顺序保存的键，供 O(1) 遍历
+    long 序数;
+    long 序容量;
+} 文本表;
+
+static 文本表* 文本表池 = NULL;
+static long 文本表池数 = 0;
+static long 文本表池上限 = 0;
+
+static 文本表* 取文本表(int 句柄) {
+    if (句柄 <= 0 || 句柄 > 文本表池数) return NULL;
+    return &文本表池[句柄 - 1];
+}
+
+// FNV-1a
+static unsigned long 文本哈希(const char* s) {
+    unsigned long h = 1469598103934665603UL;
+    while (*s) { h ^= (unsigned char)*s++; h *= 1099511628211UL; }
+    return h;
+}
+
+// 重建为 新容量（丢弃墓碑）
+static void 文本表重建(文本表* t, long 新容量) {
+    char** 新键 = (char**)calloc((size_t)新容量, sizeof(char*));
+    char** 新值 = (char**)calloc((size_t)新容量, sizeof(char*));
+    unsigned char* 新占用 = (unsigned char*)calloc((size_t)新容量, 1);
+    if (!新键 || !新值 || !新占用) {
+        free(新键); free(新值); free(新占用);
+        return;
+    }
+    long 掩码 = 新容量 - 1;
+    for (long i = 0; i < t->容量; i++) {
+        if (t->占用[i] != 1) continue;
+        unsigned long h = 文本哈希(t->键[i]);
+        long j = (long)(h & (unsigned long)掩码);
+        while (新占用[j]) j = (j + 1) & 掩码;
+        新键[j] = t->键[i];
+        新值[j] = t->值[i];
+        新占用[j] = 1;
+    }
+    free(t->键); free(t->值); free(t->占用);
+    t->键 = 新键; t->值 = 新值; t->占用 = 新占用;
+    t->容量 = 新容量; t->墓碑 = 0;
+}
+
+int 新建文本表(void) {
+    if (文本表池数 >= 文本表池上限) {
+        long 新上限 = 文本表池上限 ? 文本表池上限 * 2 : 256;
+        文本表* 新池 = (文本表*)realloc(文本表池, (size_t)新上限 * sizeof(文本表));
+        if (!新池) return 0;
+        文本表池 = 新池;
+        文本表池上限 = 新上限;
+    }
+    文本表池数++;
+    文本表* t = &文本表池[文本表池数 - 1];
+    t->键 = NULL; t->值 = NULL; t->占用 = NULL;
+    t->容量 = 0; t->数量 = 0; t->墓碑 = 0;
+    t->序键 = NULL; t->序数 = 0; t->序容量 = 0;
+    return 文本表池数;
+}
+
+static void 文本表记序(文本表* t, const char* 键) {
+    if (t->序数 >= t->序容量) {
+        long 新容量 = t->序容量 ? t->序容量 * 2 : 16;
+        char** 新序 = (char**)realloc(t->序键, (size_t)新容量 * sizeof(char*));
+        if (!新序) return;
+        t->序键 = 新序; t->序容量 = 新容量;
+    }
+    t->序键[t->序数] = (char*)键;
+    t->序数++;
+}
+
+// 插入（覆盖=1 时替换已存在值；覆盖=0 时保留原值，即「只增不改」）
+static void 文本表写入(int 句柄, const char* 键, const char* 值, int 覆盖) {
+    文本表* t = 取文本表(句柄);
+    if (!t || !键) return;
+    if ((t->数量 + t->墓碑 + 1) * 4 >= t->容量 * 3) {
+        文本表重建(t, t->容量 ? t->容量 * 2 : 16);
+        if (t->容量 == 0) return;
+    }
+    unsigned long h = 文本哈希(键);
+    long 掩码 = t->容量 - 1;
+    long i = (long)(h & (unsigned long)掩码);
+    long 墓碑 = -1;
+    while (1) {
+        unsigned char s = t->占用[i];
+        if (s == 0) {
+            long 目标 = (墓碑 >= 0) ? 墓碑 : i;
+            t->键[目标] = strdup(键);
+            t->值[目标] = strdup(值 ? 值 : "");
+            t->占用[目标] = 1;
+            t->数量++;
+            if (墓碑 >= 0) t->墓碑--;
+            文本表记序(t, t->键[目标]);
+            return;
+        }
+        if (s == 1 && t->键[i] && strcmp(t->键[i], 键) == 0) {
+            if (覆盖) {
+                free(t->值[i]);
+                t->值[i] = strdup(值 ? 值 : "");
+            }
+            return;
+        }
+        if (s == 2 && 墓碑 < 0) 墓碑 = i;
+        i = (i + 1) & 掩码;
+    }
+}
+
+void 文本表插入(int 句柄, const char* 键, const char* 值) {
+    文本表写入(句柄, 键, 值, 0);
+}
+
+void 文本表置(int 句柄, const char* 键, const char* 值) {
+    文本表写入(句柄, 键, 值, 1);
+}
+
+static long 文本表找(文本表* t, const char* 键) {
+    if (!t || t->容量 == 0 || !键) return -1;
+    unsigned long h = 文本哈希(键);
+    long 掩码 = t->容量 - 1;
+    long i = (long)(h & (unsigned long)掩码);
+    while (t->占用[i]) {
+        if (t->占用[i] == 1 && t->键[i] && strcmp(t->键[i], 键) == 0) return i;
+        i = (i + 1) & 掩码;
+    }
+    return -1;
+}
+
+const char* 文本表取(int 句柄, const char* 键) {
+    long i = 文本表找(取文本表(句柄), 键);
+    if (i < 0) return "";
+    return 文本表池[句柄 - 1].值[i];
+}
+
+int 文本表含(int 句柄, const char* 键) {
+    return 文本表找(取文本表(句柄), 键) >= 0 ? 1 : 0;
+}
+
+void 文本表删(int 句柄, const char* 键) {
+    文本表* t = 取文本表(句柄);
+    long i = 文本表找(t, 键);
+    if (i < 0) return;
+    // 同步从 序键 移除该项（序号指向同一 strdup 指针），避免遍历时取到已释放指针
+    for (long j = 0; j < t->序数; j++) {
+        if (t->序键[j] == t->键[i]) {
+            for (long k = j; k + 1 < t->序数; k++) t->序键[k] = t->序键[k + 1];
+            t->序数--;
+            break;
+        }
+    }
+    free(t->键[i]); t->键[i] = NULL;
+    free(t->值[i]); t->值[i] = NULL;
+    t->占用[i] = 2;
+    t->数量--; t->墓碑++;
+}
+
+int 文本表键数(int 句柄) {
+    文本表* t = 取文本表(句柄);
+    return t ? t->序数 : 0;
+}
+
+const char* 文本表键(int 句柄, int 序号) {
+    文本表* t = 取文本表(句柄);
+    if (!t || 序号 < 0 || 序号 >= t->序数) return "";
+    return t->序键[序号];
+}
+
+void 文本表清(int 句柄) {
+    文本表* t = 取文本表(句柄);
+    if (!t) return;
+    for (long i = 0; i < t->容量; i++) {
+        if (t->占用[i] == 1) { free(t->键[i]); free(t->值[i]); }
+    }
+    free(t->键); free(t->值); free(t->占用);
+    t->键 = NULL; t->值 = NULL; t->占用 = NULL;
+    t->容量 = 0; t->数量 = 0; t->墓碑 = 0;
+    t->序数 = 0;
+}
+
+// ── 整数表：整数 → 整数（T5：以 token/标识符 编号为键） ──
+typedef struct {
+    long* 键;
+    long* 值;
+    unsigned char* 占用;
+    long 容量;
+    long 数量;
+    long 墓碑;
+} 整数表;
+
+static 整数表* 整数表池 = NULL;
+static long 整数表池数 = 0;
+static long 整数表池上限 = 0;
+
+static 整数表* 取整数表(int 句柄) {
+    if (句柄 <= 0 || 句柄 > 整数表池数) return NULL;
+    return &整数表池[句柄 - 1];
+}
+
+int 新建整数表(void) {
+    if (整数表池数 >= 整数表池上限) {
+        long 新上限 = 整数表池上限 ? 整数表池上限 * 2 : 256;
+        整数表* 新池 = (整数表*)realloc(整数表池, (size_t)新上限 * sizeof(整数表));
+        if (!新池) return 0;
+        整数表池 = 新池;
+        整数表池上限 = 新上限;
+    }
+    整数表池数++;
+    整数表* t = &整数表池[整数表池数 - 1];
+    t->键 = NULL; t->值 = NULL; t->占用 = NULL;
+    t->容量 = 0; t->数量 = 0; t->墓碑 = 0;
+    return 整数表池数;
+}
+
+static unsigned long 整数哈希(long k) {
+    unsigned long h = (unsigned long)k * 1099511628211UL;
+    return h ^ (h >> 29);
+}
+
+static void 整数表重建(整数表* t, long 新容量) {
+    long* 新键 = (long*)calloc((size_t)新容量, sizeof(long));
+    long* 新值 = (long*)calloc((size_t)新容量, sizeof(long));
+    unsigned char* 新占用 = (unsigned char*)calloc((size_t)新容量, 1);
+    if (!新键 || !新值 || !新占用) {
+        free(新键); free(新值); free(新占用);
+        return;
+    }
+    long 掩码 = 新容量 - 1;
+    for (long i = 0; i < t->容量; i++) {
+        if (t->占用[i] != 1) continue;
+        long j = (long)(整数哈希(t->键[i]) & (unsigned long)掩码);
+        while (新占用[j]) j = (j + 1) & 掩码;
+        新键[j] = t->键[i]; 新值[j] = t->值[i]; 新占用[j] = 1;
+    }
+    free(t->键); free(t->值); free(t->占用);
+    t->键 = 新键; t->值 = 新值; t->占用 = 新占用;
+    t->容量 = 新容量; t->墓碑 = 0;
+}
+
+void 整数表置(int 句柄, long 键, long 值) {
+    整数表* t = 取整数表(句柄);
+    if (!t) return;
+    if ((t->数量 + t->墓碑 + 1) * 4 >= t->容量 * 3) {
+        整数表重建(t, t->容量 ? t->容量 * 2 : 16);
+        if (t->容量 == 0) return;
+    }
+    long 掩码 = t->容量 - 1;
+    long i = (long)(整数哈希(键) & (unsigned long)掩码);
+    long 墓碑 = -1;
+    while (1) {
+        unsigned char s = t->占用[i];
+        if (s == 0) {
+            long 目标 = (墓碑 >= 0) ? 墓碑 : i;
+            t->键[目标] = 键; t->值[目标] = 值; t->占用[目标] = 1;
+            t->数量++;
+            if (墓碑 >= 0) t->墓碑--;
+            return;
+        }
+        if (s == 1 && t->键[i] == 键) { t->值[i] = 值; return; }
+        if (s == 2 && 墓碑 < 0) 墓碑 = i;
+        i = (i + 1) & 掩码;
+    }
+}
+
+static long 整数表找(整数表* t, int 键) {
+    if (!t || t->容量 == 0) return -1;
+    long 掩码 = t->容量 - 1;
+    long i = (long)(整数哈希(键) & (unsigned long)掩码);
+    while (t->占用[i]) {
+        if (t->占用[i] == 1 && t->键[i] == 键) return i;
+        i = (i + 1) & 掩码;
+    }
+    return -1;
+}
+
+int 整数表取(int 句柄, int 键) {
+    long i = 整数表找(取整数表(句柄), 键);
+    return i < 0 ? 0 : 整数表池[句柄 - 1].值[i];
+}
+
+int 整数表含(int 句柄, int 键) {
+    return 整数表找(取整数表(句柄), 键) >= 0 ? 1 : 0;
+}
+
+void 整数表删(int 句柄, int 键) {
+    整数表* t = 取整数表(句柄);
+    long i = 整数表找(t, 键);
+    if (i < 0) return;
+    t->占用[i] = 2;
+    t->数量--; t->墓碑++;
+}
+
+// ── 标识符 intern：同一文本恒得同一编号（自 1 递增） ──
+static char** 内部键 = NULL;
+static long* 内部号 = NULL;
+static unsigned char* 内部占用 = NULL;
+static long 内部容量 = 0;
+static long 内部数 = 0;
+
+static void 内部重建(long 新容量) {
+    char** 新键 = (char**)calloc((size_t)新容量, sizeof(char*));
+    long* 新号 = (long*)calloc((size_t)新容量, sizeof(long));
+    unsigned char* 新占用 = (unsigned char*)calloc((size_t)新容量, 1);
+    if (!新键 || !新号 || !新占用) {
+        free(新键); free(新号); free(新占用);
+        return;
+    }
+    long 掩码 = 新容量 - 1;
+    for (long i = 0; i < 内部容量; i++) {
+        if (内部占用[i] != 1) continue;
+        long j = (long)(文本哈希(内部键[i]) & (unsigned long)掩码);
+        while (新占用[j]) j = (j + 1) & 掩码;
+        新键[j] = 内部键[i]; 新号[j] = 内部号[i]; 新占用[j] = 1;
+    }
+    free(内部键); free(内部号); free(内部占用);
+    内部键 = 新键; 内部号 = 新号; 内部占用 = 新占用;
+    内部容量 = 新容量;
+}
+
+int 标识符编号(const char* 名) {
+    if (!名) return 0;
+    if ((内部数 + 1) * 4 >= 内部容量 * 3) {
+        内部重建(内部容量 ? 内部容量 * 2 : 256);
+        if (内部容量 == 0) return 0;
+    }
+    long 掩码 = 内部容量 - 1;
+    long i = (long)(文本哈希(名) & (unsigned long)掩码);
+    while (内部占用[i]) {
+        if (strcmp(内部键[i], 名) == 0) return 内部号[i];
+        i = (i + 1) & 掩码;
+    }
+    内部键[i] = strdup(名);
+    内部号[i] = 内部数 + 1;
+    内部占用[i] = 1;
+    内部数++;
+    return 内部数;
+}
+
+// ── 关键字 / 文本标志 token id：统一委托共享完美哈希实现 ──
+// 权威表与桶见 ../共享/标记标识表.h（由 工具/gen_hash.py 生成）；
+// 宿主 C++ 前端（源/前端/词法分析器.cpp）调用同一实现，杜绝两份漂移。
+int 关键字编号(const char* s) { return 关键字标识(s); }
+int 文本标志编号(const char* s) { return 文本标志标识(s); }
 
 // 字符串分割（按分隔符）
 const char** 按分隔符分割(const char* 文本, const char* 分隔符, int* 结果数量) {
