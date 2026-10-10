@@ -9,11 +9,19 @@ LLVM_LDFLAGS  := $(shell $(LLVM_CONFIG) --ldflags)
 LLVM_LIBS     := $(shell $(LLVM_CONFIG) --libs core orcjit native nativecodegen mcparser option target analysis)
 LLVM_SYSLIBS  := $(shell $(LLVM_CONFIG) --system-libs)
 
-CXXFLAGS = -std=c++17 -g -finput-charset=UTF-8 -fexec-charset=UTF-8 \
+# 引导.exe 仅作自举种子，无需调试信息（-g 使单文件编译慢约 3.6x），故不加 -g。
+# 如要调试编译器本身，另用带 -g 的调试构建。
+CXXFLAGS = -std=c++17 -MMD -MP -finput-charset=UTF-8 -fexec-charset=UTF-8 \
            -D_GNU_SOURCE -fexceptions -frtti \
            $(LLVM_CXXFLAGS)
-CFLAGS = -Wall -g -finput-charset=UTF-8 -fexec-charset=UTF-8
+CFLAGS = -Wall -MMD -MP -finput-charset=UTF-8 -fexec-charset=UTF-8
 LDFLAGS = $(LLVM_LDFLAGS) $(LLVM_LIBS) $(LLVM_SYSLIBS) -lshell32 -lws2_32 -lpthread
+
+# 默认并行编译；用 make -jN 可覆盖。
+MAKEFLAGS += -j$(shell nproc 2>/dev/null || echo 4)
+
+# 用 lld 链接（比默认 GNU ld 快约 2.7x）。
+LDLLD = -fuse-ld=lld
 
 # 源文件
 前端_SRC = 源/前端/词法分析器.cpp 源/前端/语法分析器.cpp 源/前端/模块合并器.cpp 源/前端/诊断.cpp
@@ -38,7 +46,7 @@ all: 日月.exe
 引导: $(TARGET)
 
 $(TARGET): $(ALL_OBJ)
-	$(CXX) -o $@ $^ $(LDFLAGS)
+	$(CXX) $(LDLLD) -o $@ $^ $(LDFLAGS)
 
 # 自举 日月.exe：种子编译器 引导.exe 编译自举编译器源码 → 原生可执行文件
 日月.exe: $(TARGET) $(SELFHOST_SRC)
@@ -60,7 +68,7 @@ $(TARGET): $(ALL_OBJ)
 	$(CXX) $(CXXFLAGS) -I源 -c $< -o $@
 
 单元测试.exe: $(测试_OBJ)
-	$(CXX) $(CXXFLAGS) -I源 -o $@ $^ $(LDFLAGS)
+	$(CXX) $(CXXFLAGS) $(LDLLD) -I源 -o $@ $^ $(LDFLAGS)
 
 单元测试: 单元测试.exe
 	./单元测试.exe
@@ -101,7 +109,7 @@ $(TARGET): $(ALL_OBJ)
 	diff 阶段/中间码1.ll 阶段/中间码2.ll
 
 clean:
-	rm -f $(ALL_OBJ) $(测试_OBJ) $(TARGET) 日月.exe 单元测试.exe out_t.* out2.*
+	rm -f $(ALL_OBJ) $(测试_OBJ) $(ALL_OBJ:.o=.d) $(测试_OBJ:.o=.d) $(TARGET) 日月.exe 单元测试.exe out_t.* out2.*
 
 # 从文法重新生成自举解析器（改动 工具/peg/*.心 或 工具/日月/日月.文法 后必须执行一次；
 # 该再生成无自动依赖，故独立成目标以免遗漏）。
@@ -110,3 +118,6 @@ clean:
 	PATH=/d/src/riyue/llvm/llvm-build/bin:/c/tools/msys64/mingw64/bin:$$PATH; export PATH; \
 	./日月.exe 工具/peg/主程序.心 阶段/peg_cli.exe && \
 	阶段/peg_cli.exe 生成自举库 工具/日月/日月.文法 自举/解析器.心
+
+# 头文件依赖（由 -MMD 生成）；改动 .h 后自动重编受影响的 TU。
+-include $(ALL_OBJ:.o=.d) $(测试_OBJ:.o=.d)

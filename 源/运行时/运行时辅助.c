@@ -40,6 +40,94 @@ int 文本标志标识(const char* 文本) {
                         文本标志桶偏移, 文本标志桶质数, 101);
 }
 
+// ── 静态缓冲登记表 ─────────────────────────────────────────
+// 运行时存在多处「地址固定、内容可变」的 static char 缓冲（获取行 / 读取文件 / 路径拼接 /
+// 文件头部缓冲等）。字符码 的「按指针缓存 字符索引→字节偏移」绝不能缓存这些指针，否则
+// 同一地址换了内容后会命中陈旧索引、解析出错。故写静态缓冲的函数须调用 登记静态缓冲(...)
+// 把缓冲地址登记进来；字符码 对已登记地址退化为按需扫描（这些串通常很短，代价可忽略）。
+static const char* 静态缓冲表[256];
+static int 静态缓冲数 = 0;
+
+static void 登记静态缓冲(const char* 文本) {
+    int i;
+    if (文本 == NULL) return;
+    for (i = 0; i < 静态缓冲数; i++) if (静态缓冲表[i] == 文本) return;
+    if (静态缓冲数 < 256) 静态缓冲表[静态缓冲数++] = 文本;
+}
+
+static int 是静态缓冲(const char* 文本) {
+    int i;
+    for (i = 0; i < 静态缓冲数; i++) if (静态缓冲表[i] == 文本) return 1;
+    return 0;
+}
+
+// ── 字符索引缓存 ───────────────────────────────────────────
+// 朴素实现每次取字符位置都要从串首重扫（O(位置)），而 PEG 分词在每个字符位置要对
+// 数十条模式反复取字符码、并按字符位置切子串，整体退化为 O(n²)——这是自举编译
+// （阶段一/阶段二）「卡半小时」的主因。此处为「长串」按指针缓存一张
+// 字符索引→字节偏移 映射，命中后 O(1)；「短串」（前 64 字节内即出现 NUL，如正则
+// 模式串）与静态缓冲仍从串首扫描（代价可忽略）。日月堆串从不释放，故以指针为键安全。
+typedef struct {
+    const char* 文本;   // NULL 表示空槽/构建中；非 NULL 表示索引已建好
+    int 字符数;
+    int* 偏移;          // 长度 字符数+1；偏移[字符数] == 字节长度
+} 字符索引项;
+
+static 字符索引项 字符索引缓存[4];
+
+static 字符索引项* 查字符索引(const char* 文本) {
+    int i;
+    for (i = 0; i < 4; i++) {
+        if (字符索引缓存[i].文本 == 文本) return &字符索引缓存[i];
+    }
+    return NULL;
+}
+
+static 字符索引项* 建字符索引(const char* 文本) {
+    static int 轮 = 0;
+    字符索引项* 项 = &字符索引缓存[轮];
+    轮 = (轮 + 1) & 3;
+    free(项->偏移);
+    项->偏移 = NULL;
+    项->文本 = NULL;
+    int 字节数 = (int)strlen(文本);
+    int 字符数 = 0;
+    int b = 0;
+    while (b < 字节数) {
+        unsigned char c = (unsigned char)文本[b];
+        if (c < 0x80) b += 1;
+        else if ((c & 0xE0) == 0xC0) b += 2;
+        else if ((c & 0xF0) == 0xE0) b += 3;
+        else if ((c & 0xF8) == 0xF0) b += 4;
+        else b += 1;
+        字符数++;
+    }
+    项->偏移 = (int*)malloc((字符数 + 1) * sizeof(int));
+    b = 0;
+    int i;
+    for (i = 0; i < 字符数; i++) {
+        项->偏移[i] = b;
+        unsigned char c = (unsigned char)文本[b];
+        if (c < 0x80) b += 1;
+        else if ((c & 0xE0) == 0xC0) b += 2;
+        else if ((c & 0xF0) == 0xE0) b += 3;
+        else if ((c & 0xF8) == 0xF0) b += 4;
+        else b += 1;
+    }
+    项->偏移[字符数] = b;
+    项->字符数 = 字符数;
+    项->文本 = 文本;
+    return 项;
+}
+
+static int 是短串(const char* 文本) {
+    int i;
+    for (i = 0; i < 64; i++) {
+        if (文本[i] == '\0') return 1;
+    }
+    return 0;
+}
+
 // 用路径打开文件（Windows 下转换为宽字符路径）。
 // Windows 传给 main 的 argv 是本地代码页(CP_ACP, 如 GBK)字节，而源码/字符串常量里
 // 通常是 UTF-8 字节，故先按 UTF-8 转换打开，失败再按本地代码页重试。
@@ -63,8 +151,17 @@ static FILE* UTF8打开文件(const char* 路径, const char* 模式) {
 #endif
 }
 
-// 将UTF-8字符位置转换为字节位置
+// 将UTF-8字符位置转换为字节位置。长串走 字符索引缓存（O(1)）；短串/静态缓冲从串首扫描。
+// 越界（char_pos ≥ 字符数）返回串尾字节位置（即字节长度），与原实现一致。
 int 字符位置到字节位置(const char* str, int char_pos) {
+    if (str == NULL) return 0;
+    if (char_pos < 0) char_pos = 0;
+    if (!是短串(str) && !是静态缓冲(str)) {
+        字符索引项* 项 = 查字符索引(str);
+        if (项 == NULL) 项 = 建字符索引(str);
+        if (char_pos >= 项->字符数) return 项->偏移[项->字符数];
+        return 项->偏移[char_pos];
+    }
     int byte_pos = 0;
     int current_char = 0;
 
@@ -192,6 +289,7 @@ const char** 字符串分割(char* str, const char* 分隔符, int* 结果数量
 // 字符串连接
 char* 文本连接(const char** 字符串数组, int 数量, const char* 分隔符) {
     static char 缓冲区[4096];
+    登记静态缓冲(缓冲区);
     缓冲区[0] = '\0';
     for (int i = 0; i < 数量; i++) {
         if (i > 0) strcat(缓冲区, 分隔符);
@@ -203,6 +301,7 @@ char* 文本连接(const char** 字符串数组, int 数量, const char* 分隔�
 // 字符串格式化（简单版本，支持%d）
 char* 字符串格式化(const char* 格式模板, int 参数1, int 参数2, int 参数3) {
     static char 缓冲区[4096];
+    登记静态缓冲(缓冲区);
     缓冲区[0] = '\0';
     int 参数索引 = 0;
     int 参数值[] = {参数1, 参数2, 参数3};
@@ -283,6 +382,7 @@ int 获取星期() {
 // 格式化时间字符串
 const char* 格式化时间(const char* 格式) {
     static char 缓冲区[256];
+    登记静态缓冲(缓冲区);
     time_t now = time(NULL);
     struct tm* t = localtime(&now);
     strftime(缓冲区, sizeof(缓冲区), 格式, t);
@@ -340,6 +440,7 @@ double 结束计时() {
 // 简单的JSON解析 - 提取字符串值
 const char* JSON获取字符串(const char* JSON, const char* 键) {
     static char 缓冲区[4096];
+    登记静态缓冲(缓冲区);
     char 搜索键[256];
     sprintf(搜索键, "\"%s\"", 键);
 
@@ -424,6 +525,7 @@ int JSON获取布尔(const char* JSON, const char* 键) {
 // 生成JSON字符串
 const char* JSON创建字符串(const char* 键, const char* 值) {
     static char 缓冲区[4096];
+    登记静态缓冲(缓冲区);
     sprintf(缓冲区, "{\"%s\":\"%s\"}", 键, 值);
     return 缓冲区;
 }
@@ -431,6 +533,7 @@ const char* JSON创建字符串(const char* 键, const char* 值) {
 // 生成JSON整数
 const char* JSON创建整数(const char* 键, int 值) {
     static char 缓冲区[4096];
+    登记静态缓冲(缓冲区);
     sprintf(缓冲区, "{\"%s\":%d}", 键, 值);
     return 缓冲区;
 }
@@ -438,6 +541,7 @@ const char* JSON创建整数(const char* 键, int 值) {
 // 生成JSON浮点数
 const char* JSON创建浮点(const char* 键, double 值) {
     static char 缓冲区[4096];
+    登记静态缓冲(缓冲区);
     sprintf(缓冲区, "{\"%s\":%g}", 键, 值);
     return 缓冲区;
 }
@@ -445,6 +549,7 @@ const char* JSON创建浮点(const char* 键, double 值) {
 // 生成JSON布尔值
 const char* JSON创建布尔(const char* 键, int 值) {
     static char 缓冲区[4096];
+    登记静态缓冲(缓冲区);
     sprintf(缓冲区, "{\"%s\":%s}", 键, 值 ? "true" : "false");
     return 缓冲区;
 }
@@ -471,6 +576,7 @@ unsigned long 简单哈希(const char* 输入) {
 // 简单的字符串加密（凯撒密码）
 const char* 简单加密(const char* 输入, int 密钥) {
     static char 缓冲区[4096];
+    登记静态缓冲(缓冲区);
     int i = 0;
     while (输入[i] != '\0' && i < 4095) {
         if (输入[i] >= 'a' && 输入[i] <= 'z') {
@@ -571,6 +677,7 @@ int TCP发送(int 套接字, const char* 数据) {
 // 接收数据
 const char* TCP接收(int 套接字) {
     static char 缓冲区[4096];
+    登记静态缓冲(缓冲区);
     memset(缓冲区, 0, sizeof(缓冲区));
     int 字节数 = recv((SOCKET)套接字, 缓冲区, sizeof(缓冲区) - 1, 0);
     if (字节数 <= 0) return "";
@@ -648,6 +755,7 @@ int UDP发送到(int 套接字, const char* 数据, const char* 地址, int 端�
 
 const char* UDP接收(int 套接字) {
     static char 缓冲区[4096];
+    登记静态缓冲(缓冲区);
     memset(缓冲区, 0, sizeof(缓冲区));
     struct sockaddr_in 发送者地址;
     int 地址长度 = sizeof(发送者地址);
@@ -767,6 +875,7 @@ int 执行系统命令(const char* 命令) {
 // 获取当前工作目录
 const char* 获取当前目录() {
     static char 缓冲区[1024];
+    登记静态缓冲(缓冲区);
 #ifdef _WIN32
     GetCurrentDirectoryA(sizeof(缓冲区), 缓冲区);
 #else
@@ -1207,6 +1316,7 @@ const char* 获取文件名(const char* 路径) {
 // 获取目录路径（不含文件名）
 const char* 获取目录路径(const char* 路径) {
     static char 目录缓冲区[512];
+    登记静态缓冲(目录缓冲区);
     strncpy(目录缓冲区, 路径, sizeof(目录缓冲区) - 1);
     目录缓冲区[sizeof(目录缓冲区) - 1] = '\0';
     
@@ -1226,6 +1336,7 @@ const char* 获取目录路径(const char* 路径) {
 // 连接路径
 const char* 连接路径(const char* 路径1, const char* 路径2) {
     static char 连接缓冲区[512];
+    登记静态缓冲(连接缓冲区);
     snprintf(连接缓冲区, sizeof(连接缓冲区), "%s/%s", 路径1, 路径2);
     return 连接缓冲区;
 }
@@ -1241,13 +1352,39 @@ int 分割行数(const char* 文本) {
     return 行数;
 }
 
+// 行游标：获取行 若每次都从串首重扫到目标行，则「逐行遍历全文」为 O(n²)。
+// 这里按 文本指针 记住「下一行的起始字节偏移」；顺序取行（行号+1）时从游标续扫，
+// 使整趟遍历降为 O(n)。非顺序取行则退回从串首重扫（语义不变）。静态缓冲（地址固定、
+// 内容可变）不参与游标，避免同一地址换内容后偏移失效。
+typedef struct { const char* 文本; int 下一行; int 下一偏移; } 行游标项;
+static 行游标项 行游标表[16];
+static int 行游标轮 = 0;
+
+static 行游标项* 查行游标(const char* 文本) {
+    int i;
+    for (i = 0; i < 16; i++) if (行游标表[i].文本 == 文本) return &行游标表[i];
+    return NULL;
+}
+
+static 行游标项* 建行游标(const char* 文本) {
+    行游标项* 项 = &行游标表[行游标轮];
+    行游标轮 = (行游标轮 + 1) & 15;
+    项->文本 = 文本; 项->下一行 = -1; 项->下一偏移 = 0;
+    return 项;
+}
+
 // 获取指定行的内容（从0开始）
 const char* 获取行(const char* 文本, int 行号) {
     static char 缓冲区[4096];
+    登记静态缓冲(缓冲区);
     缓冲区[0] = '\0';
     int 当前行 = 0;
     const char* 开始 = 文本;
-    const char* p = 文本;
+    if (!是静态缓冲(文本)) {
+        行游标项* 项 = 查行游标(文本);
+        if (项 != NULL && 行号 == 项->下一行) { 当前行 = 行号; 开始 = 文本 + 项->下一偏移; }
+    }
+    const char* p = 开始;
     while (*p) {
         if (*p == '\n') {
             if (当前行 == 行号) {
@@ -1255,6 +1392,11 @@ const char* 获取行(const char* 文本, int 行号) {
                 if (长度 >= 4096) 长度 = 4095;
                 strncpy(缓冲区, 开始, 长度);
                 缓冲区[长度] = '\0';
+                if (!是静态缓冲(文本)) {
+                    行游标项* 项 = 查行游标(文本);
+                    if (项 == NULL) 项 = 建行游标(文本);
+                    项->下一行 = 行号 + 1; 项->下一偏移 = (int)(p + 1 - 文本);
+                }
                 return 缓冲区;
             }
             当前行++;
@@ -1267,6 +1409,11 @@ const char* 获取行(const char* 文本, int 行号) {
         if (长度 >= 4096) 长度 = 4095;
         strncpy(缓冲区, 开始, 长度);
         缓冲区[长度] = '\0';
+        if (!是静态缓冲(文本)) {
+            行游标项* 项 = 查行游标(文本);
+            if (项 == NULL) 项 = 建行游标(文本);
+            项->下一行 = 行号 + 1; 项->下一偏移 = (int)(p - 文本);
+        }
         return 缓冲区;
     }
     return "";
@@ -1733,6 +1880,7 @@ const char** 按分隔符分割(const char* 文本, const char* 分隔符, int* 
 // 去除字符串首尾空白
 const char* 去除空白(const char* 文本) {
     static char 缓冲区[4096];
+    登记静态缓冲(缓冲区);
     int 长度 = (int)strlen(文本);
     if (长度 >= 4096) 长度 = 4095;
 
@@ -1764,6 +1912,7 @@ const char* 去除空白(const char* 文本) {
 // 字符串转小写
 const char* 文本转小写(const char* 文本) {
     static char 缓冲区[4096];
+    登记静态缓冲(缓冲区);
     int i = 0;
     while (文本[i] && i < 4095) {
         if (文本[i] >= 'A' && 文本[i] <= 'Z') {
@@ -1780,6 +1929,7 @@ const char* 文本转小写(const char* 文本) {
 // 字符串转大写
 const char* 文本转大写(const char* 文本) {
     static char 缓冲区[4096];
+    登记静态缓冲(缓冲区);
     int i = 0;
     while (文本[i] && i < 4095) {
         if (文本[i] >= 'a' && 文本[i] <= 'z') {
@@ -1808,19 +1958,30 @@ int 字符串结尾(const char* 文本, const char* 后缀) {
 
 // ==================== 字符操作 ====================
 
-// 获取字符串指定位置字符的码点
 int 字符码(const char* 文本, int 位置) {
-    int 字节位置 = 0;
-    int 当前字符 = 0;
-
-    while (文本[字节位置] != '\0' && 当前字符 < 位置) {
-        unsigned char c = (unsigned char)文本[字节位置];
-        if (c < 0x80) 字节位置 += 1;
-        else if ((c & 0xE0) == 0xC0) 字节位置 += 2;
-        else if ((c & 0xF0) == 0xE0) 字节位置 += 3;
-        else if ((c & 0xF8) == 0xF0) 字节位置 += 4;
-        else 字节位置 += 1;
-        当前字符++;
+    if (文本 == NULL) return -1;
+    if (位置 < 0) 位置 = 0;   // 与原实现一致：负下标按串首处理
+    int 字节位置;
+    字符索引项* 项 = 查字符索引(文本);
+    if (项 != NULL) {
+        if (位置 >= 项->字符数) return -1;
+        字节位置 = 项->偏移[位置];
+    } else if (是短串(文本) || 是静态缓冲(文本)) {
+        字节位置 = 0;
+        int 当前字符 = 0;
+        while (文本[字节位置] != '\0' && 当前字符 < 位置) {
+            unsigned char c = (unsigned char)文本[字节位置];
+            if (c < 0x80) 字节位置 += 1;
+            else if ((c & 0xE0) == 0xC0) 字节位置 += 2;
+            else if ((c & 0xF0) == 0xE0) 字节位置 += 3;
+            else if ((c & 0xF8) == 0xF0) 字节位置 += 4;
+            else 字节位置 += 1;
+            当前字符++;
+        }
+    } else {
+        项 = 建字符索引(文本);
+        if (位置 >= 项->字符数) return -1;
+        字节位置 = 项->偏移[位置];
     }
 
     if (文本[字节位置] == '\0') return -1;
@@ -1836,6 +1997,7 @@ int 字符码(const char* 文本, int 位置) {
 // 从码点创建UTF-8字符串
 const char* 字符序列(int 码点) {
     static char 缓冲区[5];
+    登记静态缓冲(缓冲区);
     if (码点 < 0x80) {
         缓冲区[0] = (char)码点;
         缓冲区[1] = '\0';
@@ -2183,6 +2345,7 @@ static char http缓冲区[65536];
 
 const char* HTTP获取(const char* url) {
     char 命令[1024];
+    登记静态缓冲(http缓冲区);
 #ifdef _WIN32
     snprintf(命令, sizeof(命令), "curl -s \"%s\" 2>/dev/null", url);
 #else
@@ -2308,6 +2471,7 @@ const char* 读取文件(const char* 路径) {
     }
     free(缓冲);
     缓冲 = 临时;
+    登记静态缓冲(缓冲);
     return 缓冲;
 }
 
