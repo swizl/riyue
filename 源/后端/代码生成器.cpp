@@ -4,12 +4,75 @@
 LLVM值* 协程句柄 = 空针;
 数组向量<分配指令*> 返回值变量列表;
 
-代码生成器::代码生成器(llvm::LLVMContext& ctx, 恒常 文本& 输出文件, 真假型 优化)
-    : 上下文(ctx), 输出文件名(输出文件), 启用优化(优化) {
+代码生成器::代码生成器(llvm::LLVMContext& ctx, 恒常 文本& 输出文件, 真假型 优化, 真假型 调试, 恒常 文本& 源文件)
+    : 上下文(ctx), 输出文件名(输出文件), 启用优化(优化), 启用调试(调试), 源文件名(源文件) {
     模块 = 创建独占<llvm::Module>("程序", 上下文);
     构建器 = 创建独占<llvm::IRBuilder<>>(上下文);
     llvm::InitializeNativeTarget();
     llvm::InitializeNativeTargetAsmPrinter();
+    如果 (启用调试) 初始化调试信息();
+}
+
+// 初始化 DWARF 调试信息：建立编译单元与基础类型。
+// 仅在 --调试 下调用，因此不改变默认（关闭调试）时的任何 IR 输出。
+虚空型 代码生成器::初始化调试信息() {
+    // 模块级标记：告知 LLVM 本模块携带调试信息，并选定 DWARF 版本（4，兼容性最好）。
+    模块->addModuleFlag(llvm::Module::Warning, "Debug Info Version", llvm::DEBUG_METADATA_VERSION);
+    模块->addModuleFlag(llvm::Module::Warning, "Dwarf Version", 4);
+    模块->addModuleFlag(llvm::Module::Min, "wchar_size", 4);
+
+    调试构建器 = 创建独占<llvm::DIBuilder>(*模块);
+    文本 文件名 = 源文件名.empty() ? 输出文件名 : 源文件名;
+    调试文件 = 调试构建器->createFile(文件名, ".");
+    编译单元 = 调试构建器->createCompileUnit(
+        llvm::dwarf::DW_LANG_C, 调试文件, "日月编译器", 启用优化, "", 0);
+    整数32调试类型 = 调试构建器->createBasicType("整数32", 32, llvm::dwarf::DW_ATE_signed);
+    整数64调试类型 = 调试构建器->createBasicType("整数64", 64, llvm::dwarf::DW_ATE_signed);
+    浮点64调试类型 = 调试构建器->createBasicType("浮点64", 64, llvm::dwarf::DW_ATE_float);
+    布尔调试类型 = 调试构建器->createBasicType("布尔", 8, llvm::dwarf::DW_ATE_boolean);
+}
+
+// 把 LLVM 类型映射为 DWARF 基础类型；无法对应时返回无符号 64 位整型占位。
+llvm::DIType* 代码生成器::取调试类型(llvm::Type* 类型) {
+    如果 (!类型) 归返 整数64调试类型;
+    如果 (类型->isIntegerTy(32)) 归返 整数32调试类型;
+    如果 (类型->isIntegerTy(1)) 归返 布尔调试类型;
+    如果 (类型->isIntegerTy()) 归返 整数64调试类型;
+    如果 (类型->isDoubleTy() || 类型->isFloatTy()) 归返 浮点64调试类型;
+    如果 (类型->isPointerTy()) 归返 整数64调试类型;
+    归返 整数64调试类型;
+}
+
+// 为函数创建 DISubprogram 与形参 DILocalVariable，供 !dbg 引用。
+llvm::DISubprogram* 代码生成器::创建函数调试信息(恒常 函数& 函数, LLVM函数* llvm函数) {
+    如果 (!启用调试 || !调试构建器 || !llvm函数) 归返 空针;
+
+    数组向量<llvm::Metadata*> 类型数组;
+    类型数组.push_back(取调试类型(llvm函数->getReturnType()));
+    循环 (自动& 参数 : llvm函数->args()) {
+        类型数组.push_back(取调试类型(参数.getType()));
+    }
+    llvm::DISubroutineType* 子程序类型 = 调试构建器->createSubroutineType(
+        调试构建器->getOrCreateTypeArray(类型数组));
+
+    llvm::DISubprogram* 子程序 = 调试构建器->createFunction(
+        编译单元, 函数.名称, 函数.名称, 调试文件, 1 /*行号*/, 子程序类型, 1 /*作用域行号*/,
+        llvm::DINode::FlagZero, llvm::DISubprogram::SPFlagDefinition);
+    llvm函数->setSubprogram(子程序);
+    函数调试映射[函数.名称] = 子程序;
+    归返 子程序;
+}
+
+// 为局部变量（alloca）发射 DILocalVariable 与 dbg.declare，使调试器 info locals 可见。
+虚空型 代码生成器::发射局部变量调试信息(恒常 文本& 名称, 分配指令* 分配, 无符号 行号) {
+    如果 (!启用调试 || !调试构建器 || !当前子程序 || !分配 || 名称.empty()) 归返;
+    无符号 有效行 = 行号 ? 行号 : 1;
+    llvm::DILocalVariable* 变量 = 调试构建器->createAutoVariable(
+        当前子程序, 名称, 调试文件, 有效行, 取调试类型(分配->getAllocatedType()), 真值);
+    调试构建器->insertDeclare(
+        分配, 变量, 调试构建器->createExpression(),
+        llvm::DILocation::get(上下文, 有效行, 1, 当前子程序),
+        构建器->GetInsertPoint());
 }
 
 // 将函数内非入口块的静态分配（alloca）提升到入口块。
@@ -415,9 +478,19 @@ LLVM函数* 人格函数 = 获取模块函数(*模块, "__gxx_personality_seh0")
         llvm函数->setPersonalityFn(获取位转换常量(人格函数, 获取指针类型(上下文)));
     }
 
+    // DWARF：登记函数的 DISubprogram，后续语句以它为 !dbg 作用域
+    llvm::DISubprogram* 先前子程序 = 当前子程序;
+    如果 (启用调试) 当前子程序 = 创建函数调试信息(函数, llvm函数);
+
     llvm::BasicBlock* 入口块 = 创建基本块(上下文, "entry", llvm函数);
     设置插入点(*构建器, 入口块);
     符号表实例.重置为全局作用域();
+
+    // DWARF：函数体内默认行号位置，保证所有指令都有合法 !dbg（语句会覆盖之）
+    如果 (启用调试 && 当前子程序) {
+        构建器->SetCurrentDebugLocation(
+            llvm::DILocation::get(上下文, 1, 1, 当前子程序));
+    }
 
     // 协程支持：初始化协程框架
     LLVM值* 当前协程句柄 = 空针;
@@ -472,6 +545,17 @@ LLVM函数* 人格函数 = 获取模块函数(*模块, "__gxx_personality_seh0")
             分配指令* 分配 = 创建分配(*构建器, 参数类型, 0, 函数.参数列表[索引].名称);
             创建存储(*构建器, &参数, 分配);
             符号表实例.声明变量(函数.参数列表[索引].名称, 分配);
+
+            // DWARF：登记形参并插入 llvm.dbg.declare
+            如果 (启用调试 && 当前子程序) {
+                llvm::DILocalVariable* 形参调试 = 调试构建器->createParameterVariable(
+                    当前子程序, 函数.参数列表[索引].名称, (无符号)(索引 + 1), 调试文件, 1,
+                    取调试类型(参数类型), 真值);
+                调试构建器->insertDeclare(
+                    分配, 形参调试, 调试构建器->createExpression(),
+                    llvm::DILocation::get(上下文, 1, 1, 当前子程序),
+                    构建器->GetInsertPoint());
+            }
 
             如果 (函数.参数列表[索引].是否变长) {
                 // 变长参数标记为数组
@@ -547,6 +631,10 @@ LLVM函数* 人格函数 = 获取模块函数(*模块, "__gxx_personality_seh0")
 
     提升分配到入口块(llvm函数);
     验证函数(*llvm函数);
+    如果 (启用调试) {
+        当前子程序 = 先前子程序;
+        构建器->SetCurrentDebugLocation(llvm::DebugLoc());
+    }
 }
 
 虚空型 代码生成器::运行优化Pass() {
@@ -630,6 +718,9 @@ LLVM函数* 人格函数 = 获取模块函数(*模块, "__gxx_personality_seh0")
     模块->setDataLayout(目标机器->createDataLayout());
     模块->setTargetTriple(目标三元组);
 
+    // DWARF：定稿调试元数据（必须在代码生成前调用）
+    如果 (启用调试 && 调试构建器) 调试构建器->finalize();
+
     错误码 错误码;
     原始输出流 目标文件流(临时对象名, 错误码, llvm::sys::fs::OF_None);
     如果 (错误码) 抛出 运行时异常("无法写入目标文件: " + 错误码.message());
@@ -677,6 +768,9 @@ LLVM函数* 人格函数 = 获取模块函数(*模块, "__gxx_personality_seh0")
         }
     }
     模块->setTargetTriple(目标三元组);
+
+    // DWARF：定稿调试元数据（必须在打印 IR 前调用）
+    如果 (启用调试 && 调试构建器) 调试构建器->finalize();
 
     错误码 错误码;
     原始输出流 输出(输出文件名, 错误码, llvm::sys::fs::OF_Text);

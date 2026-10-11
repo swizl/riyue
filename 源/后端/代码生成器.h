@@ -6,6 +6,7 @@
 #包含 "llvm/IR/Module.h"
 #包含 "llvm/IR/IRBuilder.h"
 #包含 "llvm/IR/LLVMContext.h"
+#包含 "llvm/IR/DIBuilder.h"
 #包含 "llvm/ExecutionEngine/ExecutionEngine.h"
 #包含 "llvm/Support/TargetSelect.h"
 #包含 "../共享/LLVM中文.h"
@@ -32,6 +33,19 @@
     哈希映射<文本, 文本> 类型别名映射;
     真假型 启用优化 = 假值;
 
+    // DWARF 调试信息（仅在 --调试 下启用；关闭时不改变任何 IR 输出）
+    真假型 启用调试 = 假值;
+    文本 源文件名;
+    独占指针<llvm::DIBuilder> 调试构建器;
+    llvm::DICompileUnit* 编译单元 = 空针;
+    llvm::DIFile* 调试文件 = 空针;
+    llvm::DIBasicType* 整数32调试类型 = 空针;
+    llvm::DIBasicType* 整数64调试类型 = 空针;
+    llvm::DIBasicType* 浮点64调试类型 = 空针;
+    llvm::DIBasicType* 布尔调试类型 = 空针;
+    llvm::DISubprogram* 当前子程序 = 空针;
+    哈希映射<文本, llvm::DISubprogram*> 函数调试映射;
+
     基本块* 当前异常处理块 = 空针;
     文本 当前异常变量名;
 
@@ -46,9 +60,16 @@ LLVM值* 创建间接调用(llvm::FunctionType* 类型, LLVM值* 指针, llvm::A
     虚空型 收集自由变量(恒常 表达式& 表达式, 数组向量<文本>& 自由变量, 恒常 数组向量<文本>& 局部变量);
     虚空型 收集语句自由变量(恒常 语句& 语句, 数组向量<文本>& 自由变量, 恒常 数组向量<文本>& 局部变量);
     虚空型 运行优化Pass();
+    虚空型 生成语句主体(恒常 语句& 语句);
+
+    // DWARF 辅助
+    虚空型 初始化调试信息();
+    llvm::DIType* 取调试类型(llvm::Type* 类型);
+    llvm::DISubprogram* 创建函数调试信息(恒常 函数& 函数, LLVM函数* llvm函数);
+    虚空型 发射局部变量调试信息(恒常 文本& 名称, 分配指令* 分配, 无符号 行号);
 
 公开:
-    代码生成器(llvm::LLVMContext& ctx, 恒常 文本& 输出文件, 真假型 优化 = 假值);
+    代码生成器(llvm::LLVMContext& ctx, 恒常 文本& 输出文件, 真假型 优化 = 假值, 真假型 调试 = 假值, 恒常 文本& 源文件 = "");
 
     虚空型 生成(恒常 程序& 程序);
     虚空型 生成函数(恒常 函数& 函数);
