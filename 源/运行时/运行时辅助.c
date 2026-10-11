@@ -2395,7 +2395,12 @@ static char* 读取整文件(const char* 路径) {
         }
         size_t n = fread(缓冲 + 长度, 1, 容量 - 1 - 长度, fp);
         长度 += n;
-        if (n == 0) break;
+        if (n == 0) {
+            // K7：n==0 既可能是正常 EOF，也可能是读错误（如读取中被截断/IO 故障）。
+            // 后者返回半截数据会误导调用方（如编译器的源码读取），故显式判 ferror。
+            if (ferror(fp)) { free(缓冲); fclose(fp); return NULL; }
+            break;
+        }
     }
     缓冲[长度] = '\0';
     fclose(fp);

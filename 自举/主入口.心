@@ -78,13 +78,16 @@
                     (生成代码)文本缓冲取整体 = 生成代码文本;
                     (临时ll, 生成代码文本)写入文件 = 结果;
                     // 工具链用绝对目录，避免依赖环境变量 PATH。
-                    // 关键：clang++ 调用 ld 时，命令行里交给 ld 的非 ASCII（中文）路径
-                    // 会被按本地代码页（GBK）曲解成乱码（ld: cannot open ... 乱码）。
-                    // 因此凡是要交给 clang++/ld 的路径——运行时 .o、输入 .o、输出 exe
-                    // ——一律改用纯 ASCII 临时名，再用 move 改名为（可能含中文的）目标
-                    // 路径。%RANDOM% 在同一命令行里每次出现都会取到不同的值，不能重复
-                    // 书写；故用 for 把它捕获一次，之后统一引用 %i。llvm-as/llc 不经过
-                    // ld，可正确读写中文路径，故临时 .ll/.bc 仍放在输出路径旁。
+                    // 链接层一律用本地化 LLVM 的 lld（ld.lld）：可执行文件走
+                    // `ld.lld -m i386pep` + crt2.o，Windows 动态库走 `-m i386pep --dll`
+                    // + dllcrt2.o，不再依赖 clang++ 驱动；crt 与库列表手工复刻（见下方）。
+                    // 关键：交给链接器的非 ASCII（中文）路径会被按本地代码页（GBK）曲解
+                    // 成乱码（ld: cannot open ... 乱码）。因此凡是要交给链接器的路径——
+                    // 运行时 .o、输入 .o、输出 exe——一律改用纯 ASCII 临时名，再用 move
+                    // 改名为（可能含中文的）目标路径。%RANDOM% 在同一命令行里每次出现都会
+                    // 取到不同的值，不能重复书写；故用 for 把它捕获一次，之后统一引用 %i。
+                    // llvm-as/llc 不经过链接器，可正确读写中文路径，故临时 .ll/.bc 仍放在
+                    // 输出路径旁。
                     "" = 链接前置;
                     链接前置 + "set \"PATH=D:\\src\\riyue\\llvm\\llvm-build\\bin;C:\\tools\\msys64\\mingw64\\bin;%PATH%\" && " = 链接前置;
                     链接前置 + "for /f %i in (\"%RANDOM%\") do " = 链接前置;
@@ -95,14 +98,15 @@
                     链接命令 + " -o " = 链接命令;
                     链接命令 + 临时bc = 链接命令;
                     如果 (是否动态库 ?= 1) {
-                        // Windows DLL：clang++ -shared 直出 .dll。
+                        // Windows DLL：ld.lld -m i386pep --dll 直出 .dll（dllexport 符号
+                        // 由目标文件的 .drectve 自动导出）。
                         // 动态库必须直接写到目标名：DLL 会把自身文件名内嵌为「导入名」，
                         // 若先建临时名再改名，调用方将按临时名去找 DLL 而失败。
                         链接命令 + " && llc -mtriple=x86_64-w64-windows-gnu -filetype=obj " = 链接命令;
                         链接命令 + 临时bc = 链接命令;
-                        链接命令 + " -o riyue_obj_%i.o && clang++ -shared riyue_obj_%i.o riyue_rt_%i.o -o " = 链接命令;
+                        链接命令 + " -o riyue_obj_%i.o && ld.lld -m i386pep --dll C:/tools/msys64/mingw64/lib/dllcrt2.o riyue_obj_%i.o riyue_rt_%i.o -o " = 链接命令;
                         链接命令 + "\"" + 输出路径 + "\"" = 链接命令;
-                        链接命令 + " -lshell32 -lws2_32 -lm -lstdc++" = 链接命令;
+                        链接命令 + " -LC:/tools/msys64/mingw64/lib -LC:/tools/msys64/mingw64/lib/gcc/x86_64-w64-mingw32/16.1.0 -lmingw32 -lmingwex -lmsvcrt -lgcc -lmoldname -lws2_32 -lm -ladvapi32 -lshell32 -luser32 -lkernel32" = 链接命令;
                     } 否则如果 (是否动态库 ?= 2) {
                         // ELF 共享库：PIC 目标 + ld.lld --shared。宿主为 Windows，
                         // 运行时辅助.o 为 PE 目标、不能参与 ELF 链接，故此处仅链入本模块目标
@@ -114,7 +118,7 @@
                     } 否则 {
                         链接命令 + " && llc -mtriple=x86_64-w64-windows-gnu -filetype=obj " = 链接命令;
                         链接命令 + 临时bc = 链接命令;
-                        链接命令 + " -o riyue_obj_%i.o && clang++ riyue_obj_%i.o riyue_rt_%i.o -o riyue_out_%i.exe -lshell32 -lws2_32 -lm -lstdc++ && move /Y riyue_out_%i.exe " = 链接命令;
+                        链接命令 + " -o riyue_obj_%i.o && ld.lld -m i386pep C:/tools/msys64/mingw64/lib/crt2.o riyue_obj_%i.o riyue_rt_%i.o -o riyue_out_%i.exe -LC:/tools/msys64/mingw64/lib -LC:/tools/msys64/mingw64/lib/gcc/x86_64-w64-mingw32/16.1.0 -lmingw32 -lmingwex -lmsvcrt -lgcc -lmoldname -lws2_32 -lm -ladvapi32 -lshell32 -luser32 -lkernel32 && move /Y riyue_out_%i.exe " = 链接命令;
                         如果 (出后缀 ?= "exe") {
                             链接命令 + "\"" + 输出路径 + "\"" = 链接命令;
                         } 否则 {
