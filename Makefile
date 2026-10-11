@@ -89,24 +89,11 @@ $(TARGET): $(ALL_OBJ)
 	./日月.exe 示例/简单测试.心 构建/简单测试.exe
 	./构建/简单测试.exe
 
-# 自举 IR 不动点验证（种子 引导.exe）：
-# 引导.exe 编译 自举/主入口.心 → 一级.exe；一级 编译自身 → 中间码1.ll；
-# llvm-as/llc 汇编为 中间码1.o；与 运行时.o 经 ld.lld 链接 → 二级.exe；
-# 二级 编译自身 → 中间码2.ll；中间码1.ll 与 中间码2.ll 必须完全一致（不动点/自举闭环成立）。
-# 注意：MSYS2_ARG_CONV_EXCL='*' 禁止参数路径转换（否则 自举/主入口.心 被改写导致打不开）；
-#       代价是原生工具参数不再转换，故 启动.o 与 -L 用 Windows 形式；llc 需 -filetype=obj。
+# 自举 IR 不动点验证（种子 引导.exe）：链路与判定见 不动点验证.sh，证据留证到 阶段/不动点.log。
+# 链：引导.exe → 一级.exe → 中间码1.ll →(llvm-as/llc)→ 中间码1.o →(ld.lld)→ 二级.exe → 中间码2.ll；
+#     中间码1.ll 与 中间码2.ll 必须完全一致（哈希相同即不动点/自举闭环成立）。
 自举: $(TARGET)
-	export MSYS2_ARG_CONV_EXCL='*'; \
-	PATH=/d/src/riyue/llvm/llvm-build/bin:/c/tools/msys64/mingw64/bin:$$PATH; export PATH; \
-	./$(TARGET) 自举/主入口.心 阶段/一级.exe && \
-	./阶段/一级.exe 自举/主入口.心 阶段/中间码1.ll && \
-	llvm-as 阶段/中间码1.ll -o 阶段/中间码1.bc && \
-	llc -mtriple=x86_64-w64-windows-gnu -filetype=obj 阶段/中间码1.bc -o 阶段/中间码1.o && \
-	$(CC) -O0 -finput-charset=UTF-8 -fexec-charset=UTF-8 -c 源/运行时/运行时辅助.c -o 阶段/运行时.o && \
-	cp 'C:/tools/msys64/mingw64/lib/crt2.o' 阶段/启动.o && \
-	ld.lld -m i386pep 阶段/启动.o 阶段/中间码1.o 阶段/运行时.o -o 阶段/二级.exe -LC:/tools/msys64/mingw64/lib -LC:/tools/msys64/mingw64/lib/gcc/x86_64-w64-mingw32/16.1.0 -lmingw32 -lmingwex -lmsvcrt -lgcc -lmoldname -lws2_32 -lm -ladvapi32 -lshell32 -luser32 -lkernel32 && \
-	./阶段/二级.exe 自举/主入口.心 阶段/中间码2.ll && \
-	diff 阶段/中间码1.ll 阶段/中间码2.ll
+	bash 不动点验证.sh
 
 clean:
 	rm -f $(ALL_OBJ) $(测试_OBJ) $(ALL_OBJ:.o=.d) $(测试_OBJ:.o=.d) $(TARGET) 日月.exe 单元测试.exe out_t.* out2.*
