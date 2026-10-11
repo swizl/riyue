@@ -86,14 +86,17 @@ PATH=/d/src/riyue/llvm/llvm-build/bin:/c/tools/msys64/mingw64/bin:$PATH \
 
 ### 日月.exe（自举主编译器）
 
-只接受「输入 输出」，产物类型由**输出扩展名**决定：
+接受「`--调试`(可选) 输入 输出」，产物类型由**输出扩展名**决定：
 
 ```
 日月.exe 输入.心 输出.ll     # 输出中文 LLVM IR 文本
 日月.exe 输入.心 输出        # 编译并用 ld.lld 链接为原生可执行文件
 日月.exe 输入.心 输出.dll    # 生成 Windows 动态库（ld.lld -m i386pep --dll）
 日月.exe 输入.心 输出.so     # 生成 ELF 共享库（ld.lld -m elf_x86_64 --shared）
+日月.exe --调试 输入.心 输出 # 额外发射中文 DWARF 调试信息（!dbg，供 gdb 源码级调试）
 ```
+
+`--调试` 关闭时输出**逐字节不变**；开启时发射与宿主等价的 `!编译单元/!文件/!子程序/!局部变量/!位置` 等中文元数据，`llvm-as`/`llvm-dis`/`llc` 全链路可往返，`gdb` 可按源码行下断点、`info locals` 与 `print` 查看变量。
 
 链接层一律使用本地化 `ld.lld`：可执行文件 `-m i386pep` + `crt2.o`，Windows 动态库 `-m i386pep --dll` + `dllcrt2.o`，并链入 `源/运行时/运行时辅助.o` 与 MSYS2 的 mingw 库。
 
