@@ -2020,6 +2020,49 @@ const char* 字符序列(int 码点) {
     return 缓冲区;
 }
 
+// ==================== 运行时安全检查（内存安全 §4.1） ====================
+// 边界/空指针检查辅助，供运行时与（后续 §4.2）生成的代码调用。
+//
+// 内建 动态数组* 越界报错默认**关闭**：自举编译器（自举/解析器.心）依赖
+// `动态数组获取` 越界返回 0 表达 EOF，默认开启会破坏自举链。需要时设环境
+// 变量 `日月边界检查=1` 打开（可开关，见 文档/内存安全方案.md §4.1）。
+
+static int 边界检查开启(void) {
+    static int 缓存 = -1;
+    if (缓存 < 0) {
+#ifdef _WIN32
+        // 必须用宽字符版 getenv：Windows 的窄环境块按 ANSI 码页编码，
+        // 中文变量名会与源码里的 UTF-8 字面量不匹配，只能走 UTF-16 路径。
+        const wchar_t* 值 = _wgetenv(L"日月边界检查");
+        缓存 = (值 && 值[0] && 值[0] != L'0') ? 1 : 0;
+#else
+        const char* 值 = getenv("日月边界检查");
+        缓存 = (值 && 值[0] && 值[0] != '0') ? 1 : 0;
+#endif
+    }
+    return 缓存;
+}
+
+void 运行时越界报告(const char* 位置, int 索引, int 长度) {
+    fflush(stdout);
+    fprintf(stderr, "\n运行时越界: %s 索引 %d 超出 [0, %d)\n", 位置, 索引, 长度);
+    fflush(stderr);
+    exit(1);
+}
+
+void 运行时边界检查(int 索引, int 长度, const char* 位置) {
+    if (索引 < 0 || 索引 >= 长度) 运行时越界报告(位置, 索引, 长度);
+}
+
+void 运行时空检查(const void* 指针, const char* 位置) {
+    if (!指针) {
+        fflush(stdout);
+        fprintf(stderr, "\n运行时空指针: %s\n", 位置);
+        fflush(stderr);
+        exit(1);
+    }
+}
+
 // ==================== 动态数组 ====================
 
 #define 动态数组初始大小 16
@@ -2058,13 +2101,16 @@ int 动态数组获取(动态数组* arr, int 索引) {
     if (索引 >= 0 && 索引 < arr->数组大小) {
         return arr->数据[索引];
     }
+    if (边界检查开启()) 运行时边界检查(索引, arr->数组大小, "动态数组获取");
     return 0;
 }
 
 void 动态数组设置(动态数组* arr, int 索引, int 值) {
     if (索引 >= 0 && 索引 < arr->数组大小) {
         arr->数据[索引] = 值;
+        return;
     }
+    if (边界检查开启()) 运行时边界检查(索引, arr->数组大小, "动态数组设置");
 }
 
 int 动态数组大小(动态数组* arr) {
@@ -2077,11 +2123,16 @@ void 动态数组删除(动态数组* arr, int 索引) {
             arr->数据[i] = arr->数据[i + 1];
         }
         arr->数组大小--;
+        return;
     }
+    if (边界检查开启()) 运行时边界检查(索引, arr->数组大小, "动态数组删除");
 }
 
 void 动态数组插入(动态数组* arr, int 索引, int 值) {
-    if (索引 < 0 || 索引 > arr->数组大小) return;
+    if (索引 < 0 || 索引 > arr->数组大小) {
+        if (边界检查开启()) 运行时边界检查(索引, arr->数组大小 + 1, "动态数组插入");
+        return;
+    }
     动态数组添加(arr, 0);  // 扩展
     for (int i = arr->数组大小 - 1; i > 索引; i--) {
         arr->数据[i] = arr->数据[i - 1];
@@ -2150,8 +2201,13 @@ void 动态字符串数组删除(动态字符串数组* arr, int 索引) {
 void 动态字符串数组插入(动态字符串数组* arr, int 索引, const char* 值) {
     if (索引 >= 0 && 索引 <= arr->数组大小) {
         if (arr->数组大小 >= arr->容量) {
-            arr->容量 *= 2;
-            arr->数据 = (const char**)realloc(arr->数据, arr->容量 * sizeof(const char*));
+            int 旧容量 = arr->容量;
+            int 新容量 = 旧容量 * 2;
+            const char** 新数据 = (const char**)realloc(arr->数据, (size_t)新容量 * sizeof(const char*));
+            if (!新数据) return;
+            memset(新数据 + 旧容量, 0, (size_t)(新容量 - 旧容量) * sizeof(const char*));
+            arr->数据 = 新数据;
+            arr->容量 = 新容量;
         }
         for (int i = arr->数组大小; i > 索引; i--) {
             arr->数据[i] = arr->数据[i - 1];
