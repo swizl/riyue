@@ -2031,8 +2031,11 @@ typedef struct {
 } 动态数组;
 
 动态数组* 创建动态数组() {
-    动态数组* arr = (动态数组*)malloc(sizeof(动态数组));
-    arr->数据 = (int*)malloc(动态数组初始大小 * sizeof(int));
+    // calloc 而非 malloc：堆对象零初始化（内存安全 §4.1），消除潜在脏读；
+    // 容量内未被写入的槽位也保证为 0，而非未定义值。
+    动态数组* arr = (动态数组*)calloc(1, sizeof(动态数组));
+    if (!arr) return NULL;
+    arr->数据 = (int*)calloc(动态数组初始大小, sizeof(int));
     arr->数组大小 = 0;
     arr->容量 = 动态数组初始大小;
     return arr;
@@ -2040,8 +2043,13 @@ typedef struct {
 
 void 动态数组添加(动态数组* arr, int 值) {
     if (arr->数组大小 >= arr->容量) {
-        arr->容量 *= 2;
-        arr->数据 = (int*)realloc(arr->数据, arr->容量 * sizeof(int));
+        int 旧容量 = arr->容量;
+        int 新容量 = 旧容量 * 2;
+        int* 新数据 = (int*)realloc(arr->数据, (size_t)新容量 * sizeof(int));
+        if (!新数据) return;
+        memset(新数据 + 旧容量, 0, (size_t)(新容量 - 旧容量) * sizeof(int));
+        arr->数据 = 新数据;
+        arr->容量 = 新容量;
     }
     arr->数据[arr->数组大小++] = 值;
 }
@@ -2094,8 +2102,9 @@ typedef struct {
 } 动态字符串数组;
 
 动态字符串数组* 创建动态字符串数组() {
-    动态字符串数组* arr = (动态字符串数组*)malloc(sizeof(动态字符串数组));
-    arr->数据 = (const char**)malloc(动态数组初始大小 * sizeof(const char*));
+    动态字符串数组* arr = (动态字符串数组*)calloc(1, sizeof(动态字符串数组));
+    if (!arr) return NULL;
+    arr->数据 = (const char**)calloc(动态数组初始大小, sizeof(const char*));
     arr->数组大小 = 0;
     arr->容量 = 动态数组初始大小;
     return arr;
@@ -2103,8 +2112,13 @@ typedef struct {
 
 void 动态字符串数组添加(动态字符串数组* arr, const char* 值) {
     if (arr->数组大小 >= arr->容量) {
-        arr->容量 *= 2;
-        arr->数据 = (const char**)realloc(arr->数据, arr->容量 * sizeof(const char*));
+        int 旧容量 = arr->容量;
+        int 新容量 = 旧容量 * 2;
+        const char** 新数据 = (const char**)realloc(arr->数据, (size_t)新容量 * sizeof(const char*));
+        if (!新数据) return;
+        memset(新数据 + 旧容量, 0, (size_t)(新容量 - 旧容量) * sizeof(const char*));
+        arr->数据 = 新数据;
+        arr->容量 = 新容量;
     }
     arr->数据[arr->数组大小++] = strdup(值);
 }
@@ -2171,9 +2185,10 @@ typedef struct {
 } 通道数据;
 
 通道数据* 创建通道函数(int 容量) {
-    通道数据* ch = (通道数据*)malloc(sizeof(通道数据));
+    通道数据* ch = (通道数据*)calloc(1, sizeof(通道数据));
+    if (!ch) return NULL;
     ch->容量 = 容量 > 0 ? 容量 : 1;
-    ch->数据 = (int*)malloc(sizeof(int) * ch->容量);
+    ch->数据 = (int*)calloc((size_t)ch->容量, sizeof(int));
     ch->数组大小 = ch->容量;
     ch->头 = 0;
     ch->尾 = 0;
