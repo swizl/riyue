@@ -4,8 +4,8 @@
 LLVM值* 协程句柄 = 空针;
 数组向量<分配指令*> 返回值变量列表;
 
-代码生成器::代码生成器(llvm::LLVMContext& ctx, 恒常 文本& 输出文件, 真假型 优化, 真假型 调试, 恒常 文本& 源文件)
-    : 上下文(ctx), 输出文件名(输出文件), 启用优化(优化), 启用调试(调试), 源文件名(源文件) {
+代码生成器::代码生成器(llvm::LLVMContext& ctx, 恒常 文本& 输出文件, 整数型 优化级别, 真假型 调试, 恒常 文本& 源文件)
+    : 上下文(ctx), 输出文件名(输出文件), 优化级别(优化级别), 启用优化(优化级别 > 0), 启用调试(调试), 源文件名(源文件) {
     模块 = 创建独占<llvm::Module>("程序", 上下文);
     构建器 = 创建独占<llvm::IRBuilder<>>(上下文);
     llvm::InitializeNativeTarget();
@@ -639,55 +639,58 @@ LLVM函数* 人格函数 = 获取模块函数(*模块, "__gxx_personality_seh0")
 
 虚空型 代码生成器::运行优化Pass() {
     调试打印("[优化] 开始运行优化Pass");
+    如果 (优化级别 <= 0) 归返;
 
-    llvm::legacy::FunctionPassManager FPM(模块.get());
+    // PassBuilder（新 PassManager）中端流水线需要 TargetMachine 提供 TTI 与 DataLayout。
+    // 此处独立创建一台目标机器，与后端发射阶段的设置一致（triple/CPU/PIC）。
+    三元组 目标三元组(llvm::sys::getDefaultTargetTriple());
+    文本 错误信息;
+    恒常 llvm::Target* 目标 = llvm::TargetRegistry::lookupTarget(目标三元组, 错误信息);
+    如果 (!目标) 抛出 运行时异常("无法找到目标: " + 错误信息);
 
-    // 尾递归优化 (Tail Call Elimination)
-    // 将尾递归调用转换为循环，避免栈溢出
-    FPM.add(llvm::createTailCallEliminationPass());
+    目标选项 选项;
+    自动 目标机器 = 独占指针<llvm::TargetMachine>(
+        目标->createTargetMachine(目标三元组, "generic", "", 选项, llvm::Reloc::PIC_));
+    如果 (!目标机器) 抛出 运行时异常("无法创建TargetMachine");
 
-    // 死代码消除 (Dead Code Elimination)
-    // 删除不可达的代码块和无用指令
-    FPM.add(llvm::createDeadCodeEliminationPass());
+    // 优化前必须固定数据布局与三元组，否则部分变换会按默认布局误优化。
+    模块->setDataLayout(目标机器->createDataLayout());
+    模块->setTargetTriple(目标三元组);
 
-    // 循环优化 (Loop Invariant Code Motion)
-    // 将循环不变量外提到循环外
-    FPM.add(llvm::createLICMPass());
+    // 调优项：O2/O3 打开循环向量化与 SLP 向量化；O1..O3 打开循环展开；Os 全部关闭以求体积。
+    llvm::PipelineTuningOptions 调优;
+    调优.LoopVectorization = (优化级别 == 2 || 优化级别 == 3);
+    调优.SLPVectorization = (优化级别 == 2 || 优化级别 == 3);
+    调优.LoopUnrolling = (优化级别 >= 1 && 优化级别 <= 3);
+    调优.MergeFunctions = (优化级别 == 2 || 优化级别 == 3);
 
-    // 简化控制流图
-    FPM.add(llvm::createCFGSimplificationPass());
+    llvm::PassBuilder 构建器(目标机器.get(), 调优);
 
-    // 内存到寄存器提升
-    FPM.add(llvm::createPromoteMemoryToRegisterPass());
+    // 注册四层分析管理器并交叉注册，构成完整的新 PassManager 体系。
+    llvm::LoopAnalysisManager 循环分析;
+    llvm::FunctionAnalysisManager 函数分析;
+    llvm::CGSCCAnalysisManager 调用图分析;
+    llvm::ModuleAnalysisManager 模块分析;
+    构建器.registerModuleAnalyses(模块分析);
+    构建器.registerCGSCCAnalyses(调用图分析);
+    构建器.registerFunctionAnalyses(函数分析);
+    构建器.registerLoopAnalyses(循环分析);
+    构建器.crossRegisterProxies(循环分析, 函数分析, 调用图分析, 模块分析);
 
-    // 指令组合
-    FPM.add(llvm::createInstructionCombiningPass());
-
-    // 重新关联表达式
-    FPM.add(llvm::createReassociatePass());
-
-    // 全局值编号
-    FPM.add(llvm::createGVNPass());
-
-    // 早期公共子表达式消除 (Early CSE)
-    // 消除重复计算的表达式
-    FPM.add(llvm::createEarlyCSEPass());
-
-    // 死存储消除 (Dead Store Elimination)
-    // 删除无用的存储操作
-    FPM.add(llvm::createDeadStoreEliminationPass());
-
-    // 循环展开 (Loop Unrolling)
-    // 将小循环展开为重复代码，减少循环开销
-    FPM.add(llvm::createLoopUnrollPass());
-
-    FPM.doInitialization();
-
-    循环 (自动& 函数 : *模块) {
-        FPM.run(函数);
+    // 级别映射：1=O1，2=O2（含内联/向量化），3=O3，4=Os。
+    // LLVM 23 起 OptimizationLevel 不再含 Os：体积优化 = O2 流水线 + 函数 optsize 属性，
+    // 故这里对级别 4 先给所有函数定义挂 optsize，再按 O2 跑。
+    llvm::OptimizationLevel 级别 = llvm::OptimizationLevel::O2;
+    如果 (优化级别 == 1) 级别 = llvm::OptimizationLevel::O1;
+    否则 如果 (优化级别 == 3) 级别 = llvm::OptimizationLevel::O3;
+    否则 如果 (优化级别 >= 4) {
+        循环 (自动& 函数 : *模块) {
+            如果 (!函数.isDeclaration()) 函数.addFnAttr(llvm::Attribute::OptimizeForSize);
+        }
     }
 
-    FPM.doFinalization();
+    llvm::ModulePassManager 模块通道 = 构建器.buildPerModuleDefaultPipeline(级别);
+    模块通道.run(*模块, 模块分析);
 
     调试打印("[优化] 优化Pass完成");
 }

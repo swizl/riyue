@@ -18,6 +18,9 @@
 #包含 "llvm/Transforms/Utils.h"
 #包含 "llvm/Transforms/InstCombine/InstCombine.h"
 #包含 "llvm/Transforms/Scalar/GVN.h"
+#包含 "llvm/Passes/PassBuilder.h"
+#包含 "llvm/Passes/OptimizationLevel.h"
+#包含 "llvm/IR/PassManager.h"
 #包含 <system_error>
 #包含 <cstdlib>
 #包含 <cstdio>
