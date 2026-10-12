@@ -1,4 +1,4 @@
-﻿#如果未定义 LLVM辅助_H
+#如果未定义 LLVM辅助_H
 #定义 LLVM辅助_H
 
 #包含 "llvm/IR/IRBuilder.h"
@@ -37,8 +37,15 @@ LLVM值* 生成极值选择(llvm::IRBuilder<>& 构建器, llvm::LLVMContext& 上
 LLVM值* 短路逻辑运算(llvm::IRBuilder<>& 构建器, llvm::LLVMContext& 上下文,
     LLVM值* 左值, 函数对象<LLVM值*()> 生成右值, 真假型 是与操作);
 
+// 内存安全 §4.2：解引用前空检查。给定符号表返回的「变量地址」：
+//  - 栈槽且其分配类型为指针（句柄变量）→ 加载出句柄指针，插入 @运行时空检查 后返回该指针；
+//  - 本身就是指针值（已加载的句柄 / 指针参数寄存器）→ 插入 @运行时空检查 并返回；
+//  - 其它（栈上的结构体值 / 数组地址 / 全局存储地址，恒非空）→ 不检查，原样返回。
+LLVM值* 解析并检查解引用指针(llvm::IRBuilder<>& 构建器, llvm::LLVMContext& 上下文, llvm::Module* 模块,
+    LLVM值* 变量地址, 恒常 文本& 位置);
+
 // 查找结构体成员地址
-LLVM值* 查找结构体成员地址(llvm::IRBuilder<>& 构建器, llvm::LLVMContext& 上下文,
+LLVM值* 查找结构体成员地址(llvm::IRBuilder<>& 构建器, llvm::LLVMContext& 上下文, llvm::Module* 模块,
     恒常 文本& 对象名, 恒常 文本& 成员名,
     类别 符号表& 符号表实例,
     哈希映射<文本, LLVM结构体类型*>& 结构体类型映射,
