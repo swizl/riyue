@@ -2069,6 +2069,93 @@ void 运行时空检查(const void* 指针, const char* 位置) {
     }
 }
 
+// ==================== 字符串胖指针（G3 选项2） ====================
+// 语言层「字符串」值 = 指向本结构的指针；数据恒为 NUL 结尾的字节串，长度 = 字符数（UTF-8）。
+// C 边界：生产型 C 函数返回裸 char* → 字符串包装(...) 补长度（拷贝，避免静态缓冲/切片别名）；
+//         消费型 C 函数要裸 char* → 字符串数据(...) 解包。
+typedef struct {
+    const char* 数据;
+    int 长度;
+} 字符串对象;
+
+字符串对象* 胖字符串包装(const char* 数据) {
+    const char* d = (数据 != NULL) ? 数据 : "";
+    size_t n = strlen(d);
+    char* 拷贝 = (char*)malloc(n + 1);
+    if (拷贝 == NULL) return NULL;
+    memcpy(拷贝, d, n + 1);
+    字符串对象* s = (字符串对象*)malloc(sizeof(字符串对象));
+    if (s == NULL) { free(拷贝); return NULL; }
+    s->数据 = 拷贝;
+    s->长度 = 获取字符数(拷贝);
+    return s;
+}
+
+const char* 胖字符串数据(字符串对象* s) {
+    return (s != NULL && s->数据 != NULL) ? s->数据 : "";
+}
+
+int 胖字符串长度(字符串对象* s) {
+    return (s != NULL) ? s->长度 : 0;
+}
+
+int 胖字符串字符数(字符串对象* s) {
+    return (s != NULL) ? s->长度 : 0;
+}
+
+int 胖字符串比较(字符串对象* a, 字符串对象* b) {
+    return strcmp(胖字符串数据(a), 胖字符串数据(b));
+}
+
+int 胖字符串字符码(字符串对象* s, int 索引) {
+    return 字符码(胖字符串数据(s), 索引);
+}
+
+字符串对象* 胖字符串拼接(字符串对象* a, 字符串对象* b) {
+    const char* da = 胖字符串数据(a);
+    const char* db = 胖字符串数据(b);
+    long long la = (long long)strlen(da);
+    long long lb = (long long)strlen(db);
+    char* r = (char*)malloc((size_t)(la + lb + 1));
+    if (r == NULL) return NULL;
+    memcpy(r, da, (size_t)la);
+    memcpy(r + la, db, (size_t)lb);
+    r[la + lb] = '\0';
+    字符串对象* s = (字符串对象*)malloc(sizeof(字符串对象));
+    if (s == NULL) { free(r); return NULL; }
+    s->数据 = r;
+    s->长度 = 获取字符数(r);
+    return s;
+}
+
+字符串对象* 胖字符串子串(字符串对象* s, int 起, int 长) {
+    const char* d = 胖字符串数据(s);
+    int 字节起 = 字符位置到字节位置(d, 起);
+    int 字节止 = 字符位置到字节位置(d, 起 + 长);
+    int 字节长 = 字节止 - 字节起;
+    if (字节长 < 0) 字节长 = 0;
+    char* r = (char*)malloc((size_t)(字节长 + 1));
+    if (r == NULL) return NULL;
+    memcpy(r, d + 字节起, (size_t)字节长);
+    r[字节长] = '\0';
+    字符串对象* o = (字符串对象*)malloc(sizeof(字符串对象));
+    if (o == NULL) { free(r); return NULL; }
+    o->数据 = r;
+    o->长度 = 获取字符数(r);
+    return o;
+}
+
+// 字符串下标（UTF-8 字符级）：越界即中止
+字符串对象* 胖字符串取字符(字符串对象* s, int 索引) {
+    int n = 胖字符串长度(s);
+    if (索引 < 0 || 索引 >= n) 运行时越界报告("字符串下标", 索引, n);
+    return 胖字符串子串(s, 索引, 1);
+}
+
+int 胖字符串转整数(字符串对象* s) {
+    return atoi(胖字符串数据(s));
+}
+
 // ==================== 动态数组 ====================
 
 #define 动态数组初始大小 16
