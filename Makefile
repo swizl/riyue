@@ -6,7 +6,7 @@ CXX = /d/src/riyue/llvm/llvm-build/bin/clang++
 CC = /d/src/riyue/llvm/llvm-build/bin/clang
 LLVM_CXXFLAGS := $(shell $(LLVM_CONFIG) --cxxflags | sed 's/-fno-exceptions//; s/-fno-rtti//')
 LLVM_LDFLAGS  := $(shell $(LLVM_CONFIG) --ldflags)
-LLVM_LIBS     := $(shell $(LLVM_CONFIG) --libs core orcjit native nativecodegen mcparser option target analysis)
+LLVM_LIBS     := $(shell $(LLVM_CONFIG) --libs core orcjit native nativecodegen mcparser option target analysis aarch64 webassembly)
 LLVM_SYSLIBS  := $(shell $(LLVM_CONFIG) --system-libs)
 
 # 引导.exe 仅作自举种子，无需调试信息（-g 使单文件编译慢约 3.6x），故不加 -g。
