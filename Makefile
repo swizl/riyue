@@ -45,8 +45,10 @@ all: 日月.exe
 
 引导: $(TARGET)
 
+# 代码生成按 AST 递归（if/else 链、嵌套块）在 -O0 下栈帧较大，默认 1MB 栈不足以
+# 编译完整自举源码（在 发射函数定义节点 处栈溢出），显式设为 8MB。
 $(TARGET): $(ALL_OBJ)
-	$(CXX) $(LDLLD) -o $@ $^ $(LDFLAGS)
+	$(CXX) $(LDLLD) -Wl,--stack,8388608 -o $@ $^ $(LDFLAGS)
 
 # 自举 日月.exe：种子编译器 引导.exe 编译自举编译器源码 → 原生可执行文件
 日月.exe: $(TARGET) $(SELFHOST_SRC)

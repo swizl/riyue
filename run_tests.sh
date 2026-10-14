@@ -6,8 +6,8 @@ export PATH=/usr/bin:/bin:/mingw64/bin:$PATH
 export MSYS_NO_PATHCONV=1
 cd /d/src/riyue/riyue || exit 9
 
-# 门禁：Pass 不得低于用例总数，Fail 必须为 0（当前 示例/*.心 共 87 个）。
-MIN_PASS=87
+# 门禁：Pass 不得低于用例总数，Fail 必须为 0（当前 示例/*.心 共 97 个）。
+MIN_PASS=97
 LOG=阶段/回归.log
 
 PASS=0
@@ -52,7 +52,30 @@ COMPILE_RETRY=2
             清理残留
             continue
         fi
-        if [ -f "示例/${name}.期望" ]; then
+        if [ -f "示例/${name}.期望错" ]; then
+            # 期望运行期「被拦截并中止」（如越界）：编译须成功、退出码须非零、
+            # 且 stderr（去 \r / 去空行）须等于 .期望错 内容。
+            timeout $TIMEOUT_RUN ./out_t.exe > 阶段/.rt_out 2> 阶段/.rt_err
+            rc_run=$?
+            actual_err=$(sed 's/\r//' 阶段/.rt_err | sed '/^[[:space:]]*$/d')
+            expected_err=$(cat "示例/${name}.期望错")
+            if [ $rc_run -eq 124 ]; then
+                echo "TIMEOUT: $name (run)"
+                FAIL=$((FAIL + 1))
+                FAIL_LIST="$FAIL_LIST $name(rt_timeout)"
+            elif [ $rc_run -eq 0 ]; then
+                echo "FAIL: $name (期望运行期中止，但正常退出)"
+                FAIL=$((FAIL + 1))
+                FAIL_LIST="$FAIL_LIST $name(rt_ok)"
+            elif [ "$actual_err" != "$expected_err" ]; then
+                echo "FAIL: $name (运行时诊断不匹配)"
+                FAIL=$((FAIL + 1))
+                FAIL_LIST="$FAIL_LIST $name(rt_err)"
+            else
+                echo "OK: $name (运行期越界被拦截)"
+                PASS=$((PASS + 1))
+            fi
+        elif [ -f "示例/${name}.期望" ]; then
             actual=$(timeout $TIMEOUT_RUN ./out_t.exe 2>/dev/null | sed 's/\r//')
             rc_run=$?
             if [ $rc_run -eq 124 ]; then
