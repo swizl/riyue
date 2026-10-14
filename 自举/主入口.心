@@ -57,6 +57,7 @@
     1 = 参数i;
     "" = 输入路径;
     "" = 输出路径;
+    "" = 目标覆盖;
     0 = 已见输入;
     当 (参数i < 参数数) {
         (参数i)获取参数 = 参数值;
@@ -65,11 +66,22 @@
             优化候选 = 优化级别;
         } 否则如果 (参数值 ?= "--调试") {
             1 = 调试模式;
-        } 否则如果 (已见输入 ?= 0) {
-            参数值 = 输入路径;
-            1 = 已见输入;
         } 否则 {
-            参数值 = 输出路径;
+            // 阶段5A：--目标=<三元组>（前缀匹配 "--目标="，共 5 个字符）
+            (参数值)长度 = 参数长;
+            0 = 是目标参数;
+            如果 (参数长 >= 5) {
+                (参数值, 0, 5)子串 = 参数前缀;
+                如果 (参数前缀 ?= "--目标=") { 1 = 是目标参数; }
+            }
+            如果 (是目标参数 ?= 1) {
+                (参数值, 5, 参数长 - 5)子串 = 目标覆盖;
+            } 否则如果 (已见输入 ?= 0) {
+                参数值 = 输入路径;
+                1 = 已见输入;
+            } 否则 {
+                参数值 = 输出路径;
+            }
         }
         参数i + 1 = 参数i;
     }
@@ -121,6 +133,11 @@
                         如果 (出后缀 ?= ".so") { 2 = 是否动态库; }
                     }
                 }
+                // 阶段5A：解析生效目标三元组（默认按产物类型；--目标= 覆盖）
+                "" = 目标三元组;
+                如果 (是否动态库 ?= 2) { "x86_64-unknown-linux-gnu" = 目标三元组; }
+                否则 { "x86_64-w64-windows-gnu" = 目标三元组; }
+                如果 (目标覆盖 ?= "") { } 否则 { 目标覆盖 = 目标三元组; }
                 如果 (调试模式 ?= 1) { ()初始化调试元数据; }
                 (根)发射程序;
                 (映射_全局表)发射;
@@ -202,7 +219,9 @@
                         // 若先建临时名再改名，调用方将按临时名去找 DLL 而失败。
                         链接命令 + " && llc" = 链接命令;
                         链接命令 + llc优化参数 = 链接命令;
-                        链接命令 + " -mtriple=x86_64-w64-windows-gnu -filetype=obj " = 链接命令;
+                        链接命令 + " -mtriple=" = 链接命令;
+                        链接命令 + 目标三元组 = 链接命令;
+                        链接命令 + " -filetype=obj " = 链接命令;
                         链接命令 + 编译输入bc = 链接命令;
                         链接命令 + " -o riyue_obj_%i.o && ld.lld -m i386pep --dll C:/tools/msys64/mingw64/lib/dllcrt2.o riyue_obj_%i.o riyue_rt_%i.o -o " = 链接命令;
                         链接命令 + "\"" + 输出路径 + "\"" = 链接命令;
@@ -213,14 +232,18 @@
                         // （同样直接写目标名，保证 DT_NEEDED 记录正确）
                         链接命令 + " && llc" = 链接命令;
                         链接命令 + llc优化参数 = 链接命令;
-                        链接命令 + " -mtriple=x86_64-unknown-linux-gnu -relocation-model=pic -filetype=obj " = 链接命令;
+                        链接命令 + " -mtriple=" = 链接命令;
+                        链接命令 + 目标三元组 = 链接命令;
+                        链接命令 + " -relocation-model=pic -filetype=obj " = 链接命令;
                         链接命令 + 编译输入bc = 链接命令;
                         链接命令 + " -o riyue_obj_%i.o && ld.lld -m elf_x86_64 --shared riyue_obj_%i.o -o " = 链接命令;
                         链接命令 + "\"" + 输出路径 + "\"" = 链接命令;
                     } 否则 {
                         链接命令 + " && llc" = 链接命令;
                         链接命令 + llc优化参数 = 链接命令;
-                        链接命令 + " -mtriple=x86_64-w64-windows-gnu -filetype=obj " = 链接命令;
+                        链接命令 + " -mtriple=" = 链接命令;
+                        链接命令 + 目标三元组 = 链接命令;
+                        链接命令 + " -filetype=obj " = 链接命令;
                         链接命令 + 编译输入bc = 链接命令;
                         链接命令 + " -o riyue_obj_%i.o && ld.lld -m i386pep C:/tools/msys64/mingw64/lib/crt2.o riyue_obj_%i.o riyue_rt_%i.o -o riyue_out_%i.exe -LC:/tools/msys64/mingw64/lib -LC:/tools/msys64/mingw64/lib/gcc/x86_64-w64-mingw32/16.1.0 -lmingw32 -lmingwex -lmsvcrt -lgcc -lmoldname -lws2_32 -lm -ladvapi32 -lshell32 -luser32 -lkernel32 && move /Y riyue_out_%i.exe " = 链接命令;
                         如果 (出后缀 ?= "exe") {

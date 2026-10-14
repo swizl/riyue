@@ -21,8 +21,8 @@ LLVM值* 协程句柄 = 空针;
     归返 码;
 }
 
-代码生成器::代码生成器(llvm::LLVMContext& ctx, 恒常 文本& 输出文件, 整数型 优化级别, 真假型 调试, 恒常 文本& 源文件)
-    : 上下文(ctx), 输出文件名(输出文件), 优化级别(优化级别), 启用优化(优化级别 > 0), 启用调试(调试), 源文件名(源文件) {
+代码生成器::代码生成器(llvm::LLVMContext& ctx, 恒常 文本& 输出文件, 整数型 优化级别, 真假型 调试, 恒常 文本& 源文件, 恒常 文本& 目标三元组)
+    : 上下文(ctx), 输出文件名(输出文件), 优化级别(优化级别), 启用优化(优化级别 > 0), 启用调试(调试), 源文件名(源文件), 目标三元组覆盖(目标三元组) {
     模块 = 创建独占<llvm::Module>("程序", 上下文);
     构建器 = 创建独占<llvm::IRBuilder<>>(上下文);
     llvm::InitializeNativeTarget();
@@ -1284,7 +1284,8 @@ LLVM函数* 代码生成器::确保函数签名(恒常 函数& 函数,
 
     // PassBuilder（新 PassManager）中端流水线需要 TargetMachine 提供 TTI 与 DataLayout。
     // 此处独立创建一台目标机器，与后端发射阶段的设置一致（triple/CPU/PIC）。
-    三元组 目标三元组(llvm::sys::getDefaultTargetTriple());
+    // 阶段5A：`--目标=` 指定时以其为准，否则沿用宿主默认三元组。
+    三元组 目标三元组 = 目标三元组覆盖.empty() ? 三元组(llvm::sys::getDefaultTargetTriple()) : 三元组(目标三元组覆盖);
     文本 错误信息;
     恒常 llvm::Target* 目标 = llvm::TargetRegistry::lookupTarget(目标三元组, 错误信息);
     如果 (!目标) 抛出 运行时异常("无法找到目标: " + 错误信息);
@@ -1349,7 +1350,8 @@ LLVM函数* 代码生成器::确保函数签名(恒常 函数& 函数,
     文本 临时对象名 = "riyue_obj_" + 唯一 + ".o";
     文本 临时可执行名 = "riyue_link_" + 唯一 + ".exe";
 
-    三元组 目标三元组(llvm::sys::getDefaultTargetTriple());
+    // 阶段5A：`--目标=` 指定时以其为准，否则沿用宿主默认三元组。
+    三元组 目标三元组 = 目标三元组覆盖.empty() ? 三元组(llvm::sys::getDefaultTargetTriple()) : 三元组(目标三元组覆盖);
     文本 错误信息;
     恒常 llvm::Target* 目标 = llvm::TargetRegistry::lookupTarget(目标三元组, 错误信息);
     如果 (!目标) 抛出 运行时异常("无法找到目标: " + 错误信息);
@@ -1400,7 +1402,8 @@ LLVM函数* 代码生成器::确保函数签名(恒常 函数& 函数,
         运行优化Pass();
     }
 
-    三元组 目标三元组(llvm::sys::getDefaultTargetTriple());
+    // 阶段5A：`--目标=` 指定时以其为准，否则沿用宿主默认三元组。
+    三元组 目标三元组 = 目标三元组覆盖.empty() ? 三元组(llvm::sys::getDefaultTargetTriple()) : 三元组(目标三元组覆盖);
     文本 错误信息;
     恒常 llvm::Target* 目标 = llvm::TargetRegistry::lookupTarget(目标三元组, 错误信息);
     如果 (目标) {
