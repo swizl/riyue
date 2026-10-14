@@ -212,6 +212,14 @@
                         llc优化参数 + " -O" = llc优化参数;
                         llc优化参数 + 优化级文本 = llc优化参数;
                     }
+                    // 阶段5C：按目标三元组选择 ld.lld 仿真器（交叉共享库链接）。
+                    // 目标三元组以 "aarch64"（7 字符）开头 → aarch64linux；否则 elf_x86_64（默认不变）。
+                    "elf_x86_64" = 链接仿真;
+                    (目标三元组)长度 = 目标长;
+                    如果 (目标长 >= 7) {
+                        (目标三元组, 0, 7)子串 = 目标前七;
+                        如果 (目标前七 ?= "aarch64") { "aarch64linux" = 链接仿真; }
+                    }
                     如果 (是否动态库 ?= 1) {
                         // Windows DLL：ld.lld -m i386pep --dll 直出 .dll（dllexport 符号
                         // 由目标文件的 .drectve 自动导出）。
@@ -236,7 +244,9 @@
                         链接命令 + 目标三元组 = 链接命令;
                         链接命令 + " -relocation-model=pic -filetype=obj " = 链接命令;
                         链接命令 + 编译输入bc = 链接命令;
-                        链接命令 + " -o riyue_obj_%i.o && ld.lld -m elf_x86_64 --shared riyue_obj_%i.o -o " = 链接命令;
+                        链接命令 + " -o riyue_obj_%i.o && ld.lld -m " = 链接命令;
+                        链接命令 + 链接仿真 = 链接命令;
+                        链接命令 + " --shared riyue_obj_%i.o -o " = 链接命令;
                         链接命令 + "\"" + 输出路径 + "\"" = 链接命令;
                     } 否则 {
                         链接命令 + " && llc" = 链接命令;
