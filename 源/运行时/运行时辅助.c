@@ -12,6 +12,10 @@
 #endif
 #include <windows.h>
 #include <shellapi.h>
+#include <process.h>
+#else
+#include <unistd.h>
+#include <sys/wait.h>
 #endif
 
 // T5：关键字 / 文本标志 的权威 token id 表与完美哈希（宿主与自举共用同一实现）
@@ -887,6 +891,53 @@ int 执行系统命令(const char* 命令) {
 #else
     return system(命令);
 #endif
+}
+
+// 获取当前进程标识（PID）
+int 获取进程标识() {
+#ifdef _WIN32
+    return (int)_getpid();
+#else
+    return (int)getpid();
+#endif
+}
+
+// 创建子进程（异步）：经平台命令解释器执行 命令，成功后返回子进程标识（>0），失败返回 -1。
+// Windows：`_spawnlp(_P_NOWAIT, ...)` 返回进程句柄（窄接口，供窄 `等待进程` 用）；
+// POSIX：`fork` + `sh -c`，返回 pid。
+int 创建进程(const char* 命令) {
+#ifdef _WIN32
+    intptr_t 句柄 = _spawnlp(_P_NOWAIT, "cmd.exe", "cmd.exe", "/c", 命令, (char*)NULL);
+    if (句柄 == -1) { return -1; }
+    return (int)句柄;
+#else
+    pid_t 子进程 = fork();
+    if (子进程 < 0) { return -1; }
+    if (子进程 == 0) {
+        execl("/bin/sh", "sh", "-c", 命令, (char*)NULL);
+        _exit(127);
+    }
+    return (int)子进程;
+#endif
+}
+
+// 等待子进程结束：返回其退出码，失败返回 -1。
+int 等待进程(int 标识) {
+#ifdef _WIN32
+    int 状态 = 0;
+    if (_cwait(&状态, (intptr_t)标识, 0) == -1) { return -1; }
+    return 状态;
+#else
+    int 状态 = 0;
+    if (waitpid((pid_t)标识, &状态, 0) < 0) { return -1; }
+    if (WIFEXITED(状态)) { return WEXITSTATUS(状态); }
+    return -1;
+#endif
+}
+
+// 退出当前进程（状态码即进程退出码）；不返回。
+void 退出进程(int 状态码) {
+    exit(状态码);
 }
 
 // 获取当前工作目录
