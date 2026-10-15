@@ -1,0 +1,22 @@
+=== HTTP 服务端测试 ===
+-- 解析 GET 请求（LF）
+GET
+/index.html
+2
+Host: example.com
+Accept: */*
+0
+-- 解析 POST 请求（CRLF，含体）
+POST
+/api
+1
+Content-Type: text/plain
+hello=world
+-- 构造 200 响应
+89
+0
+63
+-- 构造 404 响应
+52
+0
+=== 测试完成 ===
