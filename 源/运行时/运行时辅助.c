@@ -4,6 +4,7 @@
 #include <string.h>
 #include <time.h>
 #include <math.h>
+#include <errno.h>
 
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
@@ -853,6 +854,22 @@ double 弧度转角度(double 弧度) {
 const char* 获取环境变量(const char* 名称) {
     const char* 值 = getenv(名称);
     return 值 ? 值 : "";
+}
+
+// 设置环境变量（成功返回 0，失败返回 -1）
+//
+// Windows（MSVCRT）：值含多字节字符（如中文 UTF-8）时，`_putenv_s` 在非 UTF-8
+// 本地代码页下会返回 EILSEQ，但变量实际已按原字节写入——窄 `getenv`（与窄 `获取环境变量`
+// 配对）可原样读回。故将 EILSEQ 归一为成功，其余非零码视为失败。
+// 不采用宽字符 `_wputenv_s`：其写入后窄 `getenv` 读回会经 ANSI 转换而失真。
+int 设置环境变量(const char* 名称, const char* 值) {
+#ifdef _WIN32
+    int 结果 = _putenv_s(名称, 值);
+    if (结果 == 0 || 结果 == EILSEQ) { return 0; }
+    return -1;
+#else
+    return setenv(名称, 值, 1);
+#endif
 }
 
 // 执行系统命令（命令字符串为 UTF-8；Windows 下转宽字符后用 _wsystem，
