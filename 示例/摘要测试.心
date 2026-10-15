@@ -1,4 +1,4 @@
-// 摘要测试（MD5 / SHA-1 已知向量）
+// 摘要测试（MD5 / SHA-1 / SHA-256 已知向量）
 导入 "标准库/摘要.心";
 函数 主程序 {
     ("=== MD5 摘要测试 ===")打印;
@@ -11,11 +11,18 @@
     ("abcdefghijklmnopqrstuvwxyz")MD5 = 丁;
     (丁)打印;
     ("=== SHA-1 摘要测试 ===")打印;
-    ("")SHA1 = 戊;
-    (戊)打印;
-    ("abc")SHA1 = 己;
-    (己)打印;
-    ("abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq")SHA1 = 庚;
-    (庚)打印;
+    ("")SHA1 = 甲;
+    (甲)打印;
+    ("abc")SHA1 = 乙;
+    (乙)打印;
+    ("abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq")SHA1 = 丙;
+    (丙)打印;
+    ("=== SHA-256 摘要测试 ===")打印;
+    ("")SHA256 = 甲;
+    (甲)打印;
+    ("abc")SHA256 = 乙;
+    (乙)打印;
+    ("abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq")SHA256 = 丙;
+    (丙)打印;
     ("=== 测试完成 ===")打印;
 }
