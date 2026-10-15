@@ -5,6 +5,7 @@
 #include <time.h>
 #include <math.h>
 #include <errno.h>
+#include <signal.h>
 
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
@@ -938,6 +939,23 @@ int 等待进程(int 标识) {
 // 退出当前进程（状态码即进程退出码）；不返回。
 void 退出进程(int 状态码) {
     exit(状态码);
+}
+
+// 忽略指定信号（设为 SIG_IGN）：成功返回 0，失败返回 -1。
+int 忽略信号(int 信号号) {
+    if (signal(信号号, SIG_IGN) == SIG_ERR) { return -1; }
+    return 0;
+}
+
+// 恢复指定信号的默认处理（设为 SIG_DFL）：成功返回 0，失败返回 -1。
+int 默认信号处理(int 信号号) {
+    if (signal(信号号, SIG_DFL) == SIG_ERR) { return -1; }
+    return 0;
+}
+
+// 向当前进程发送信号：成功返回 0，失败返回非 0。
+int 发送信号(int 信号号) {
+    return raise(信号号);
 }
 
 // 获取当前工作目录
