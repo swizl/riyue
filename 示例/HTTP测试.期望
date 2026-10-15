@@ -1,0 +1,27 @@
+=== HTTP 测试 ===
+-- 构造 GET 请求
+95
+26
+74
+-- 构造 POST 请求
+97
+92
+71
+-- 解析 LF 响应
+200
+3
+Content-Type: text/plain
+Set-Cookie: sid=42
+Content-Length: 5
+hello
+-- 解析 CRLF 响应
+204
+1
+Server: ruiyue
+0
+-- 取头（大小写不敏感）
+text/plain
+sid=42
+5
+0
+=== 测试完成 ===
