@@ -996,53 +996,16 @@ LLVM数组类型* 数组类型 = 类型转换<LLVM数组类型>(分配类型);
             中断;
         情况 语句类型::让出语句: {
             恒常 自动& 让出 = 静态转换<恒常 让出语句&>(语句);
-            LLVM值* 让出值 = 生成表达式(*让出.值表达式);
-            如果 (!返回值变量列表.empty()) {
-                创建存储(*构建器, 让出值, 返回值变量列表[0]);
-            }
-
-            // LLVM coro.suspend intrinsic
-            自动* coro_suspend = 获取内建函数声明(*模块, llvm::Intrinsic::coro_suspend);
-            自动* token = 获取常量令牌空(上下文);
-            自动* suspend结果 = llvm中文::创建调用(*构建器, coro_suspend, {token, 获取假值(上下文)}, "yield_suspend");
-
-            LLVM函数* 当前函数体 = 获取插入块(*构建器)->getParent();
-            自动* resumeBB = 创建基本块(上下文, "coro.resume", 当前函数体);
-            自动* suspendBB = 创建基本块(上下文, "coro.suspend", 当前函数体);
-            自动* destroyBB = 创建基本块(上下文, "coro.destroy", 当前函数体);
-
-            自动* sw = 创建开关指令(*构建器, suspend结果, suspendBB, 2);
-            sw->addCase(获取整数常量(上下文, 0, 8), resumeBB);
-            sw->addCase(获取整数常量(上下文, 1, 8), destroyBB);
-
-            // resume: continue execution
-            设置插入点(*构建器, resumeBB);
-
-            // destroy: cleanup and 归返
-            设置插入点(*构建器, destroyBB);
-            自动* coro_free = 获取内建函数声明(*模块, llvm::Intrinsic::coro_free);
-            自动* coro_end = 获取内建函数声明(*模块, llvm::Intrinsic::coro_end);
-            如果 (coro_free && 协程句柄) {
-                自动* free_mem = llvm中文::创建调用(*构建器, coro_free, {token, 协程句柄}, "coro_free");
-                自动* free函数 = 获取模块函数(*模块, "free");
-                如果 (free函数) llvm中文::创建调用(*构建器, free函数, {free_mem});
-            }
-            创建分支(*构建器, suspendBB);
-
-            // suspend: yield value and 归返
-            设置插入点(*构建器, suspendBB);
-            如果 (coro_end && 协程句柄) {
-                llvm中文::创建调用(*构建器, coro_end, {协程句柄, 获取假值(上下文), token});
-            }
-            如果 (返回值变量列表.size() == 1) {
-                自动* ret = 创建加载(*构建器, 返回值变量列表[0]->getAllocatedType(), 返回值变量列表[0], "yield_val");
-                创建返回指令(*构建器, ret);
+            // 协程让出：调用运行时 协程让出(整数)，由纤程切换到恢复者后**原地继续**执行。
+            类型* 让出值类型 = 整型32(上下文);
+            LLVM值* 让出值 = 让出.值表达式 ? 生成表达式(*让出.值表达式) : 获取整数常量(上下文, 0, 32);
+            如果 (是指针类型(让出值->getType())) {
+                让出值 = llvm中文::创建指针转整数(*构建器, 让出值, 让出值类型, "让出值");
             } 否则 {
-                创建空返回(*构建器);
+                让出值 = 转换值(*构建器, 上下文, 让出值, 让出值类型);
             }
-
-            // resume block continues here
-            设置插入点(*构建器, resumeBB);
+            函数类型* 让出函数类型 = 获取函数类型(获取空类型(上下文), {让出值类型}, 假值);
+            llvm中文::创建调用(*构建器, 获取或插入函数(*模块, "协程让出", 让出函数类型), {让出值});
             中断;
         }
 
