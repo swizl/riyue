@@ -2416,6 +2416,34 @@ void 动态数组索引设置(动态数组* arr, int 索引, int 值) {
     return 切片创建(arr->数据 + 起, 止 - 起);
 }
 
+// ==================== 字节缓冲收发（带长度，含 0x00） ====================
+// 语言层以「整数数组（每元素 0..255）」承载二进制（同 标准库/二进制.心、DNS.心、WebSocket.心）。
+// 既有 TCP发送/TCP接收 以 文本(char*) 传数据、按 strlen 计长 ⇒ 二进制载荷含 0x00 会被截断。
+// 下列入口按**整数数组长度**收发，规避截断（接收逐字节追加到调用方传入的数组）。
+int TCP发送字节(int 套接字, void* 字节数组) {
+    动态数组* arr = (动态数组*)字节数组;
+    if (!arr || arr->数组大小 <= 0) return 0;
+    int 字节数 = arr->数组大小;
+    char* 缓冲 = (char*)malloc((size_t)字节数);
+    if (!缓冲) return -1;
+    for (int i = 0; i < 字节数; i++) 缓冲[i] = (char)(arr->数据[i] & 0xFF);
+    int 结果 = send((SOCKET)套接字, 缓冲, 字节数, 0);
+    free(缓冲);
+    return 结果;
+}
+
+int TCP接收字节(int 套接字, void* 字节数组) {
+    static char 缓冲[8192];
+    登记静态缓冲(缓冲);
+    int 字节数 = recv((SOCKET)套接字, 缓冲, (int)sizeof(缓冲), 0);
+    if (字节数 <= 0) return 字节数;
+    动态数组* arr = (动态数组*)字节数组;
+    if (arr) {
+        for (int i = 0; i < 字节数; i++) 动态数组添加(arr, (int)(unsigned char)缓冲[i]);
+    }
+    return 字节数;
+}
+
 // 动态字符串数组
 typedef struct {
     const char** 数据;
