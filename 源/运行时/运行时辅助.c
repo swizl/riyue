@@ -2444,6 +2444,37 @@ int TCP接收字节(int 套接字, void* 字节数组) {
     return 字节数;
 }
 
+// UDP 字节缓冲收发（带长度，含 0x00；同 TCP发送字节/TCP接收字节，规避文本 strlen 截断）
+int UDP发送字节到(int 套接字, void* 字节数组, const char* 地址, int 端口) {
+    动态数组* arr = (动态数组*)字节数组;
+    if (!arr || arr->数组大小 <= 0) return 0;
+    int 字节数 = arr->数组大小;
+    char* 缓冲 = (char*)malloc((size_t)字节数);
+    if (!缓冲) return -1;
+    for (int i = 0; i < 字节数; i++) 缓冲[i] = (char)(arr->数据[i] & 0xFF);
+    struct sockaddr_in 目标地址;
+    目标地址.sin_family = AF_INET;
+    目标地址.sin_port = htons(端口);
+    inet_pton(AF_INET, 地址, &目标地址.sin_addr);
+    int 结果 = sendto((SOCKET)套接字, 缓冲, 字节数, 0, (struct sockaddr*)&目标地址, sizeof(目标地址));
+    free(缓冲);
+    return 结果;
+}
+
+int UDP接收字节(int 套接字, void* 字节数组) {
+    static char 缓冲[8192];
+    登记静态缓冲(缓冲);
+    struct sockaddr_in 发送者地址;
+    int 地址长度 = sizeof(发送者地址);
+    int 字节数 = recvfrom((SOCKET)套接字, 缓冲, (int)sizeof(缓冲), 0, (struct sockaddr*)&发送者地址, &地址长度);
+    if (字节数 <= 0) return 字节数;
+    动态数组* arr = (动态数组*)字节数组;
+    if (arr) {
+        for (int i = 0; i < 字节数; i++) 动态数组添加(arr, (int)(unsigned char)缓冲[i]);
+    }
+    return 字节数;
+}
+
 // 动态字符串数组
 typedef struct {
     const char** 数据;
