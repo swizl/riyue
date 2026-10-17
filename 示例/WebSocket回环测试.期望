@@ -1,0 +1,20 @@
+=== WebSocket 回环测试 ===
+服务端就绪:
+1
+客户端就绪:
+1
+服务端取到键:
+dGhlIHNhbXBsZSBub25jZQ==
+服务端应答接受键:
+s3pPLMBiTxaQ9kYGzzhZRbK+xOo=
+客户端解析应答接受键:
+s3pPLMBiTxaQ9kYGzzhZRbK+xOo=
+服务端解析帧 操作码:
+1
+服务端解析帧 载荷:
+Hello
+客户端回显 操作码:
+1
+客户端回显 载荷:
+Hello
+=== 测试完成 ===
