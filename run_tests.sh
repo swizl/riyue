@@ -6,8 +6,8 @@ export PATH=/usr/bin:/bin:/mingw64/bin:$PATH
 export MSYS_NO_PATHCONV=1
 cd /d/src/riyue/riyue || exit 9
 
-# 门禁：Pass 不得低于用例总数，Fail 必须为 0（当前 示例/*.心 共 147 个）。
-MIN_PASS=147
+# 门禁：Pass 不得低于用例总数，Fail 必须为 0（当前 示例/*.心 共 148 个）。
+MIN_PASS=148
 LOG=阶段/回归.log
 
 PASS=0
