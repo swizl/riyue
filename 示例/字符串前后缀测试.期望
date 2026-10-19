@@ -1,0 +1,45 @@
+=== 字符串前后缀与截取测试（8CD）===
+-- 字符串以开头 --
+hello world ~ hello:
+1
+hello world ~ world:
+0
+hello ~ helloo:
+0
+hello ~ empty:
+1
+empty ~ empty:
+1
+empty ~ a:
+0
+-- 字符串以结尾 --
+hello world ~ world:
+1
+hello world ~ hello:
+0
+hello ~ llo:
+1
+hello ~ o:
+1
+hello ~ empty:
+1
+hi ~ hello:
+0
+-- 字符串截取 --
+[0,5):
+hello
+[6,5):
+world
+[6,100):
+world
+[6,0):
+
+hello[0,100):
+hello
+hello[100,5):
+
+hello[-3,3):
+hel
+hello[2,-1):
+
+=== 测试完成 ===
