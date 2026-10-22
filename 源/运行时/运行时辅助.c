@@ -2269,6 +2269,96 @@ int 胖字符串转整数(字符串对象* s) {
     return atoi(胖字符串数据(s));
 }
 
+// ==================== FFI：动态库外部函数（阶段8 G10） ====================
+// `外部 函数 "库" "符号" 名(参数)(结果: 整数);` 解糖为对 外部调用N 的调用。
+// 两链一致：库名/符号名均以裸 char*（NUL 结尾字节串）传入；参数与返回值仅支持
+// 「整数」（i32），最多 4 参。按（库, 符号）缓存已解析地址，重复调用不再查找。
+#ifdef _WIN32
+typedef void* 动态库句柄;
+static 动态库句柄 动态库打开(const char* 库名) {
+    return (动态库句柄)LoadLibraryA(库名);
+}
+static void* 动态库取符号(动态库句柄 库, const char* 符号名) {
+    return (void*)GetProcAddress((HMODULE)库, 符号名);
+}
+#else
+#include <dlfcn.h>
+typedef void* 动态库句柄;
+static 动态库句柄 动态库打开(const char* 库名) {
+    return dlopen(库名, RTLD_NOW | RTLD_LOCAL);
+}
+static void* 动态库取符号(动态库句柄 库, const char* 符号名) {
+    return dlsym(库, 符号名);
+}
+#endif
+
+typedef struct {
+    const char* 库名;
+    const char* 符号名;
+    void* 地址;
+} 外部符号项;
+
+static 外部符号项 外部符号缓存[128];
+static int 外部符号缓存数 = 0;
+
+// 解析（库, 符号）→ 函数地址；失败即报错中止（外部函数无法以语言层异常表达）。
+static void* 外部符号解析(const char* 库名, const char* 符号名) {
+    int i;
+    if (库名 == NULL) 库名 = "";
+    if (符号名 == NULL) 符号名 = "";
+    for (i = 0; i < 外部符号缓存数; i++) {
+        if (strcmp(外部符号缓存[i].库名, 库名) == 0 &&
+            strcmp(外部符号缓存[i].符号名, 符号名) == 0) {
+            return 外部符号缓存[i].地址;
+        }
+    }
+    动态库句柄 库 = 动态库打开(库名);
+    if (库 == NULL) {
+        fprintf(stderr, "外部函数加载失败: %s: %s\n", 库名, 符号名);
+        fflush(stderr);
+        exit(1);
+    }
+    void* 地址 = 动态库取符号(库, 符号名);
+    if (地址 == NULL) {
+        fprintf(stderr, "外部函数加载失败: %s: %s\n", 库名, 符号名);
+        fflush(stderr);
+        exit(1);
+    }
+    if (外部符号缓存数 < 128) {
+        外部符号缓存[外部符号缓存数].库名 = 库名;
+        外部符号缓存[外部符号缓存数].符号名 = 符号名;
+        外部符号缓存[外部符号缓存数].地址 = 地址;
+        外部符号缓存数++;
+    }
+    return 地址;
+}
+
+typedef int (*外部函数指针0)(void);
+typedef int (*外部函数指针1)(int);
+typedef int (*外部函数指针2)(int, int);
+typedef int (*外部函数指针3)(int, int, int);
+typedef int (*外部函数指针4)(int, int, int, int);
+
+int 外部调用0(const char* 库名, const char* 符号名) {
+    return ((外部函数指针0)外部符号解析(库名, 符号名))();
+}
+
+int 外部调用1(const char* 库名, const char* 符号名, int 参1) {
+    return ((外部函数指针1)外部符号解析(库名, 符号名))(参1);
+}
+
+int 外部调用2(const char* 库名, const char* 符号名, int 参1, int 参2) {
+    return ((外部函数指针2)外部符号解析(库名, 符号名))(参1, 参2);
+}
+
+int 外部调用3(const char* 库名, const char* 符号名, int 参1, int 参2, int 参3) {
+    return ((外部函数指针3)外部符号解析(库名, 符号名))(参1, 参2, 参3);
+}
+
+int 外部调用4(const char* 库名, const char* 符号名, int 参1, int 参2, int 参3, int 参4) {
+    return ((外部函数指针4)外部符号解析(库名, 符号名))(参1, 参2, 参3, 参4);
+}
+
 // ==================== 切片胖指针（内存安全 §4.2/§4.3） ====================
 // 语言层「切片」值 = 指向本结构的指针；数据 = 指向原数组第「起」个元素的指针（零拷贝
 // 视图），长度 = 元素个数（止-起）。分片 arr[起:止] 产出切片；切片[i] 越界即中止。
