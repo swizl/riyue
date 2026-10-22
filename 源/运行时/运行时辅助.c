@@ -2146,6 +2146,14 @@ void 运行时数组越界陷阱(int 索引, int 长度) {
     运行时越界报告("数组下标", 索引, 长度);
 }
 
+// 阶段7（G7）：编译期契约（@前置/@后置）违例——打印诊断并以非零码中止。
+void 运行时契约失败(const char* 诊断) {
+    fflush(stdout);
+    fprintf(stderr, "%s\n", 诊断);
+    fflush(stderr);
+    exit(1);
+}
+
 void 运行时空检查(const void* 指针, const char* 位置) {
     if (!指针) {
         fflush(stdout);
