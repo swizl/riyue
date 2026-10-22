@@ -2867,6 +2867,60 @@ void 清除异常类型(void* 指针) {
     }
 }
 
+// ── 自举链异常：同线程异常帧栈 + setjmp/longjmp ──
+// 「尝试」入口压入异常帧，紧接由 IR 直接调用 _setjmp 保存返回点；
+// 「抛出」把异常值（统一 整数64）写入栈顶帧后 longjmp 回该帧；
+// 「捕获」先取走值再弹帧（使 捕获 体内的抛出继续向外传播）。
+// 无帧可抛（未被任何 尝试 捕获）→ 打印诊断并以非零码退出。
+#include <setjmp.h>
+
+typedef struct 异常帧 {
+    struct 异常帧* 上一帧;
+    long long 抛出值;
+    jmp_buf 环境;
+} 异常帧;
+
+#if defined(__GNUC__) && !defined(_MSC_VER)
+#define 日月线程局部 __thread
+#else
+#define 日月线程局部 __declspec(thread)
+#endif
+
+static 日月线程局部 异常帧* 当前异常帧 = 0;
+
+void* 日月_异常帧入栈(void) {
+    异常帧* 帧 = (异常帧*)malloc(sizeof(异常帧));
+    if (!帧) {
+        fprintf(stderr, "未捕获异常: 异常帧分配失败\n");
+        exit(1);
+    }
+    帧->上一帧 = 当前异常帧;
+    帧->抛出值 = 0;
+    当前异常帧 = 帧;
+    return (void*)&帧->环境;
+}
+
+void 日月_异常帧出栈(void) {
+    异常帧* 帧 = 当前异常帧;
+    if (!帧) return;
+    当前异常帧 = 帧->上一帧;
+    free(帧);
+}
+
+long long 日月_取抛出值(void) {
+    if (!当前异常帧) return 0;
+    return 当前异常帧->抛出值;
+}
+
+void 日月_抛出(long long 值) {
+    if (!当前异常帧) {
+        fprintf(stderr, "未捕获异常: %lld\n", 值);
+        exit(1);
+    }
+    当前异常帧->抛出值 = 值;
+    longjmp(当前异常帧->环境, 1);
+}
+
 // HTTP GET 支持（简化版，使用系统命令）
 static char http缓冲区[65536];
 
