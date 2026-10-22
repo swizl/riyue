@@ -1,0 +1,18 @@
+=== AES 扩展测试 ===
+-- 通用 128 单块 --
+69c4e0d86a7b0430d8cdb78070b4c55a
+-- AES-192 ECB --
+dda97ca4864cdfe06eaf70a0ec0d7191
+还原: 00112233445566778899aabbccddeeff
+-- AES-256 ECB --
+8ea2b7ca516745bfeafc49904b496089
+还原: 00112233445566778899aabbccddeeff
+-- AES-128 CBC 两分组 --
+7649abac8119b246cee98e9b12e9197d5086cb9b507219ee95db113a917678b2
+解密: 6bc1bee22e409f96e93d7e117393172aae2d8a571e03ac9c9eb76fac45af8e51
+-- PKCS#7 填充 --
+长度:
+16
+填充: 61626364650b0b0b0b0b0b0b0b0b0b0b
+去填充: 6162636465
+=== 测试完成 ===
