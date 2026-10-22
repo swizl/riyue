@@ -14,6 +14,8 @@
 #include <windows.h>
 #include <shellapi.h>
 #include <process.h>
+#include <io.h>
+#include <fcntl.h>
 #else
 #include <unistd.h>
 #include <sys/wait.h>
@@ -3052,6 +3054,65 @@ int 文件读取(int 句柄) {
     if (句柄 < 0 || 句柄 >= 文件句柄计数 || !文件句柄缓冲[句柄]) return 0;
     if (fscanf(文件句柄缓冲[句柄], "%d", &值) != 1) return 0;
     return 值;
+}
+
+// ===== 标准流 IO（阶段9 G9：LSP 服务端 stdio 帧收发） =====
+// Windows 下标准流默认文本模式：输出 \n 会被翻译为 \r\n、输入 \r\n 会被折叠为 \n，
+// 两者都会破坏 LSP 的 Content-Length 字节计数；首次使用即切换为二进制模式。
+static void 标准流二进制(void) {
+    static int 已设 = 0;
+    if (已设) return;
+    已设 = 1;
+#ifdef _WIN32
+    _setmode(_fileno(stdin), _O_BINARY);
+    _setmode(_fileno(stdout), _O_BINARY);
+#endif
+}
+
+// 读取标准输入一行（剥离行尾 CR/LF；EOF 返回 ""）
+const char* 读取标准输入行(void) {
+    static char 行缓冲[8192];
+    size_t 长;
+    标准流二进制();
+    if (!fgets(行缓冲, sizeof(行缓冲), stdin)) return "";
+    长 = strlen(行缓冲);
+    while (长 > 0 && (行缓冲[长 - 1] == '\n' || 行缓冲[长 - 1] == '\r')) 行缓冲[--长] = '\0';
+    登记静态缓冲(行缓冲);
+    return 行缓冲;
+}
+
+// 读取标准输入指定字节数（静态缓冲；不足时返回实际读到的内容）
+const char* 读取标准输入字节(int 数量) {
+    static char* 缓冲 = NULL;
+    static int 容量 = 0;
+    size_t 读入;
+    if (数量 <= 0) return "";
+    标准流二进制();
+    if (数量 + 1 > 容量) {
+        char* 新缓冲 = (char*)realloc(缓冲, (size_t)(数量 + 1));
+        if (!新缓冲) return "";
+        缓冲 = 新缓冲;
+        容量 = 数量 + 1;
+    }
+    读入 = fread(缓冲, 1, (size_t)数量, stdin);
+    缓冲[读入] = '\0';
+    登记静态缓冲(缓冲);
+    return 缓冲;
+}
+
+// 写入标准输出（不追加换行、立即刷新；LSP 帧按字节原样写出）
+int 写入标准输出(const char* 文本) {
+    标准流二进制();
+    if (!文本) return -1;
+    fputs(文本, stdout);
+    fflush(stdout);
+    return 0;
+}
+
+// 文本的 UTF-8 字节长度（LSP Content-Length 按字节计，不能用字符数）
+int 字节长度(const char* 文本) {
+    if (!文本) return 0;
+    return (int)strlen(文本);
 }
 
 // 异步IO支持

@@ -1,0 +1,19 @@
+=== LSP服务端测试 ===
+2
+{"jsonrpc":"2.0","id":7,"result":{"capabilities":{"textDocumentSync":1},"serverInfo":{"name":"日月语言服务端","version":"1.0"}}}
+121
+135
+135
+{"jsonrpc":"2.0","id":9,"result":null}
+{"jsonrpc":"2.0","id":11,"error":{"code":-32601}}
+0
+1
+{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":"file:///a.riyue","diagnostics":[{"range":{"start":{"line":0,"character":0},"end":{"line":0,"character":1}},"severity":1,"source":"日月","message":"多余的右括号"}]}}
+249
+{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":"file:///a.riyue","diagnostics":[{"range":{"start":{"line":0,"character":0},"end":{"line":0,"character":1}},"severity":1,"source":"日月","message":"括号未闭合"}]}}
+{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":"file:///a.riyue","diagnostics":[]}}
+0
+0
+1
+1
+0
