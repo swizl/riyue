@@ -3412,3 +3412,316 @@ int 共享总分配数() {
 int 共享总释放数() {
     return 共享释放累计;
 }
+
+/* ============================================================================
+ * 阶段 10 G11：并发原语（互斥锁 / 信号量 / 原子整数 / 并行计算内核）
+ * ----------------------------------------------------------------------------
+ * 设计要点：
+ *  1. 句柄为「整数32 槽号」（0 = 无效），与阶段3B ARC 同风格；槽表按需扩容、空槽复用；
+ *  2. 互斥锁 / 信号量用 Windows 内核对象，原子整数用 Interlocked —— 均为**真实线程安全**；
+ *  3. 协程与调度器仍为协作式单线程（8AI/8AJ）：语言层共享可变状态默认无数据竞争；
+ *     需要跨线程共享时显式取用本组原语，即「数据竞争防护」入口；
+ *  4. 并行内核仅在工作线程内读只读数组并归约，不调用任何 GC / ARC 入口；
+ *     线程数 ≤ 1 时退化为串行，结果与线程数无关（确定性）。
+ * ========================================================================== */
+enum { 同步无效 = 0, 同步锁 = 1, 同步信号量 = 2, 同步原子 = 3 };
+
+typedef struct {
+    int 种类;
+    void* 实体;
+} 同步槽;
+
+static 同步槽* 同步槽表 = NULL;
+static int 同步槽容量 = 0;
+static int 同步槽最高 = 0;
+static int 同步存活 = 0;
+
+static int 同步扩容(void) {
+    int 新容量 = 同步槽容量 == 0 ? 16 : 同步槽容量 * 2;
+    同步槽* 新表 = (同步槽*)realloc(同步槽表, (size_t)新容量 * sizeof(同步槽));
+    if (!新表) return 0;
+    for (int i = 同步槽容量; i < 新容量; i++) {
+        新表[i].种类 = 同步无效;
+        新表[i].实体 = NULL;
+    }
+    同步槽表 = 新表;
+    同步槽容量 = 新容量;
+    return 1;
+}
+
+static int 同步登记(int 种类, void* 实体) {
+    if (同步槽容量 == 0 && !同步扩容()) return 0;
+    int 槽 = -1;
+    for (int i = 0; i < 同步槽最高; i++) {
+        if (同步槽表[i].种类 == 同步无效) { 槽 = i; break; }
+    }
+    if (槽 < 0) {
+        if (同步槽最高 >= 同步槽容量 && !同步扩容()) return 0;
+        槽 = 同步槽最高;
+        同步槽最高++;
+    }
+    同步槽表[槽].种类 = 种类;
+    同步槽表[槽].实体 = 实体;
+    同步存活++;
+    return 槽 + 1;   /* 0 保留为「无效句柄」 */
+}
+
+static void* 同步取(int 句柄, int 种类) {
+    if (句柄 <= 0 || 句柄 > 同步槽最高) return NULL;
+    if (同步槽表[句柄 - 1].种类 != 种类) return NULL;
+    return 同步槽表[句柄 - 1].实体;
+}
+
+static void 同步注销(int 句柄) {
+    同步槽表[句柄 - 1].种类 = 同步无效;
+    同步槽表[句柄 - 1].实体 = NULL;
+    同步存活--;
+}
+
+/* ---- 互斥锁（临界区；持有计数支持同线程重入） ---- */
+typedef struct {
+    CRITICAL_SECTION 临界区;
+    int 持有;
+    int 争用;
+} 锁实体;
+
+int 创建互斥锁() {
+    锁实体* 锁 = (锁实体*)calloc(1, sizeof(锁实体));
+    if (!锁) return 0;
+    InitializeCriticalSection(&锁->临界区);
+    int 句柄 = 同步登记(同步锁, 锁);
+    if (!句柄) {
+        DeleteCriticalSection(&锁->临界区);
+        free(锁);
+        return 0;
+    }
+    return 句柄;
+}
+
+int 互斥锁加锁(int 句柄) {
+    锁实体* 锁 = (锁实体*)同步取(句柄, 同步锁);
+    if (!锁) return -1;
+    if (锁->持有 > 0) 锁->争用++;
+    EnterCriticalSection(&锁->临界区);
+    锁->持有++;
+    return 0;
+}
+
+int 互斥锁解锁(int 句柄) {
+    锁实体* 锁 = (锁实体*)同步取(句柄, 同步锁);
+    if (!锁 || 锁->持有 <= 0) return -1;
+    锁->持有--;
+    LeaveCriticalSection(&锁->临界区);
+    return 0;
+}
+
+int 互斥锁是否锁定(int 句柄) {
+    锁实体* 锁 = (锁实体*)同步取(句柄, 同步锁);
+    return (锁 && 锁->持有 > 0) ? 1 : 0;
+}
+
+int 互斥锁争用次数(int 句柄) {
+    锁实体* 锁 = (锁实体*)同步取(句柄, 同步锁);
+    return 锁 ? 锁->争用 : 0;
+}
+
+int 销毁互斥锁(int 句柄) {
+    锁实体* 锁 = (锁实体*)同步取(句柄, 同步锁);
+    if (!锁) return -1;
+    同步注销(句柄);
+    DeleteCriticalSection(&锁->临界区);
+    free(锁);
+    return 0;
+}
+
+/* ---- 信号量（内核信号量；当前值为镜像计数，便于语言层观测） ---- */
+typedef struct {
+    HANDLE 内核;
+    volatile LONG 当前值;
+    int 等待次数;
+    int 释放次数;
+} 信号量实体;
+
+int 创建信号量(int 初值) {
+    if (初值 < 0) 初值 = 0;
+    信号量实体* 量 = (信号量实体*)calloc(1, sizeof(信号量实体));
+    if (!量) return 0;
+    量->内核 = CreateSemaphore(NULL, (LONG)初值, 0x7FFFFFFF, NULL);
+    if (!量->内核) { free(量); return 0; }
+    量->当前值 = (LONG)初值;
+    int 句柄 = 同步登记(同步信号量, 量);
+    if (!句柄) {
+        CloseHandle(量->内核);
+        free(量);
+        return 0;
+    }
+    return 句柄;
+}
+
+int 信号量等待(int 句柄) {
+    信号量实体* 量 = (信号量实体*)同步取(句柄, 同步信号量);
+    if (!量) return -1;
+    if (WaitForSingleObject(量->内核, INFINITE) != WAIT_OBJECT_0) return -1;
+    InterlockedDecrement(&量->当前值);
+    量->等待次数++;
+    return 0;
+}
+
+int 信号量释放(int 句柄) {
+    信号量实体* 量 = (信号量实体*)同步取(句柄, 同步信号量);
+    if (!量) return -1;
+    if (!ReleaseSemaphore(量->内核, 1, NULL)) return -1;
+    InterlockedIncrement(&量->当前值);
+    量->释放次数++;
+    return (int)InterlockedCompareExchange(&量->当前值, 0, 0);
+}
+
+int 信号量当前值(int 句柄) {
+    信号量实体* 量 = (信号量实体*)同步取(句柄, 同步信号量);
+    if (!量) return 0;
+    return (int)InterlockedCompareExchange(&量->当前值, 0, 0);
+}
+
+int 销毁信号量(int 句柄) {
+    信号量实体* 量 = (信号量实体*)同步取(句柄, 同步信号量);
+    if (!量) return -1;
+    同步注销(句柄);
+    CloseHandle(量->内核);
+    free(量);
+    return 0;
+}
+
+/* ---- 原子整数（Interlocked；读写/加减均为单指令原子操作） ---- */
+typedef struct {
+    volatile LONG 值;
+} 原子实体;
+
+int 创建原子整数(int 初值) {
+    原子实体* 原子 = (原子实体*)calloc(1, sizeof(原子实体));
+    if (!原子) return 0;
+    原子->值 = (LONG)初值;
+    int 句柄 = 同步登记(同步原子, 原子);
+    if (!句柄) { free(原子); return 0; }
+    return 句柄;
+}
+
+int 原子读(int 句柄) {
+    原子实体* 原子 = (原子实体*)同步取(句柄, 同步原子);
+    if (!原子) return 0;
+    return (int)InterlockedCompareExchange(&原子->值, 0, 0);
+}
+
+int 原子写(int 句柄, int 值) {
+    原子实体* 原子 = (原子实体*)同步取(句柄, 同步原子);
+    if (!原子) return 0;
+    return (int)InterlockedExchange(&原子->值, (LONG)值);   /* 返回旧值 */
+}
+
+int 原子加(int 句柄, int 值) {
+    原子实体* 原子 = (原子实体*)同步取(句柄, 同步原子);
+    if (!原子) return 0;
+    return (int)InterlockedExchangeAdd(&原子->值, (LONG)值) + 值;   /* 返回新值 */
+}
+
+int 原子减(int 句柄, int 值) {
+    原子实体* 原子 = (原子实体*)同步取(句柄, 同步原子);
+    if (!原子) return 0;
+    return (int)InterlockedExchangeAdd(&原子->值, -(LONG)值) - 值;   /* 返回新值 */
+}
+
+int 销毁原子整数(int 句柄) {
+    原子实体* 原子 = (原子实体*)同步取(句柄, 同步原子);
+    if (!原子) return -1;
+    同步注销(句柄);
+    free(原子);
+    return 0;
+}
+
+int 同步存活数() {
+    return 同步存活;
+}
+
+/* ---- 并行计算内核（真实多线程；工作集只读，结果确定性归约） ---- */
+typedef struct {
+    const int* 数据;
+    int 起;
+    int 止;
+    int 模式;   /* 0 = 求和，1 = 计数正 */
+    int 结果;
+} 并行片段;
+
+#ifdef _WIN32
+static DWORD WINAPI 并行片段执行(LPVOID 参数) {
+    并行片段* 片段 = (并行片段*)参数;
+    int 局部 = 0;
+    for (int i = 片段->起; i < 片段->止; i++) {
+        int 值 = 片段->数据[i];
+        if (片段->模式 == 0) 局部 += 值;
+        else if (值 > 0) 局部++;
+    }
+    片段->结果 = 局部;
+    return 0;
+}
+#endif
+
+static int 并行归约(void* 句柄, int 元素数, int 线程数, int 模式) {
+    动态数组* 数组 = (动态数组*)句柄;
+    if (!数组 || 元素数 <= 0) return 0;
+    if (元素数 > 数组->数组大小) 元素数 = 数组->数组大小;
+    if (线程数 < 1) 线程数 = 1;
+    if (线程数 > 元素数) 线程数 = 元素数;
+    if (线程数 > 64) 线程数 = 64;   /* 栈上片段/线程数组上限 */
+    if (线程数 <= 1) {
+        int 结果 = 0;
+        for (int i = 0; i < 元素数; i++) {
+            int 值 = 数组->数据[i];
+            if (模式 == 0) 结果 += 值;
+            else if (值 > 0) 结果++;
+        }
+        return 结果;
+    }
+#ifdef _WIN32
+    并行片段 片段[64];
+    HANDLE 线程[64];
+    for (int t = 0; t < 64; t++) 线程[t] = NULL;
+    int 每段 = 元素数 / 线程数;
+    int 余数 = 元素数 % 线程数;
+    int 起 = 0;
+    for (int t = 0; t < 线程数; t++) {
+        int 本段 = 每段 + (t < 余数 ? 1 : 0);
+        片段[t].数据 = 数组->数据;
+        片段[t].起 = 起;
+        片段[t].止 = 起 + 本段;
+        片段[t].模式 = 模式;
+        片段[t].结果 = 0;
+        起 += 本段;
+        线程[t] = CreateThread(NULL, 0, 并行片段执行, &片段[t], 0, NULL);
+        if (!线程[t]) 并行片段执行(&片段[t]);   /* 线程创建失败：本段就地串行 */
+    }
+    for (int t = 0; t < 线程数; t++) {
+        if (线程[t]) {
+            WaitForSingleObject(线程[t], INFINITE);
+            CloseHandle(线程[t]);
+        }
+    }
+    int 结果 = 0;
+    for (int t = 0; t < 线程数; t++) 结果 += 片段[t].结果;
+    return 结果;
+#else
+    int 结果 = 0;
+    for (int i = 0; i < 元素数; i++) {
+        int 值 = 数组->数据[i];
+        if (模式 == 0) 结果 += 值;
+        else if (值 > 0) 结果++;
+    }
+    return 结果;
+#endif
+}
+
+int 并行求和(void* 句柄, int 元素数, int 线程数) {
+    return 并行归约(句柄, 元素数, 线程数, 0);
+}
+
+int 并行计数正(void* 句柄, int 元素数, int 线程数) {
+    return 并行归约(句柄, 元素数, 线程数, 1);
+}
