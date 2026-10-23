@@ -3,7 +3,7 @@
 Set-Location D:\src\riyue\riyue
 $env:PATH = 'D:\src\riyue\llvm\llvm-build\bin;C:\tools\msys64\mingw64\bin;C:\tools\msys64\usr\bin;' + $env:PATH
 $pass = 0; $fail = 0; $fails = @()
-$minPass = 193
+$minPass = 194
 $heart = [char]0x5fc3
 $ri = [char]0x65e5; $yue = [char]0x6708
 $exe = ".\$ri$yue.exe"
