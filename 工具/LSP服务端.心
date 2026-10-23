@@ -12,9 +12,11 @@
 // 已实现：initialize / initialized / shutdown / exit /
 //         textDocument/didOpen / textDocument/didChange（→ publishDiagnostics）/
 //         textDocument/completion（关键字 + 文档标识符，最多 64 项）/
-//         textDocument/definition（光标处标识符 → 文档内首次出现）
+//         textDocument/definition（光标处标识符 → 文档内首次出现）/
+//         textDocument/hover（光标处标识符 → 推断类型，9F）
 //         未知请求 → -32601；诊断日志走 stderr，协议应答走 stdout。
-//         诊断：括号配对 / 字符串未闭合 / 全角标点 / 字面量与类型标注不符（9B）。
+//         诊断：括号配对 / 字符串未闭合 / 全角标点 / 字面量与类型标注不符（9B）/
+//               未声明的标识符（9F）；9F 起单帧聚合多诊断（上限 8 条）。
 //
 // 用法：日月.exe 工具/LSP服务端.心
 
