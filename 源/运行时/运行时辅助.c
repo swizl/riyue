@@ -6,6 +6,7 @@
 #include <math.h>
 #include <errno.h>
 #include <signal.h>
+#include <setjmp.h>
 
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
@@ -2421,6 +2422,12 @@ typedef struct {
     int 容量;
 } 动态数组;
 
+// 阶段3C：保守 GC 接线（实现见文件末尾 GC 段）。默认不登记（GC 未启用时零开销）。
+void 注销GC对象(void* 对象);
+static void GC登记容器(void* 对象, void (*析构)(void*));
+static void GC析构动态数组(void* 对象);
+static void GC析构动态字符串数组(void* 对象);
+
 动态数组* 创建动态数组() {
     // calloc 而非 malloc：堆对象零初始化（内存安全 §4.1），消除潜在脏读；
     // 容量内未被写入的槽位也保证为 0，而非未定义值。
@@ -2429,6 +2436,8 @@ typedef struct {
     arr->数据 = (int*)calloc(动态数组初始大小, sizeof(int));
     arr->数组大小 = 0;
     arr->容量 = 动态数组初始大小;
+    // 阶段3C：GC 启用时登记（清除时连同 arr->数据 一并释放）
+    GC登记容器(arr, GC析构动态数组);
     return arr;
 }
 
@@ -2489,6 +2498,8 @@ void 动态数组插入(动态数组* arr, int 索引, int 值) {
 }
 
 void 释放动态数组(动态数组* arr) {
+    // 阶段3C：先注销再释放，避免 GC 表残留悬垂表项（重复 free）
+    注销GC对象(arr);
     free(arr->数据);
     free(arr);
 }
@@ -2588,6 +2599,8 @@ typedef struct {
     arr->数据 = (const char**)calloc(动态数组初始大小, sizeof(const char*));
     arr->数组大小 = 0;
     arr->容量 = 动态数组初始大小;
+    // 阶段3C：GC 启用时登记（清除时连同 arr->数据 一并释放）
+    GC登记容器(arr, GC析构动态字符串数组);
     return arr;
 }
 
@@ -2652,6 +2665,8 @@ int 动态字符串数组大小(动态字符串数组* arr) {
 }
 
 void 释放动态字符串数组(动态字符串数组* arr) {
+    // 阶段3C：先注销再释放，避免 GC 表残留悬垂表项（重复 free）
+    注销GC对象(arr);
     for (int i = 0; i < arr->数组大小; i++) {
         free((void*)arr->数据[i]);
     }
@@ -3538,72 +3553,187 @@ int 等待IO完成(int 任务ID) {
     }
     return 0;
 }
-#define 最大GC对象 1024
-static void* GC对象表[最大GC对象];
+/* ============================================================================
+ * 阶段3C：保守 GC —— 安全化与接线
+ * ----------------------------------------------------------------------------
+ * 3C 前的问题（内存安全方案 §五 第 5 条）：对象表定长 1024、标记只扫固定 4096
+ * 个栈字、`注册GC对象` 无任何调用点，GC 实为「死」路径。
+ * 3C 做法：
+ *  1. 对象表 / 标记表按需倍增扩容，取消 1024 上限；扩容失败则放弃登记（宁可不回收，绝不误 free）。
+ *  2. 标记范围 = 执行GC 的局部变量（向下 8 字节对齐）→ 本线程栈顶（TIB.StackBase），
+ *     上限 64MiB 防御；寄存器经 setjmp 快照刷入内存一并按字扫描（保守近似）。
+ *  3. 容器登记携带析构：数组清除时连同内部数据缓冲一并 free；内部缓冲不单独入表，
+ *     避免 realloc 后表项悬垂。
+ *  4. 显式释放（释放动态数组 / 释放动态字符串数组）先注销，杜绝二次 free。
+ *  5. 与 ARC 表互斥：共享对象不入本表（见 3B 段）。
+ *  6. 默认关闭；环境变量 日月GC=1（非 "0"）或语言层 `()启用GC` 显式开启；
+ *     阈值默认 100，可由 `(N)设置GC阈值` 或 环境变量 日月GC阈值=N 覆盖。
+ *  7. 回收信息写 stderr，不污染标准输出。
+ * ========================================================================== */
+typedef struct GC条目 {
+    void* 指针;
+    void (*析构)(void*);
+} GC条目;
+
+static GC条目* GC对象表 = NULL;
+static unsigned char* GC标记表 = NULL;
 static int GC对象数量 = 0;
-static int GC标记[最大GC对象];
+static int GC容量 = 0;
 static int GC启用 = 0;
-static int GC阈值 = 100;  // 每分配N个对象触发一次GC
+static int GC阈值 = 100;  // 登记数达到阈值即触发一次回收
+static int GC惰性已查 = 0;
+static char* GC栈基址 = NULL;
 
 void 执行GC(void);  // 前向声明
 
-void 注册GC对象(void* 对象) {
-    if (GC对象数量 < 最大GC对象) {
-        GC对象表[GC对象数量] = 对象;
-        GC标记[GC对象数量] = 0;
-        GC对象数量++;
-        if (GC启用 && GC对象数量 >= GC阈值) {
-            执行GC();
-        }
+static int GC确保容量(int 需要) {
+    if (需要 <= GC容量) return 1;
+    int 新容量 = GC容量 > 0 ? GC容量 : 256;
+    while (新容量 < 需要) 新容量 *= 2;
+    GC条目* 新表 = (GC条目*)realloc(GC对象表, (size_t)新容量 * sizeof(GC条目));
+    if (!新表) return 0;
+    GC对象表 = 新表;
+    unsigned char* 新标记 = (unsigned char*)realloc(GC标记表, (size_t)新容量);
+    if (!新标记) return 0;
+    GC标记表 = 新标记;
+    GC容量 = 新容量;
+    return 1;
+}
+
+// 环境变量只在首次登记时读一次（默认关闭，不影响既有默认路径）
+static void GC惰性初始化(void) {
+    if (GC惰性已查) return;
+    GC惰性已查 = 1;
+    const char* 环境开关 = getenv("日月GC");
+    if (环境开关 && 环境开关[0] != '\0' && strcmp(环境开关, "0") != 0) GC启用 = 1;
+    const char* 阈值文本 = getenv("日月GC阈值");
+    if (阈值文本 && 阈值文本[0] != '\0') {
+        int 值 = atoi(阈值文本);
+        if (值 > 0) GC阈值 = 值;
     }
 }
 
-void 标记对象(void* 对象) {
+// 栈顶：直接读 TIB 的 StackBase（x64 为 gs:0x08），即本线程栈的最高地址，
+// 与调用深度无关。构造函数里取锚点只能拿到「构造函数那一层」的地址，
+// 而 main 的帧比构造函数帧更高（构造函数由 CRT 在更深的 _initterm 中调用），
+// 会漏扫 主程序 的整个帧 —— 这正是 3C 首版误回收的根因。
+static char* GC当前线程栈顶(void) {
+#if defined(__x86_64__) && (defined(_WIN32) || defined(_WIN64))
+    void* 栈顶 = NULL;
+    __asm__ volatile("movq %%gs:0x08, %0" : "=r"(栈顶));
+    return (char*)栈顶;
+#else
+    return NULL;
+#endif
+}
+
+__attribute__((constructor))
+static void GC记录初始栈顶(void) {
+    GC栈基址 = GC当前线程栈顶();
+}
+
+static void GC登记容器(void* 对象, void (*析构)(void*)) {
+    if (!对象) return;
+    GC惰性初始化();
+    if (!GC启用) return;  // 默认关闭：不登记、不回收
+    if (!GC确保容量(GC对象数量 + 1)) return;
+    GC对象表[GC对象数量].指针 = 对象;
+    GC对象表[GC对象数量].析构 = 析构;
+    GC标记表[GC对象数量] = 0;
+    GC对象数量++;
+    if (GC对象数量 >= GC阈值) {
+        执行GC();
+    }
+}
+
+void 注册GC对象(void* 对象) {
+    GC登记容器(对象, NULL);
+}
+
+// 注销（显式释放前调用）：对象不在表内则无操作
+void 注销GC对象(void* 对象) {
+    if (!对象 || GC对象数量 == 0) return;
     for (int i = 0; i < GC对象数量; i++) {
-        if (GC对象表[i] == 对象) {
-            GC标记[i] = 1;
+        if (GC对象表[i].指针 == 对象) {
+            GC对象表[i] = GC对象表[GC对象数量 - 1];
+            GC标记表[i] = GC标记表[GC对象数量 - 1];
+            GC对象数量--;
             return;
         }
     }
 }
 
+static void GC标记候选(void* 候选) {
+    if (!候选) return;
+    for (int i = 0; i < GC对象数量; i++) {
+        if (GC对象表[i].指针 == 候选) {
+            if (GC标记表[i] == 0) GC标记表[i] = 1;
+            return;
+        }
+    }
+}
+
+void 标记对象(void* 对象) {
+    GC标记候选(对象);
+}
+
 void 清除所有标记() {
     for (int i = 0; i < GC对象数量; i++) {
-        GC标记[i] = 0;
+        GC标记表[i] = 0;
+    }
+}
+
+// 按字保守扫描 [起, 止) 区间内的候选指针并标记（64MiB 上限防御越界读）
+static void GC扫描区间(const char* 起, const char* 止) {
+    if (!起 || !止 || 止 <= 起) return;
+    size_t 字节 = (size_t)(止 - 起);
+    if (字节 > (size_t)64 * 1024 * 1024) 字节 = (size_t)64 * 1024 * 1024;
+    for (size_t 偏移 = 0; 偏移 + sizeof(void*) <= 字节; 偏移 += sizeof(void*)) {
+        void* 候选 = NULL;
+        memcpy(&候选, 起 + 偏移, sizeof(void*));
+        GC标记候选(候选);
     }
 }
 
 void 执行GC() {
+    GC惰性初始化();
+    if (GC对象数量 == 0) return;
     清除所有标记();
-    // 标记阶段：保守扫描栈寻找可能的指针值
-    void* 栈顶 = __builtin_frame_address(0);
-    // 扫描栈帧，检查每个可能的指针值
-    volatile void** 栈指针 = (volatile void**)栈顶;
-    for (int i = 0; i < 4096; i++) {
-        void* 候选指针 = *栈指针;
-        // 检查候选指针是否匹配任何已注册对象
-        for (int j = 0; j < GC对象数量; j++) {
-            if (GC对象表[j] == 候选指针) {
-                GC标记[j] = 1;
-                break;
-            }
-        }
-        栈指针++;
+    // 标记阶段：寄存器经 setjmp 刷入快照 + 扫描 [栈低界, 栈顶)
+    jmp_buf 寄存器快照;
+    memset(&寄存器快照, 0, sizeof(寄存器快照));
+    if (setjmp(寄存器快照) == 0) {
+        // 仅取寄存器快照，不跳转
     }
+    // 低界用本函数内局部变量的地址：它必然落在执行GC 自己的帧内，
+    // 一定低于调用者（主程序）的整个帧，故 [低界, 栈顶) 必覆盖全部活帧。
+    // 不能用 __builtin_frame_address(0)：该目标上对无帧函数会返回调用者帧。
+    // 且 1 字节局部变量的地址不保证 8 字节对齐，按字扫描必须向下对齐，
+    // 否则窗口整体错位一字节，任何指针都匹配不上。
+    char 栈锚 = 0;
+    const char* 栈低界 =
+        (const char*)((size_t)&栈锚 & ~(size_t)(sizeof(void*) - 1));
+    char* 栈顶 = GC当前线程栈顶();
+    if (!栈顶) 栈顶 = GC栈基址;
+    if (!栈顶 || 栈低界 >= 栈顶) return;  // 栈界未知时放弃本次回收，宁可不回收也不误 free
+    GC扫描区间(栈低界, 栈顶);
+    GC扫描区间((const char*)&寄存器快照,
+               (const char*)&寄存器快照 + sizeof(寄存器快照));
 
-    // 清除阶段：释放未标记的对象
+    // 清除阶段：释放未标记的对象（先跑析构，再释放对象本体）
     int 清除数量 = 0;
     for (int i = GC对象数量 - 1; i >= 0; i--) {
-        if (!GC标记[i]) {
-            free(GC对象表[i]);
+        if (GC标记表[i] == 0) {
+            if (GC对象表[i].析构) GC对象表[i].析构(GC对象表[i].指针);
+            free(GC对象表[i].指针);
             GC对象表[i] = GC对象表[GC对象数量 - 1];
-            GC标记[i] = GC标记[GC对象数量 - 1];
+            GC标记表[i] = GC标记表[GC对象数量 - 1];
             GC对象数量--;
             清除数量++;
         }
     }
     if (清除数量 > 0) {
-        printf("[GC] 清除了 %d 个对象, 剩余 %d\n", 清除数量, GC对象数量);
+        fprintf(stderr, "[GC] 清除了 %d 个对象, 剩余 %d\n", 清除数量, GC对象数量);
     }
 }
 
@@ -3612,11 +3742,22 @@ void 启用GC() {
 }
 
 void 设置GC阈值(int 阈值) {
-    GC阈值 = 阈值;
+    if (阈值 > 0) GC阈值 = 阈值;
 }
 
 int 获取GC对象数量() {
     return GC对象数量;
+}
+
+// 容器析构：对象本体由 执行GC 统一 free，这里只释放其内部持有的缓冲
+static void GC析构动态数组(void* 对象) {
+    动态数组* arr = (动态数组*)对象;
+    if (arr && arr->数据) free(arr->数据);
+}
+
+static void GC析构动态字符串数组(void* 对象) {
+    动态字符串数组* arr = (动态字符串数组*)对象;
+    if (arr && arr->数据) free(arr->数据);
 }
 
 /* ============================================================================
