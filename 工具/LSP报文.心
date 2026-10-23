@@ -196,6 +196,8 @@
     如果 (比 ?= 0) { 10 = 结果; }
     (方法名, "textDocument/references")字符串比较 = 比;
     如果 (比 ?= 0) { 11 = 结果; }
+    (方法名, "textDocument/documentSymbol")字符串比较 = 比;
+    如果 (比 ?= 0) { 12 = 结果; }
 }
 
 // 是否为已知 LSP 方法（序号 != 0）（8CM）
@@ -414,6 +416,7 @@
     如果 (序号 ?= 9) { "textDocument/hover" = 结果; }
     如果 (序号 ?= 10) { "textDocument/definition" = 结果; }
     如果 (序号 ?= 11) { "textDocument/references" = 结果; }
+    如果 (序号 ?= 12) { "textDocument/documentSymbol" = 结果; }
 }
 
 // 构造 window/logMessage 通知：{"jsonrpc":"2.0","method":"window/logMessage","params":{"message":"<文本>"}}（8CV）
