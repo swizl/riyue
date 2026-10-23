@@ -2301,8 +2301,9 @@ int 胖字符串转整数(字符串对象* s) {
 
 // ==================== FFI：动态库外部函数（阶段8 G10） ====================
 // `外部 函数 "库" "符号" 名(参数)(结果: 整数);` 解糖为对 外部调用N 的调用。
-// 两链一致：库名/符号名均以裸 char*（NUL 结尾字节串）传入；参数与返回值仅支持
-// 「整数」（i32），最多 4 参。按（库, 符号）缓存已解析地址，重复调用不再查找。
+// 两链一致：库名/符号名均以裸 char*（NUL 结尾字节串）传入；参数与返回值须同型，
+// 全「整数」（i32）走 外部调用N，全「浮点」（统一双精度）走 外部调用浮点N；最多 4 参。
+// 按（库, 符号）缓存已解析地址，重复调用不再查找。
 #ifdef _WIN32
 typedef void* 动态库句柄;
 static 动态库句柄 动态库打开(const char* 库名) {
@@ -2387,6 +2388,33 @@ int 外部调用3(const char* 库名, const char* 符号名, int 参1, int 参2,
 
 int 外部调用4(const char* 库名, const char* 符号名, int 参1, int 参2, int 参3, int 参4) {
     return ((外部函数指针4)外部符号解析(库名, 符号名))(参1, 参2, 参3, 参4);
+}
+
+// 阶段P4 浮点增量：参数与返回值均为双精度（浮点 ABI 走 XMM 寄存器）。
+typedef double (*外部函数浮点指针0)(void);
+typedef double (*外部函数浮点指针1)(double);
+typedef double (*外部函数浮点指针2)(double, double);
+typedef double (*外部函数浮点指针3)(double, double, double);
+typedef double (*外部函数浮点指针4)(double, double, double, double);
+
+double 外部调用浮点0(const char* 库名, const char* 符号名) {
+    return ((外部函数浮点指针0)外部符号解析(库名, 符号名))();
+}
+
+double 外部调用浮点1(const char* 库名, const char* 符号名, double 参1) {
+    return ((外部函数浮点指针1)外部符号解析(库名, 符号名))(参1);
+}
+
+double 外部调用浮点2(const char* 库名, const char* 符号名, double 参1, double 参2) {
+    return ((外部函数浮点指针2)外部符号解析(库名, 符号名))(参1, 参2);
+}
+
+double 外部调用浮点3(const char* 库名, const char* 符号名, double 参1, double 参2, double 参3) {
+    return ((外部函数浮点指针3)外部符号解析(库名, 符号名))(参1, 参2, 参3);
+}
+
+double 外部调用浮点4(const char* 库名, const char* 符号名, double 参1, double 参2, double 参3, double 参4) {
+    return ((外部函数浮点指针4)外部符号解析(库名, 符号名))(参1, 参2, 参3, 参4);
 }
 
 // ==================== 切片胖指针（内存安全 §4.2/§4.3） ====================
