@@ -6,8 +6,8 @@ export PATH=/usr/bin:/bin:/mingw64/bin:$PATH
 export MSYS_NO_PATHCONV=1
 cd /d/src/riyue/riyue || exit 9
 
-# 门禁：Pass 不得低于用例总数，Fail 必须为 0（当前 示例/*.心 共 190 个）。
-MIN_PASS=190
+# 门禁：Pass 不得低于用例总数，Fail 必须为 0（当前 示例/*.心 共 191 个）。
+MIN_PASS=191
 LOG=阶段/回归.log
 
 PASS=0
@@ -24,7 +24,32 @@ COMPILE_RETRY=2
     rm -f out_t.exe out_t.ll out_t.s out_t.o
 }
 
+# K7 故障注入自测（C 级）：底层读错误必须返回 NULL，而不是半截数据。
+# 计入门禁（失败即 Fail+1），但不计入 Pass（Pass 只统计 示例/*.心）。
+运行时读取自测() {
+    /d/src/riyue/llvm/llvm-build/bin/clang -fuse-ld=lld \
+        -finput-charset=UTF-8 -fexec-charset=UTF-8 -O1 \
+        测试/运行时读取自测.c -o _rt_selftest.exe -lws2_32 -lm 2> 阶段/.rt_selftest_cmp
+    if [ $? -ne 0 ]; then
+        echo "FAIL: 运行时读取自测（编译失败）"
+        sed 's/\r//' 阶段/.rt_selftest_cmp
+        rm -f _rt_selftest.exe
+        return 1
+    fi
+    ./_rt_selftest.exe > 阶段/.rt_selftest_out 2>&1
+    rc=$?
+    sed 's/\r//' 阶段/.rt_selftest_out
+    rm -f _rt_selftest.exe
+    [ $rc -eq 0 ] && return 0
+    echo "FAIL: 运行时读取自测（退出码 $rc）"
+    return 1
+}
+
 运行回归() {
+    if ! 运行时读取自测; then
+        FAIL=$((FAIL + 1))
+        FAIL_LIST="$FAIL_LIST 运行时读取自测"
+    fi
     for f in 示例/*.心; do
         name=$(basename "$f" .心)
         清理残留

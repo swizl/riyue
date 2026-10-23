@@ -1418,7 +1418,7 @@ LLVM函数* 代码生成器::确保函数签名(恒常 函数& 函数,
         运行优化Pass();
     }
 
-    // 链接命令行只使用纯 ASCII 临时路径：clang++/ld 无法正确处理命令行中的
+    // 链接命令行只使用纯 ASCII 临时路径：链接器无法正确处理命令行中的
     // 非 ASCII（中文）路径，会把 UTF-8 字节按 ANSI 代码页解析而乱码
     // （ld: cannot open output file <乱码>: No such file or directory）。
     // 故：LLVM 直接写 ASCII 临时对象 → 链接为 ASCII 临时可执行 → 改名为目标路径。
@@ -1465,11 +1465,16 @@ LLVM函数* 代码生成器::确保函数签名(恒常 函数& 函数,
     // 阶段5G：交叉 ELF 走「clang 编译交叉运行时 → ld.lld 静态链接」，无需 crt/libc
     // （与自举链 `交叉可执行` 分支逐字一致）。
     文本 临时运行时名 = "riyue_crt_" + 唯一 + ".o";
+    // 阶段N3 收口（宿主链）：产物链接层同样改用本地化 `ld.lld`，不再经 clang++ 驱动。
+    // 命令与自举链 `自举/主入口.心` 的 `.exe` 分支逐字一致（crt2.o + 手工库列表）；
+    // 运行时 .o 已由 `运行时对象路径()` 复制为纯 ASCII 临时名，可安全交给链接器。
     文本 链接命令 = 交叉ELF
         ? ("set \"PATH=D:\\src\\riyue\\llvm\\llvm-build\\bin;C:\\tools\\msys64\\mingw64\\bin;%PATH%\" && clang --target=" + 目标三元组.str() +
            " -ffreestanding -nostdlibinc -O1 -c \"源/运行时/交叉运行时.c\" -o " + 临时运行时名 +
            " && ld.lld -m aarch64linux -static -e _start " + 临时运行时名 + " " + 临时对象名 + " -o " + 临时可执行名)
-        : ("clang++ " + 临时对象名 + " " + 运行时对象路径() + " -o " + 临时可执行名 + " -lshell32 -lws2_32 -lm -lstdc++");
+        : ("set \"PATH=D:\\src\\riyue\\llvm\\llvm-build\\bin;C:\\tools\\msys64\\mingw64\\bin;%PATH%\" && ld.lld -m i386pep C:/tools/msys64/mingw64/lib/crt2.o " +
+           临时对象名 + " " + 运行时对象路径() + " -o " + 临时可执行名 +
+           " -LC:/tools/msys64/mingw64/lib -LC:/tools/msys64/mingw64/lib/gcc/x86_64-w64-mingw32/16.1.0 -lmingw32 -lmingwex -lmsvcrt -lgcc -lmoldname -lws2_32 -lm -ladvapi32 -lshell32 -luser32 -lkernel32");
     整数型 链接结果 = 执行命令(链接命令);
     std::remove(临时对象名.c_str());
     如果 (交叉ELF) std::remove(临时运行时名.c_str());
@@ -1604,6 +1609,17 @@ LLVM函数* 代码生成器::确保函数签名(恒常 函数& 函数,
     // 本工具链仅提供宿主 x86_64 的这两者（与自举链同一诊断）。
     如果 (!交叉PE && 目标三元组.str().substr(0, 6) != "x86_64") {
         抛出 运行时异常("交叉目标 " + 目标三元组.str() + " 不支持该 Windows 动态库（缺目标 crt 与 libc）；支持 aarch64-windows 动态库、.so 与 .wasm 产物");
+    }
+    // 平台限制：PE 导入表里的 DLL 名只取**文件名**（目录部分不进入导入表），Windows
+    // 加载器按 ANSI 代码页解析该名字，非 ASCII（中文）文件名在加载期必然 0xC0000135
+    // （找不到模块）。与其产出无法加载的产物，不如链接前显式拒绝并给出可操作指引
+    // （自举链同语义、同措辞）。目录名含中文不受影响——导入名只有 basename。
+    大小类型 名起 = 输出文件名.find_last_of("/\\");
+    名起 = (名起 == 文本::npos) ? 0 : 名起 + 1;
+    循环 (大小类型 i = 名起; i < 输出文件名.size(); i++) {
+        如果 (静态转换<无符号 字符型>(输出文件名[i]) > 127) {
+            抛出 运行时异常("动态库文件名含非 ASCII 字符（Windows 加载器按 ANSI 解析导入名，中文名 DLL 加载必失败: 0xC0000135）；请改用纯 ASCII 文件名，例如 libdemo.dll");
+        }
     }
     文本 错误信息;
     恒常 llvm::Target* 目标 = llvm::TargetRegistry::lookupTarget(目标三元组, 错误信息);
