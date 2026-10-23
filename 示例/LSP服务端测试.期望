@@ -1,5 +1,5 @@
 === LSP服务端测试 ===
-3
+4
 {"jsonrpc":"2.0","id":7,"result":{"capabilities":{"textDocumentSync":1,"completionProvider":{},"definitionProvider":true},"serverInfo":{"name":"日月语言服务端","version":"1.0"}}}
 171
 185
@@ -21,3 +21,6 @@
 {"jsonrpc":"2.0","id":21,"result":[{"label":"函数","kind":6},{"label":"如果","kind":6},{"label":"否则","kind":6},{"label":"否则如果","kind":6},{"label":"当","kind":6},{"label":"循环","kind":6},{"label":"返回","kind":6},{"label":"变量","kind":6},{"label":"结构体","kind":6},{"label":"枚举","kind":6},{"label":"导入","kind":6},{"label":"尝试","kind":6},{"label":"捕获","kind":6},{"label":"抛出","kind":6},{"label":"主程序","kind":6},{"label":"整数","kind":6},{"label":"字符串","kind":6},{"label":"布尔","kind":6},{"label":"浮点","kind":6},{"label":"字符","kind":6},{"label":"数组","kind":6},{"label":"指针","kind":6},{"label":"真值","kind":6},{"label":"假值","kind":6},{"label":"空针","kind":6},{"label":"计数器","kind":6},{"label":"总数","kind":6}]}
 {"jsonrpc":"2.0","id":22,"result":{"uri":"file:///b.riyue","range":{"start":{"line":0,"character":4},"end":{"line":0,"character":7}}}}
 {"jsonrpc":"2.0","id":23,"result":null}
+{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":"file:///c.riyue","diagnostics":[{"range":{"start":{"line":0,"character":4},"end":{"line":0,"character":5}},"severity":1,"source":"日月","message":"字符串未闭合"}]}}
+{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":"file:///c.riyue","diagnostics":[{"range":{"start":{"line":0,"character":1},"end":{"line":0,"character":2}},"severity":1,"source":"日月","message":"疑似全角标点，请改用半角"}]}}
+{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":"file:///c.riyue","diagnostics":[{"range":{"start":{"line":0,"character":0},"end":{"line":0,"character":1}},"severity":1,"source":"日月","message":"字面量默认值与类型标注不符"}]}}

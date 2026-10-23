@@ -14,6 +14,7 @@
 //         textDocument/completion（关键字 + 文档标识符，最多 64 项）/
 //         textDocument/definition（光标处标识符 → 文档内首次出现）
 //         未知请求 → -32601；诊断日志走 stderr，协议应答走 stdout。
+//         诊断：括号配对 / 字符串未闭合 / 全角标点 / 字面量与类型标注不符（9B）。
 //
 // 用法：日月.exe 工具/LSP服务端.心
 
