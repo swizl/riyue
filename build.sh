@@ -32,7 +32,9 @@ echo "=== 编译运行时 ==="
 clang $CFLAGS -c 源/运行时/运行时辅助.c -o 源/运行时/运行时辅助.o
 
 echo "=== 链接（lld） ==="
-clang++ -fuse-ld=lld -o 引导.exe \
+# 栈保留 32MiB：种子编译器以 -O0 递归生成 LLVM IR，编译自举源码（合并后约 5.8MB IR）
+# 时默认 1MiB 栈会溢出（STATUS_STACK_OVERFLOW）。
+clang++ -fuse-ld=lld -Wl,--stack,33554432 -o 引导.exe \
   源/前端/词法分析器.o 源/前端/语法分析器.o 源/前端/模块合并器.o 源/前端/诊断.o \
   源/后端/代码生成器.o 源/后端/代码生成器_表达式.o 源/后端/代码生成器_语句.o 源/后端/LLVM辅助.o \
   源/虚拟机/字节码.o 源/虚拟机/字节码编译器.o 源/虚拟机/虚拟机.o \

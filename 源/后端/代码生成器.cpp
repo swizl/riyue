@@ -22,8 +22,8 @@
     归返 码;
 }
 
-代码生成器::代码生成器(llvm::LLVMContext& ctx, 恒常 文本& 输出文件, 整数型 优化级别, 真假型 调试, 恒常 文本& 源文件, 恒常 文本& 目标三元组, 真假型 共享库, 真假型 动态库, 真假型 网页模块)
-    : 上下文(ctx), 输出文件名(输出文件), 优化级别(优化级别), 启用优化(优化级别 > 0), 启用调试(调试), 源文件名(源文件), 目标三元组覆盖(目标三元组), 共享库(共享库), 动态库(动态库), 网页模块(网页模块) {
+代码生成器::代码生成器(llvm::LLVMContext& ctx, 恒常 文本& 输出文件, 整数型 优化级别, 真假型 调试, 恒常 文本& 源文件, 恒常 文本& 目标三元组, 真假型 共享库, 真假型 动态库, 真假型 网页模块, 真假型 跨平台链接)
+    : 上下文(ctx), 输出文件名(输出文件), 优化级别(优化级别), 启用优化(优化级别 > 0), 启用调试(调试), 源文件名(源文件), 目标三元组覆盖(目标三元组), 共享库(共享库), 动态库(动态库), 网页模块(网页模块), 跨平台链接(跨平台链接) {
     模块 = 创建独占<llvm::Module>("程序", 上下文);
     构建器 = 创建独占<llvm::IRBuilder<>>(上下文);
     // 阶段5D：注册本地化 LLVM 已启用的全部目标（X86/AArch64/WebAssembly），
@@ -1436,14 +1436,17 @@ LLVM函数* 代码生成器::确保函数签名(恒常 函数& 函数,
     // 故：LLVM 直接写 ASCII 临时对象 → 链接为 ASCII 临时可执行 → 改名为目标路径。
     文本 唯一 = 进程标识文本();
     文本 临时对象名 = "riyue_obj_" + 唯一 + ".o";
-    文本 临时可执行名 = "riyue_link_" + 唯一 + ".exe";
 
     // 阶段5A：`--目标=` 指定时以其为准，否则沿用宿主默认三元组。
     三元组 目标三元组 = 目标三元组覆盖.empty() ? 三元组(llvm::sys::getDefaultTargetTriple()) : 三元组(目标三元组覆盖);
-    // 阶段5F：交叉目标边界——Windows 可执行文件需要目标平台的 crt 与 libc，本工具链
-    // 仅提供宿主 x86_64 的这两者；交叉目标请改用 .so / .wasm 产物（与自举链同一诊断）。
-    如果 (目标三元组.str().substr(0, 6) != "x86_64") {
-        抛出 运行时异常("交叉目标 " + 目标三元组.str() + " 不支持 Windows 可执行文件（缺目标 crt 与 libc），请改用 .so 或 .wasm 产物");
+    // 阶段5G：交叉可执行文件子集——aarch64 Linux 静态 ELF。用无 libc 的交叉运行时
+    // 自行提供 _start（退出系统调用 93）与最小 C 运行时，故不需要目标 crt/libc。
+    真假型 交叉ELF = 跨平台链接 && 目标三元组.str().substr(0, 7) == "aarch64";
+    文本 临时可执行名 = 交叉ELF ? ("riyue_link_" + 唯一) : ("riyue_link_" + 唯一 + ".exe");
+    // 阶段5F：其余交叉目标仍边界拒绝——Windows 可执行文件需要目标平台的 crt 与 libc，
+    // 本工具链仅提供宿主 x86_64 的这两者（与自举链同一诊断）。
+    如果 (!交叉ELF && 目标三元组.str().substr(0, 6) != "x86_64") {
+        抛出 运行时异常("交叉目标 " + 目标三元组.str() + " 不支持该可执行文件（缺目标 crt 与 libc）；支持 aarch64-linux 静态可执行文件、.so 与 .wasm 产物");
     }
     文本 错误信息;
     恒常 llvm::Target* 目标 = llvm::TargetRegistry::lookupTarget(目标三元组, 错误信息);
@@ -1451,7 +1454,7 @@ LLVM函数* 代码生成器::确保函数签名(恒常 函数& 函数,
 
     目标选项 选项;
     自动 目标机器 = 独占指针<llvm::TargetMachine>(
-        目标->createTargetMachine(目标三元组, "generic", "", 选项, llvm::Reloc::PIC_));
+        目标->createTargetMachine(目标三元组, "generic", "", 选项, 交叉ELF ? llvm::Reloc::Static : llvm::Reloc::PIC_));
     如果 (!目标机器) 抛出 运行时异常("无法创建TargetMachine");
 
     模块->setDataLayout(目标机器->createDataLayout());
@@ -1471,17 +1474,27 @@ LLVM函数* 代码生成器::确保函数签名(恒常 函数& 函数,
     管理器.run(*模块);
     目标文件流.close();
 
-    // 链接目标文件与运行时
-    文本 链接命令 = "clang++ " + 临时对象名 + " " + 运行时对象路径() + " -o " + 临时可执行名 + " -lshell32 -lws2_32 -lm -lstdc++";
+    // 阶段5G：交叉 ELF 走「clang 编译交叉运行时 → ld.lld 静态链接」，无需 crt/libc
+    // （与自举链 `交叉可执行` 分支逐字一致）。
+    文本 临时运行时名 = "riyue_crt_" + 唯一 + ".o";
+    文本 链接命令 = 交叉ELF
+        ? ("set \"PATH=D:\\src\\riyue\\llvm\\llvm-build\\bin;C:\\tools\\msys64\\mingw64\\bin;%PATH%\" && clang --target=" + 目标三元组.str() +
+           " -ffreestanding -nostdlibinc -O1 -c \"源/运行时/交叉运行时.c\" -o " + 临时运行时名 +
+           " && ld.lld -m aarch64linux -static -e _start " + 临时运行时名 + " " + 临时对象名 + " -o " + 临时可执行名)
+        : ("clang++ " + 临时对象名 + " " + 运行时对象路径() + " -o " + 临时可执行名 + " -lshell32 -lws2_32 -lm -lstdc++");
     整数型 链接结果 = 执行命令(链接命令);
     std::remove(临时对象名.c_str());
-    如果 (链接结果 != 0) 抛出 运行时异常("链接失败");
+    如果 (交叉ELF) std::remove(临时运行时名.c_str());
+    如果 (链接结果 != 0) 抛出 运行时异常(交叉ELF
+        ? "交叉链接失败：交叉运行时仅提供 malloc/free/memcpy/memmove/memset/strlen/strcmp/strdup/atoi/sprintf 与字符串位置到字节位置换算，程序若使用打印/文件/网络/线程等宿主运行时函数则无法链接"
+        : "链接失败");
 
     文本 最终输出 = 输出文件名;
 #如果定义 _WIN32
     // MinGW 的 ld 对无扩展名的 -o 会自动补 .exe；改用 ASCII 临时名后由本函数改名，
     // 需显式补齐 .exe，才能与既有行为（如 -o out_t 产出 out_t.exe）保持一致。
-    如果 (最终输出.size() < 4 || 最终输出.substr(最终输出.size() - 4) != ".exe") {
+    // 阶段5G：交叉 ELF 无 .exe 约定，直接按用户给的路径写出。
+    如果 (!交叉ELF && (最终输出.size() < 4 || 最终输出.substr(最终输出.size() - 4) != ".exe")) {
         最终输出 += ".exe";
     }
 #结束
@@ -1596,10 +1609,13 @@ LLVM函数* 代码生成器::确保函数签名(恒常 函数& 函数,
 
     // Windows DLL 默认按 x86_64-w64-windows-gnu（与自举链 `是否动态库=1` 一致）；`--目标=` 指定时以其为准。
     三元组 目标三元组 = 目标三元组覆盖.empty() ? 三元组("x86_64-w64-windows-gnu") : 三元组(目标三元组覆盖);
-    // 阶段5F：交叉目标边界——Windows 动态库需要目标平台的 dllcrt 与 libc，本工具链仅提供
-    // 宿主 x86_64 的这两者；交叉目标请改用 .so / .wasm 产物（与自举链同一诊断）。
-    如果 (目标三元组.str().substr(0, 6) != "x86_64") {
-        抛出 运行时异常("交叉目标 " + 目标三元组.str() + " 不支持 Windows 动态库（缺目标 crt 与 libc），请改用 .so 或 .wasm 产物");
+    // 阶段5G：交叉动态库子集——aarch64 Windows 动态库（COFF-ARM64）。交叉运行时提供
+    // DllMainCRTStartup 与最小 libc 子集，无需 dllcrt2.o / msvcrt，产物零导入。
+    真假型 交叉PE = 跨平台链接 && 目标三元组.str().substr(0, 7) == "aarch64";
+    // 阶段5F：其余交叉目标仍边界拒绝——Windows 动态库需要目标平台的 dllcrt 与 libc，
+    // 本工具链仅提供宿主 x86_64 的这两者（与自举链同一诊断）。
+    如果 (!交叉PE && 目标三元组.str().substr(0, 6) != "x86_64") {
+        抛出 运行时异常("交叉目标 " + 目标三元组.str() + " 不支持该 Windows 动态库（缺目标 crt 与 libc）；支持 aarch64-windows 动态库、.so 与 .wasm 产物");
     }
     文本 错误信息;
     恒常 llvm::Target* 目标 = llvm::TargetRegistry::lookupTarget(目标三元组, 错误信息);
@@ -1627,13 +1643,22 @@ LLVM函数* 代码生成器::确保函数签名(恒常 函数& 函数,
     管理器.run(*模块);
     目标文件流.close();
 
-    // 链接命令与自举链 自举/主入口.心:234-236 逐字一致；工具链用绝对目录。
-    文本 链接命令 = "set \"PATH=D:\\src\\riyue\\llvm\\llvm-build\\bin;C:\\tools\\msys64\\mingw64\\bin;%PATH%\" && ld.lld -m i386pep --dll C:/tools/msys64/mingw64/lib/dllcrt2.o " +
-        临时对象名 + " " + 运行时对象路径() + " -o \"" + 输出文件名 + "\"" +
-        " -LC:/tools/msys64/mingw64/lib -LC:/tools/msys64/mingw64/lib/gcc/x86_64-w64-mingw32/16.1.0 -lmingw32 -lmingwex -lmsvcrt -lgcc -lmoldname -lws2_32 -lm -ladvapi32 -lshell32 -luser32 -lkernel32";
+    // 链接命令与自举链 `是否动态库=1` 分支逐字一致；工具链用绝对目录。
+    // 阶段5G：交叉 PE 走「clang 编译交叉运行时 → ld.lld -m arm64pe --dll」。
+    文本 临时运行时名 = "riyue_crt_" + 唯一 + ".o";
+    文本 链接命令 = 交叉PE
+        ? ("set \"PATH=D:\\src\\riyue\\llvm\\llvm-build\\bin;C:\\tools\\msys64\\mingw64\\bin;%PATH%\" && clang --target=" + 目标三元组.str() +
+           " -ffreestanding -nostdlibinc -O1 -c \"源/运行时/交叉运行时.c\" -o " + 临时运行时名 +
+           " && ld.lld -m arm64pe --dll --no-insert-timestamp " + 临时运行时名 + " " + 临时对象名 + " -o \"" + 输出文件名 + "\"")
+        : ("set \"PATH=D:\\src\\riyue\\llvm\\llvm-build\\bin;C:\\tools\\msys64\\mingw64\\bin;%PATH%\" && ld.lld -m i386pep --dll C:/tools/msys64/mingw64/lib/dllcrt2.o " +
+           临时对象名 + " " + 运行时对象路径() + " -o \"" + 输出文件名 + "\"" +
+           " -LC:/tools/msys64/mingw64/lib -LC:/tools/msys64/mingw64/lib/gcc/x86_64-w64-mingw32/16.1.0 -lmingw32 -lmingwex -lmsvcrt -lgcc -lmoldname -lws2_32 -lm -ladvapi32 -lshell32 -luser32 -lkernel32");
     整数型 链接结果 = 执行命令(链接命令);
     std::remove(临时对象名.c_str());
-    如果 (链接结果 != 0) 抛出 运行时异常("链接失败");
+    如果 (交叉PE) std::remove(临时运行时名.c_str());
+    如果 (链接结果 != 0) 抛出 运行时异常(交叉PE
+        ? "交叉链接失败：交叉运行时仅提供 malloc/free/memcpy/memmove/memset/strlen/strcmp/strdup/atoi/sprintf 与字符串位置到字节位置换算，程序若使用打印/文件/网络/线程等宿主运行时函数则无法链接"
+        : "链接失败");
 }
 
 // 阶段5F：生成 WebAssembly 模块（.wasm），把宿主链对齐到自举链 `.wasm` 分支。
