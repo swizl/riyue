@@ -1,5 +1,5 @@
 === LSP服务端测试 ===
-5
+6
 {"jsonrpc":"2.0","id":7,"result":{"capabilities":{"textDocumentSync":1,"completionProvider":{},"definitionProvider":true,"hoverProvider":true},"serverInfo":{"name":"日月语言服务端","version":"1.0"}}}
 192
 206
@@ -29,3 +29,7 @@
 {"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":"file:///b.riyue","diagnostics":[{"range":{"start":{"line":0,"character":4},"end":{"line":0,"character":5}},"severity":1,"source":"日月","message":"未声明的标识符: 计数器"}]}}
 {"jsonrpc":"2.0","id":27,"result":{"contents":{"kind":"plaintext","value":"计数器: 整数"},"range":{"start":{"line":0,"character":4},"end":{"line":0,"character":7}}}}
 {"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":"file:///d.riyue","diagnostics":[{"range":{"start":{"line":0,"character":0},"end":{"line":0,"character":1}},"severity":1,"source":"日月","message":"多余的右括号"},{"range":{"start":{"line":0,"character":1},"end":{"line":0,"character":2}},"severity":1,"source":"日月","message":"多余的右括号"},{"range":{"start":{"line":0,"character":2},"end":{"line":0,"character":3}},"severity":1,"source":"日月","message":"多余的右括号"}]}}
+11
+textDocument/references
+{"jsonrpc":"2.0","id":29,"result":[{"uri":"file:///e.riyue","range":{"start":{"line":0,"character":4},"end":{"line":0,"character":7}}},{"uri":"file:///e.riyue","range":{"start":{"line":1,"character":0},"end":{"line":1,"character":3}}},{"uri":"file:///e.riyue","range":{"start":{"line":1,"character":10},"end":{"line":1,"character":13}}},{"uri":"file:///e.riyue","range":{"start":{"line":2,"character":5},"end":{"line":2,"character":8}}}]}
+{"jsonrpc":"2.0","id":30,"result":[]}
