@@ -218,6 +218,13 @@
         声明("外部调用PPPI_P", i8Ptr, {i8Ptr, i8Ptr, i8Ptr, i8Ptr, i8Ptr, i32});
         声明("外部调用PPPP_I", i32, {i8Ptr, i8Ptr, i8Ptr, i8Ptr, i8Ptr, i8Ptr});
         声明("外部调用PPPP_P", i8Ptr, {i8Ptr, i8Ptr, i8Ptr, i8Ptr, i8Ptr, i8Ptr});
+        // 阶段P4 浮点混用增量：模式串 F=双精度（XMM），可与 I（整数）/ P（指针）混用。
+        声明("外部调用P_F", f64, {i8Ptr, i8Ptr, i8Ptr});
+        声明("外部调用FI_F", f64, {i8Ptr, i8Ptr, f64, i32});
+        声明("外部调用PF_I", i32, {i8Ptr, i8Ptr, i8Ptr, f64});
+        声明("外部调用PIF_I", i32, {i8Ptr, i8Ptr, i8Ptr, i32, f64});
+        声明("外部调用PFF_I", i32, {i8Ptr, i8Ptr, i8Ptr, f64, f64});
+        声明("外部调用PPF_I", i32, {i8Ptr, i8Ptr, i8Ptr, i8Ptr, f64});
     }
 };
 

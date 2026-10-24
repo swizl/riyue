@@ -2540,6 +2540,32 @@ int 外部调用回调1_4(const char* 库名, const char* 符号名, int 参1, i
 外部混4(void*, 外部调用PPPI_P, void*, void*, void*, int)
 外部混4(int, 外部调用PPPP_I, void*, void*, void*, void*)
 外部混4(void*, 外部调用PPPP_P, void*, void*, void*, void*)
+
+// 阶段P4 浮点混用增量：模式串中 F=双精度（参数走 XMM 寄存器），可与非浮点参数 I/P 混用。
+// 支持的组合有意限定（入口名 外部调用<模式>_<返回码>）：
+//   P_F（字符串→浮点，如 atof）、FI_F（浮点,整数→浮点，如 ldexp）、
+//   PF_I / PIF_I / PFF_I / PPF_I（printf 风格：格式串 + 整数/浮点，返回打印字符数）。
+外部混1(double, 外部调用P_F, void*)
+外部混2(double, 外部调用FI_F, double, int)
+// printf 族是 C 变参函数：Windows x64 变参 ABI 要求浮点实参同时复制到整数寄存器组，
+// 故函数指针类型须声明为变参（固定前导参数 + ...），不能按定参类型调用（否则浮点读成 0）。
+typedef int (*外部变参指针)(void*, ...);
+
+int 外部调用PF_I(const char* 库名, const char* 符号名, void* 参1, double 参2) {
+    return ((外部变参指针)外部符号解析(库名, 符号名))(参1, 参2);
+}
+
+int 外部调用PIF_I(const char* 库名, const char* 符号名, void* 参1, int 参2, double 参3) {
+    return ((外部变参指针)外部符号解析(库名, 符号名))(参1, 参2, 参3);
+}
+
+int 外部调用PFF_I(const char* 库名, const char* 符号名, void* 参1, double 参2, double 参3) {
+    return ((外部变参指针)外部符号解析(库名, 符号名))(参1, 参2, 参3);
+}
+
+int 外部调用PPF_I(const char* 库名, const char* 符号名, void* 参1, void* 参2, double 参3) {
+    return ((外部变参指针)外部符号解析(库名, 符号名))(参1, 参2, 参3);
+}
 // ==================== 切片胖指针（内存安全 §4.2/§4.3） ====================
 // 语言层「切片」值 = 指向本结构的指针；数据 = 指向原数组第「起」个元素的指针（零拷贝
 // 视图），长度 = 元素个数（止-起）。分片 arr[起:止] 产出切片；切片[i] 越界即中止。
