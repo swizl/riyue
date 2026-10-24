@@ -2417,6 +2417,33 @@ double 外部调用浮点4(const char* 库名, const char* 符号名, double 参
     return ((外部函数浮点指针4)外部符号解析(库名, 符号名))(参1, 参2, 参3, 参4);
 }
 
+// 阶段P4 长整增量：参数与返回值均为「整数64」（i64，走通用整数寄存器）。
+typedef long long (*外部函数长整指针0)(void);
+typedef long long (*外部函数长整指针1)(long long);
+typedef long long (*外部函数长整指针2)(long long, long long);
+typedef long long (*外部函数长整指针3)(long long, long long, long long);
+typedef long long (*外部函数长整指针4)(long long, long long, long long, long long);
+
+long long 外部调用长整0(const char* 库名, const char* 符号名) {
+    return ((外部函数长整指针0)外部符号解析(库名, 符号名))();
+}
+
+long long 外部调用长整1(const char* 库名, const char* 符号名, long long 参1) {
+    return ((外部函数长整指针1)外部符号解析(库名, 符号名))(参1);
+}
+
+long long 外部调用长整2(const char* 库名, const char* 符号名, long long 参1, long long 参2) {
+    return ((外部函数长整指针2)外部符号解析(库名, 符号名))(参1, 参2);
+}
+
+long long 外部调用长整3(const char* 库名, const char* 符号名, long long 参1, long long 参2, long long 参3) {
+    return ((外部函数长整指针3)外部符号解析(库名, 符号名))(参1, 参2, 参3);
+}
+
+long long 外部调用长整4(const char* 库名, const char* 符号名, long long 参1, long long 参2, long long 参3, long long 参4) {
+    return ((外部函数长整指针4)外部符号解析(库名, 符号名))(参1, 参2, 参3, 参4);
+}
+
 // 阶段P4 回调增量：末位参数为 C 函数指针（语言层 `函数` 值 = 代码地址），
 // 其余参数为 整数；返回值 整数。回调签名按 int (*)(void) 调用（无参回调）。
 typedef int (*外部回调无参)(void);
