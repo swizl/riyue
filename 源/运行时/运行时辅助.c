@@ -2465,6 +2465,81 @@ int 外部调用回调1_4(const char* 库名, const char* 符号名, int 参1, i
     return ((外部函数回调一参指针4)外部符号解析(库名, 符号名))(参1, 参2, 参3, 回调);
 }
 
+// 阶段P4 指针增量：FFI 字符串/指针与整数混用 —— 模式串 I=整数(i32)，P=指针（字符串按 i8* 传递）；
+// 入口名 = 外部调用<参数模式>_<返回模式>（如 外部调用P_I / 外部调用PPI_P）。按元数用宏展开。
+#define 外部混0(返回类型, 名字) \
+    返回类型 名字(const char* 库名, const char* 符号名) { \
+        return ((返回类型 (*)(void))外部符号解析(库名, 符号名))(); }
+#define 外部混1(返回类型, 名字, 甲) \
+    返回类型 名字(const char* 库名, const char* 符号名, 甲 参1) { \
+        return ((返回类型 (*)(甲))外部符号解析(库名, 符号名))(参1); }
+#define 外部混2(返回类型, 名字, 甲, 乙) \
+    返回类型 名字(const char* 库名, const char* 符号名, 甲 参1, 乙 参2) { \
+        return ((返回类型 (*)(甲, 乙))外部符号解析(库名, 符号名))(参1, 参2); }
+#define 外部混3(返回类型, 名字, 甲, 乙, 丙) \
+    返回类型 名字(const char* 库名, const char* 符号名, 甲 参1, 乙 参2, 丙 参3) { \
+        return ((返回类型 (*)(甲, 乙, 丙))外部符号解析(库名, 符号名))(参1, 参2, 参3); }
+#define 外部混4(返回类型, 名字, 甲, 乙, 丙, 丁) \
+    返回类型 名字(const char* 库名, const char* 符号名, 甲 参1, 乙 参2, 丙 参3, 丁 参4) { \
+        return ((返回类型 (*)(甲, 乙, 丙, 丁))外部符号解析(库名, 符号名))(参1, 参2, 参3, 参4); }
+
+外部混0(void*, 外部调用_P)
+外部混1(void*, 外部调用I_P, int)
+外部混1(int, 外部调用P_I, void*)
+外部混1(void*, 外部调用P_P, void*)
+外部混2(void*, 外部调用II_P, int, int)
+外部混2(int, 外部调用IP_I, int, void*)
+外部混2(void*, 外部调用IP_P, int, void*)
+外部混2(int, 外部调用PI_I, void*, int)
+外部混2(void*, 外部调用PI_P, void*, int)
+外部混2(int, 外部调用PP_I, void*, void*)
+外部混2(void*, 外部调用PP_P, void*, void*)
+外部混3(void*, 外部调用III_P, int, int, int)
+外部混3(int, 外部调用IIP_I, int, int, void*)
+外部混3(void*, 外部调用IIP_P, int, int, void*)
+外部混3(int, 外部调用IPI_I, int, void*, int)
+外部混3(void*, 外部调用IPI_P, int, void*, int)
+外部混3(int, 外部调用IPP_I, int, void*, void*)
+外部混3(void*, 外部调用IPP_P, int, void*, void*)
+外部混3(int, 外部调用PII_I, void*, int, int)
+外部混3(void*, 外部调用PII_P, void*, int, int)
+外部混3(int, 外部调用PIP_I, void*, int, void*)
+外部混3(void*, 外部调用PIP_P, void*, int, void*)
+外部混3(int, 外部调用PPI_I, void*, void*, int)
+外部混3(void*, 外部调用PPI_P, void*, void*, int)
+外部混3(int, 外部调用PPP_I, void*, void*, void*)
+外部混3(void*, 外部调用PPP_P, void*, void*, void*)
+外部混4(void*, 外部调用IIII_P, int, int, int, int)
+外部混4(int, 外部调用IIIP_I, int, int, int, void*)
+外部混4(void*, 外部调用IIIP_P, int, int, int, void*)
+外部混4(int, 外部调用IIPI_I, int, int, void*, int)
+外部混4(void*, 外部调用IIPI_P, int, int, void*, int)
+外部混4(int, 外部调用IIPP_I, int, int, void*, void*)
+外部混4(void*, 外部调用IIPP_P, int, int, void*, void*)
+外部混4(int, 外部调用IPII_I, int, void*, int, int)
+外部混4(void*, 外部调用IPII_P, int, void*, int, int)
+外部混4(int, 外部调用IPIP_I, int, void*, int, void*)
+外部混4(void*, 外部调用IPIP_P, int, void*, int, void*)
+外部混4(int, 外部调用IPPI_I, int, void*, void*, int)
+外部混4(void*, 外部调用IPPI_P, int, void*, void*, int)
+外部混4(int, 外部调用IPPP_I, int, void*, void*, void*)
+外部混4(void*, 外部调用IPPP_P, int, void*, void*, void*)
+外部混4(int, 外部调用PIII_I, void*, int, int, int)
+外部混4(void*, 外部调用PIII_P, void*, int, int, int)
+外部混4(int, 外部调用PIIP_I, void*, int, int, void*)
+外部混4(void*, 外部调用PIIP_P, void*, int, int, void*)
+外部混4(int, 外部调用PIPI_I, void*, int, void*, int)
+外部混4(void*, 外部调用PIPI_P, void*, int, void*, int)
+外部混4(int, 外部调用PIPP_I, void*, int, void*, void*)
+外部混4(void*, 外部调用PIPP_P, void*, int, void*, void*)
+外部混4(int, 外部调用PPII_I, void*, void*, int, int)
+外部混4(void*, 外部调用PPII_P, void*, void*, int, int)
+外部混4(int, 外部调用PPIP_I, void*, void*, int, void*)
+外部混4(void*, 外部调用PPIP_P, void*, void*, int, void*)
+外部混4(int, 外部调用PPPI_I, void*, void*, void*, int)
+外部混4(void*, 外部调用PPPI_P, void*, void*, void*, int)
+外部混4(int, 外部调用PPPP_I, void*, void*, void*, void*)
+外部混4(void*, 外部调用PPPP_P, void*, void*, void*, void*)
 // ==================== 切片胖指针（内存安全 §4.2/§4.3） ====================
 // 语言层「切片」值 = 指向本结构的指针；数据 = 指向原数组第「起」个元素的指针（零拷贝
 // 视图），长度 = 元素个数（止-起）。分片 arr[起:止] 产出切片；切片[i] 越界即中止。
