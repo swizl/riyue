@@ -1,5 +1,5 @@
 === LSP服务端测试 ===
-9
+10
 {"jsonrpc":"2.0","id":7,"result":{"capabilities":{"textDocumentSync":1,"completionProvider":{},"definitionProvider":true,"hoverProvider":true},"serverInfo":{"name":"日月语言服务端","version":"1.0"}}}
 192
 206
@@ -45,3 +45,7 @@ textDocument/rename
 textDocument/codeAction
 {"jsonrpc":"2.0","id":37,"result":[{"title":"缩进改用 4 空格","kind":"quickfix","edit":{"changes":{"file:///h.riyue":[{"range":{"start":{"line":0,"character":0},"end":{"line":0,"character":1}},"newText":"    "}]}}},{"title":"删除行尾空白","kind":"quickfix","edit":{"changes":{"file:///h.riyue":[{"range":{"start":{"line":0,"character":9},"end":{"line":0,"character":11}},"newText":""}]}}},{"title":"全角标点改半角","kind":"quickfix","edit":{"changes":{"file:///h.riyue":[{"range":{"start":{"line":0,"character":3},"end":{"line":0,"character":4}},"newText":","}]}}}]}
 {"jsonrpc":"2.0","id":38,"result":[]}
+15
+textDocument/foldingRange
+{"jsonrpc":"2.0","id":39,"result":[{"startLine":0,"endLine":4},{"startLine":1,"endLine":3}]}
+{"jsonrpc":"2.0","id":40,"result":[]}
