@@ -1468,13 +1468,27 @@ LLVM函数* 代码生成器::确保函数签名(恒常 函数& 函数,
     // 阶段N3 收口（宿主链）：产物链接层同样改用本地化 `ld.lld`，不再经 clang++ 驱动。
     // 命令与自举链 `自举/主入口.心` 的 `.exe` 分支逐字一致（crt2.o + 手工库列表）；
     // 运行时 .o 已由 `运行时对象路径()` 复制为纯 ASCII 临时名，可安全交给链接器。
-    文本 链接命令 = 交叉ELF
+    文本 链接命令;
+#如果定义 _WIN32
+    链接命令 = 交叉ELF
         ? ("set \"PATH=D:\\src\\riyue\\llvm\\llvm-build\\bin;C:\\tools\\msys64\\mingw64\\bin;%PATH%\" && clang --target=" + 目标三元组.str() +
            " -ffreestanding -nostdlibinc -O1 -c \"源/运行时/交叉运行时.c\" -o " + 临时运行时名 +
            " && ld.lld -m aarch64linux -static -e _start " + 临时运行时名 + " " + 临时对象名 + " -o " + 临时可执行名)
         : ("set \"PATH=D:\\src\\riyue\\llvm\\llvm-build\\bin;C:\\tools\\msys64\\mingw64\\bin;%PATH%\" && ld.lld -m i386pep C:/tools/msys64/mingw64/lib/crt2.o " +
            临时对象名 + " " + 运行时对象路径() + " -o " + 临时可执行名 +
            " -LC:/tools/msys64/mingw64/lib -LC:/tools/msys64/mingw64/lib/gcc/x86_64-w64-mingw32/16.1.0 -lmingw32 -lmingwex -lmsvcrt -lgcc -lmoldname -lws2_32 -lm -ladvapi32 -lshell32 -luser32 -lkernel32");
+#否则
+    // Linux 宿主：clang / ld.lld 一律取自 riyue 源码树构建的 llvm-build-linux（工具链目录()），
+    // 不使用发行版 clang。宿主可执行文件由 clang 驱动（-fuse-ld=lld 仍解析到同一份 ld.lld），
+    // 运行时 .o 已是 ELF 目标，libc/线程/动态装载库走宿主默认搜索路径。
+    恒常 文本 工具链 = 工具链目录();
+    链接命令 = 交叉ELF
+        ? (工具链 + "clang --target=" + 目标三元组.str() +
+           " -ffreestanding -nostdlibinc -O1 -c \"源/运行时/交叉运行时.c\" -o " + 临时运行时名 +
+           " && " + 工具链 + "ld.lld -m aarch64linux -static -e _start " + 临时运行时名 + " " + 临时对象名 + " -o " + 临时可执行名)
+        : (工具链 + "clang -fuse-ld=lld -no-pie " + 临时对象名 + " " + 运行时对象路径() + " -o " + 临时可执行名 +
+           " -lm -lpthread -ldl");
+#结束
     整数型 链接结果 = 执行命令(链接命令);
     std::remove(临时对象名.c_str());
     如果 (交叉ELF) std::remove(临时运行时名.c_str());
@@ -1576,8 +1590,14 @@ LLVM函数* 代码生成器::确保函数签名(恒常 函数& 函数,
     }
 
     // 共享库不链入运行时（printf/malloc 等留作未定义符号，运行时解析）；工具链用绝对目录。
-    文本 链接命令 = "set \"PATH=D:\\src\\riyue\\llvm\\llvm-build\\bin;C:\\tools\\msys64\\mingw64\\bin;%PATH%\" && ld.lld -m " +
+    文本 链接命令;
+#如果定义 _WIN32
+    链接命令 = "set \"PATH=D:\\src\\riyue\\llvm\\llvm-build\\bin;C:\\tools\\msys64\\mingw64\\bin;%PATH%\" && ld.lld -m " +
         链接仿真 + " --shared " + 临时对象名 + " -o " + 临时共享库名;
+#否则
+    // Linux 宿主：ld.lld 取自 riyue 的 llvm-build-linux（工具链目录()）。
+    链接命令 = 工具链目录() + "ld.lld -m " + 链接仿真 + " --shared " + 临时对象名 + " -o " + 临时共享库名;
+#结束
     整数型 链接结果 = 执行命令(链接命令);
     std::remove(临时对象名.c_str());
     如果 (链接结果 != 0) 抛出 运行时异常("链接失败");
@@ -1650,13 +1670,26 @@ LLVM函数* 代码生成器::确保函数签名(恒常 函数& 函数,
     // 链接命令与自举链 `是否动态库=1` 分支逐字一致；工具链用绝对目录。
     // 阶段5G：交叉 PE 走「clang 编译交叉运行时 → ld.lld -m arm64pe --dll」。
     文本 临时运行时名 = "riyue_crt_" + 唯一 + ".o";
-    文本 链接命令 = 交叉PE
+    文本 链接命令;
+#如果定义 _WIN32
+    链接命令 = 交叉PE
         ? ("set \"PATH=D:\\src\\riyue\\llvm\\llvm-build\\bin;C:\\tools\\msys64\\mingw64\\bin;%PATH%\" && clang --target=" + 目标三元组.str() +
            " -ffreestanding -nostdlibinc -O1 -c \"源/运行时/交叉运行时.c\" -o " + 临时运行时名 +
            " && ld.lld -m arm64pe --dll --no-insert-timestamp " + 临时运行时名 + " " + 临时对象名 + " -o \"" + 输出文件名 + "\"")
         : ("set \"PATH=D:\\src\\riyue\\llvm\\llvm-build\\bin;C:\\tools\\msys64\\mingw64\\bin;%PATH%\" && ld.lld -m i386pep --dll C:/tools/msys64/mingw64/lib/dllcrt2.o " +
            临时对象名 + " " + 运行时对象路径() + " -o \"" + 输出文件名 + "\"" +
            " -LC:/tools/msys64/mingw64/lib -LC:/tools/msys64/mingw64/lib/gcc/x86_64-w64-mingw32/16.1.0 -lmingw32 -lmingwex -lmsvcrt -lgcc -lmoldname -lws2_32 -lm -ladvapi32 -lshell32 -luser32 -lkernel32");
+#否则
+    // Linux 宿主：x86_64 PE 动态库需要目标 crt（dllcrt2.o）与 msvcrt，宿主链不具备，
+    // 与「交叉目标缺 crt/libc」同一诊断；aarch64-windows 交叉动态库仅依赖交叉运行时，仍可用。
+    如果 (!交叉PE) {
+        抛出 运行时异常("Linux 宿主不支持生成 x86_64 Windows 动态库（缺目标 crt 与 libc）；支持 aarch64-windows 动态库、.so 与 .wasm 产物");
+    }
+    恒常 文本 工具链 = 工具链目录();
+    链接命令 = 工具链 + "clang --target=" + 目标三元组.str() +
+        " -ffreestanding -nostdlibinc -O1 -c \"源/运行时/交叉运行时.c\" -o " + 临时运行时名 +
+        " && " + 工具链 + "ld.lld -m arm64pe --dll --no-insert-timestamp " + 临时运行时名 + " " + 临时对象名 + " -o \"" + 输出文件名 + "\"";
+#结束
     整数型 链接结果 = 执行命令(链接命令);
     std::remove(临时对象名.c_str());
     如果 (交叉PE) std::remove(临时运行时名.c_str());
@@ -1706,8 +1739,15 @@ LLVM函数* 代码生成器::确保函数签名(恒常 函数& 函数,
     目标文件流.close();
 
     // 链接命令与自举链 `.wasm` 分支逐字一致；工具链用绝对目录。
-    文本 链接命令 = "set \"PATH=D:\\src\\riyue\\llvm\\llvm-build\\bin;C:\\tools\\msys64\\mingw64\\bin;%PATH%\" && wasm-ld --no-entry --export-all --allow-undefined " +
+    文本 链接命令;
+#如果定义 _WIN32
+    链接命令 = "set \"PATH=D:\\src\\riyue\\llvm\\llvm-build\\bin;C:\\tools\\msys64\\mingw64\\bin;%PATH%\" && wasm-ld --no-entry --export-all --allow-undefined " +
         临时对象名 + " -o " + 临时模块名;
+#否则
+    // Linux 宿主：wasm-ld 取自 riyue 的 llvm-build-linux（工具链目录()）。
+    链接命令 = 工具链目录() + "wasm-ld --no-entry --export-all --allow-undefined " +
+        临时对象名 + " -o " + 临时模块名;
+#结束
     整数型 链接结果 = 执行命令(链接命令);
     std::remove(临时对象名.c_str());
     如果 (链接结果 != 0) 抛出 运行时异常("链接失败");

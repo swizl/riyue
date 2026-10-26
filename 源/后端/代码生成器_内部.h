@@ -54,7 +54,7 @@ extern 哈希映射<文本, 文本> 结构体基类表;
     MultiByteToWideChar(CP_UTF8, 0, 命令.c_str(), (整数型)命令.size(), 宽命令.data(), 宽长度);
     归返 _wsystem(宽命令.data());
 }
-#否则如果 已定义(__CYGWIN__)
+#否则如果 defined(__CYGWIN__)
 // Cygwin：走 POSIX 系统调用（sh），路径为 cygwin 风格。
 #包含 <unistd.h>
 内联 整数型 执行命令(恒常 文本& 命令) { 归返 std::system(命令.c_str()); }
@@ -63,6 +63,23 @@ extern 哈希映射<文本, 文本> 结构体基类表;
 #包含 <unistd.h>
 内联 整数型 执行命令(恒常 文本& 命令) { 归返 std::system(命令.c_str()); }
 #结束
+
+// ============================================================================
+// 本地化 LLVM 工具链目录
+//
+// 链接层调用的 clang / llvm-as / llc / ld.lld / wasm-ld 一律取自 riyue 源码树
+// 自行构建的本地化 LLVM，不使用发行版自带工具链：
+//   Windows → D:\src\riyue\llvm\llvm-build\bin
+//   Linux   → /mnt/d/src/riyue/llvm/llvm-build-linux/bin
+// 返回带尾部斜杠的前缀，便于直接拼接可执行文件名。
+// ============================================================================
+内联 文本 工具链目录() {
+#如果定义 _WIN32
+    归返 "D:\\src\\riyue\\llvm\\llvm-build\\bin\\";
+#否则
+    归返 "/mnt/d/src/riyue/llvm/llvm-build-linux/bin/";
+#结束
+}
 
 // ============================================================================
 // 运行时辅助对象路径
@@ -123,17 +140,19 @@ extern 哈希映射<文本, 文本> 结构体基类表;
 #否则
 #包含 <climits>
 #包含 <sys/stat.h>
-#如果 已定义(__APPLE__)
+#如果定义 __APPLE__
 #包含 <mach-o/dyld.h>
 #结束
 内联 文本 可执行文件目录() {
     字符型 缓冲[PATH_MAX] = {0};
-    s大小类型 n = -1;
-#如果 已定义(__linux__) || defined(__CYGWIN__)
+    ssize_t n = -1;
+#如果定义 __linux__
     n = readlink("/proc/self/exe", 缓冲, 大小计算(缓冲) - 1);
-#否则如果 已定义(__APPLE__)
+#否则
+#如果定义 __APPLE__
     uint32_t 元素数量 = 大小计算(缓冲);
-    如果 (_NSGetExecutablePath(缓冲, &元素数量) == 0) n = (s大小类型)strlen(缓冲);
+    如果 (_NSGetExecutablePath(缓冲, &元素数量) == 0) n = (ssize_t)strlen(缓冲);
+#结束
 #结束
     如果 (n <= 0) 归返 文本();
     文本 路径(缓冲, n);
@@ -150,9 +169,9 @@ extern 哈希映射<文本, 文本> 结构体基类表;
     归返 文本(目录) + "/riyue_rt_" + 转为文本(getpid()) + ".o";
 }
 内联 真假型 拷贝文件(恒常 文本& 源, 恒常 文本& 目标) {
-    文件输入流 入(源, 标准IO::binary);
+    文件输入流 入(源, std::ios::binary);
     如果 (!入) 归返 假值;
-    文件输出流 出(目标, 标准IO::binary);
+    文件输出流 出(目标, std::ios::binary);
     如果 (!出) 归返 假值;
     出 << 入.rdbuf();
     归返 (真假型)出;

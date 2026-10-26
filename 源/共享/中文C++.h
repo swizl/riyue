@@ -1,4 +1,4 @@
-﻿#如果未定义 中文CPP_H
+#如果未定义 中文CPP_H
 #定义 中文CPP_H
 
 // 标准库头文件
@@ -78,7 +78,11 @@
 内联 文本 转为文本(双精度型 值) { 归返 std::to_string(值); }
 内联 文本 转为文本(长整型 值) { 归返 std::to_string(值); }
 内联 文本 转为文本(无符号 长整型 值) { 归返 std::to_string(值); }
+// Windows x64 上 大小类型(size_t) 为 unsigned long long，与 unsigned long 不同故可重载；
+// Linux x86_64 上二者同型，必须去掉该重载避免 redefinition。
+#如果定义 _WIN32
 内联 文本 转为文本(大小类型 值) { 归返 std::to_string(值); }
+#结束
 
 范型<类型名_ T>
 内联 独占指针<T> 创建独占(T* 指针) { 归返 std::unique_ptr<T>(指针); }

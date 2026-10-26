@@ -1,9 +1,27 @@
-# 编译器和 LLVM 库均使用 D:\src\riyue\llvm\llvm-build 自定义构建的中文 LLVM 23。
-# 可用 `make LLVM_CONFIG=/path/to/llvm-config CXX=...` 覆盖。
+# 编译器和 LLVM 库均使用 riyue 源码树自行构建的中文 LLVM 23：
+#   Windows → D:\src\riyue\llvm\llvm-build
+#   Linux   → /mnt/d/src/riyue/llvm/llvm-build-linux
+# 不使用发行版 clang/LLVM。可用 `make LLVM_CONFIG=/path/to/llvm-config CXX=...` 覆盖。
+ifeq ($(OS),Windows_NT)
 LLVM_CONFIG ?= /d/src/riyue/llvm/llvm-build/bin/llvm-config
 
 CXX = /d/src/riyue/llvm/llvm-build/bin/clang++
 CC = /d/src/riyue/llvm/llvm-build/bin/clang
+# 代码生成按 AST 递归（if/else 链、嵌套块）在 -O0 下栈帧较大，默认 1MB 栈不足以
+# 编译完整自举源码（在 发射函数定义节点 处栈溢出），显式设为 8MB。
+引导_LDFLAGS = -Wl,--stack,8388608
+# 自举链（引导.exe 派生的工具链）运行环境：PATH 仅含 riyue 的 LLVM 与 MinGW。
+自举环境 = export MSYS2_ARG_CONV_EXCL='*'; \
+           PATH=/d/src/riyue/llvm/llvm-build/bin:/c/tools/msys64/mingw64/bin:$$PATH; export PATH;
+else
+LLVM_CONFIG ?= /mnt/d/src/riyue/llvm/llvm-build-linux/bin/llvm-config
+
+CXX = /mnt/d/src/riyue/llvm/llvm-build-linux/bin/clang++
+CC = /mnt/d/src/riyue/llvm/llvm-build-linux/bin/clang
+# Linux 默认栈 8MB，无需显式设置。
+引导_LDFLAGS =
+自举环境 = PATH=/mnt/d/src/riyue/llvm/llvm-build-linux/bin:$$PATH; export PATH;
+endif
 LLVM_CXXFLAGS := $(shell $(LLVM_CONFIG) --cxxflags | sed 's/-fno-exceptions//; s/-fno-rtti//')
 LLVM_LDFLAGS  := $(shell $(LLVM_CONFIG) --ldflags)
 LLVM_LIBS     := $(shell $(LLVM_CONFIG) --libs core orcjit native nativecodegen mcparser option target analysis aarch64 webassembly)
@@ -15,7 +33,12 @@ CXXFLAGS = -std=c++17 -MMD -MP -finput-charset=UTF-8 -fexec-charset=UTF-8 \
            -D_GNU_SOURCE -fexceptions -frtti \
            $(LLVM_CXXFLAGS)
 CFLAGS = -Wall -MMD -MP -finput-charset=UTF-8 -fexec-charset=UTF-8
-LDFLAGS = $(LLVM_LDFLAGS) $(LLVM_LIBS) $(LLVM_SYSLIBS) -lshell32 -lws2_32 -lpthread
+LDFLAGS = $(LLVM_LDFLAGS) $(LLVM_LIBS) $(LLVM_SYSLIBS) -lpthread
+ifeq ($(OS),Windows_NT)
+LDFLAGS += -lshell32 -lws2_32
+else
+LDFLAGS += -ldl -lm
+endif
 
 # 默认并行编译；用 make -jN 可覆盖。
 MAKEFLAGS += -j$(shell nproc 2>/dev/null || echo 4)
@@ -48,12 +71,11 @@ all: 日月.exe
 # 代码生成按 AST 递归（if/else 链、嵌套块）在 -O0 下栈帧较大，默认 1MB 栈不足以
 # 编译完整自举源码（在 发射函数定义节点 处栈溢出），显式设为 8MB。
 $(TARGET): $(ALL_OBJ)
-	$(CXX) $(LDLLD) -Wl,--stack,8388608 -o $@ $^ $(LDFLAGS)
+	$(CXX) $(LDLLD) $(引导_LDFLAGS) -o $@ $^ $(LDFLAGS)
 
 # 自举 日月.exe：种子编译器 引导.exe 编译自举编译器源码 → 原生可执行文件
 日月.exe: $(TARGET) $(SELFHOST_SRC)
-	export MSYS2_ARG_CONV_EXCL='*'; \
-	PATH=/d/src/riyue/llvm/llvm-build/bin:/c/tools/msys64/mingw64/bin:$$PATH; export PATH; \
+	$(自举环境) \
 	./$(TARGET) 自举/主入口.心 日月.exe
 
 %.o: %.cpp
@@ -82,8 +104,7 @@ $(TARGET): $(ALL_OBJ)
 # 标准库冒烟：示例/标准库聚合测试.心 经 所有.心 导入全部标准库模块，
 # 编译后运行，验证聚合链路（导入解析 + 跨模块调用 + 内建发射）无错误。
 标准库冒烟: 日月.exe
-	export MSYS2_ARG_CONV_EXCL='*'; \
-	PATH=/d/src/riyue/llvm/llvm-build/bin:/c/tools/msys64/mingw64/bin:$$PATH; export PATH; \
+	$(自举环境) \
 	./日月.exe 示例/标准库聚合测试.心 阶段/标准库冒烟.exe && \
 	./阶段/标准库冒烟.exe
 
@@ -103,8 +124,7 @@ clean:
 # 从文法重新生成自举解析器（改动 工具/peg/*.心 或 工具/日月/日月.文法 后必须执行一次；
 # 该再生成无自动依赖，故独立成目标以免遗漏）。
 重生成解析器: 日月.exe
-	export MSYS2_ARG_CONV_EXCL='*'; \
-	PATH=/d/src/riyue/llvm/llvm-build/bin:/c/tools/msys64/mingw64/bin:$$PATH; export PATH; \
+	$(自举环境) \
 	./日月.exe 工具/peg/主程序.心 阶段/peg_cli.exe && \
 	阶段/peg_cli.exe 生成自举库 工具/日月/日月.文法 自举/解析器.心
 

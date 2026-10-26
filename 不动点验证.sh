@@ -5,9 +5,22 @@
 #     二级 再编译自身 → 阶段/中间码2.ll。
 # 判定：中间码1.ll 与 中间码2.ll 必须完全一致（哈希相同即自举闭环成立）。
 # 证据（两份中间码的字节数与 SHA256，以及不一致时的 diff）固化到 阶段/不动点.log。
-export MSYS2_ARG_CONV_EXCL='*'
-export PATH=/d/src/riyue/llvm/llvm-build/bin:/c/tools/msys64/mingw64/bin:/usr/bin:/bin:$PATH
-cd /d/src/riyue/riyue || exit 9
+# 工具链一律取自 riyue 源码树构建的本地化 LLVM：
+#   Windows → /d/src/riyue/llvm/llvm-build/bin
+#   Linux   → /mnt/d/src/riyue/llvm/llvm-build-linux/bin
+cd "$(dirname "$0")" || exit 9
+
+case "$(uname -s)" in
+    Linux)
+        export PATH=/mnt/d/src/riyue/llvm/llvm-build-linux/bin:/usr/bin:/bin:$PATH
+        HOST_TRIPLE=x86_64-unknown-linux-gnu
+        ;;
+    *)
+        export MSYS2_ARG_CONV_EXCL='*'
+        export PATH=/d/src/riyue/llvm/llvm-build/bin:/c/tools/msys64/mingw64/bin:/usr/bin:/bin:$PATH
+        HOST_TRIPLE=x86_64-w64-windows-gnu
+        ;;
+esac
 
 LOG=阶段/不动点.log
 mkdir -p 阶段
@@ -20,14 +33,23 @@ rm -f 阶段/中间码1.ll 阶段/中间码2.ll 阶段/一级.exe 阶段/二级.
 ./引导.exe 自举/主入口.心 阶段/一级.exe      || { 记录 "失败: 引导.exe 编译自举源码"; exit 1; }
 ./阶段/一级.exe 自举/主入口.心 阶段/中间码1.ll || { 记录 "失败: 一级.exe 生成 中间码1.ll"; exit 2; }
 llvm-as 阶段/中间码1.ll -o 阶段/中间码1.bc  || { 记录 "失败: llvm-as 汇编 中间码1.ll"; exit 3; }
-llc -mtriple=x86_64-w64-windows-gnu -filetype=obj 阶段/中间码1.bc -o 阶段/中间码1.o || { 记录 "失败: llc 生成目标文件"; exit 4; }
+llc -mtriple=$HOST_TRIPLE -filetype=obj 阶段/中间码1.bc -o 阶段/中间码1.o || { 记录 "失败: llc 生成目标文件"; exit 4; }
 clang -O0 -finput-charset=UTF-8 -fexec-charset=UTF-8 -c 源/运行时/运行时辅助.c -o 阶段/运行时.o || { 记录 "失败: 编译运行时"; exit 5; }
-cp 'C:/tools/msys64/mingw64/lib/crt2.o' 阶段/启动.o || { 记录 "失败: 复制 crt2.o"; exit 6; }
-ld.lld -m i386pep 阶段/启动.o 阶段/中间码1.o 阶段/运行时.o -o 阶段/二级.exe \
-  -LC:/tools/msys64/mingw64/lib \
-  -LC:/tools/msys64/mingw64/lib/gcc/x86_64-w64-mingw32/16.1.0 \
-  -lmingw32 -lmingwex -lmsvcrt -lgcc -lmoldname -lws2_32 -lm -ladvapi32 -lshell32 -luser32 -lkernel32 \
-  || { 记录 "失败: ld.lld 链接 二级.exe"; exit 7; }
+
+if [ "$(uname -s)" = "Linux" ]; then
+    # 宿主即 ELF：clang 驱动直接链接（-fuse-ld=lld 解析到同一份 riyue ld.lld），
+    # 运行时依赖 libc / 线程 / 动态装载，无需 crt 与手工库列表。
+    # 日月生成的 IR 目标文件非 PIC，clang 默认 PIE，故需 -no-pie 避免 R_X86_64_32 重定位报错。
+    clang -fuse-ld=lld -no-pie 阶段/中间码1.o 阶段/运行时.o -o 阶段/二级.exe -lm -lpthread -ldl \
+      || { 记录 "失败: clang 链接 二级.exe"; exit 7; }
+else
+    cp 'C:/tools/msys64/mingw64/lib/crt2.o' 阶段/启动.o || { 记录 "失败: 复制 crt2.o"; exit 6; }
+    ld.lld -m i386pep 阶段/启动.o 阶段/中间码1.o 阶段/运行时.o -o 阶段/二级.exe \
+      -LC:/tools/msys64/mingw64/lib \
+      -LC:/tools/msys64/mingw64/lib/gcc/x86_64-w64-mingw32/16.1.0 \
+      -lmingw32 -lmingwex -lmsvcrt -lgcc -lmoldname -lws2_32 -lm -ladvapi32 -lshell32 -luser32 -lkernel32 \
+      || { 记录 "失败: ld.lld 链接 二级.exe"; exit 7; }
+fi
 ./阶段/二级.exe 自举/主入口.心 阶段/中间码2.ll || { 记录 "失败: 二级.exe 生成 中间码2.ll"; exit 8; }
 
 # 注意：bash 变量名只能是 ASCII，哈希/字节数用 ASCII 名；注释与输出仍为中文。

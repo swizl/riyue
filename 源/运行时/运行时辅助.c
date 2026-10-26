@@ -1,4 +1,7 @@
 // 日月运行时辅助函数
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE   /* pthread_getattr_np 等 GNU 扩展（Linux 栈扫描需要） */
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -20,6 +23,122 @@
 #else
 #include <unistd.h>
 #include <sys/wait.h>
+#endif
+
+/* ============================================================================
+ * 非 Windows（POSIX / WSL Linux）兼容层
+ * ----------------------------------------------------------------------------
+ * 本文件的并发原语按 Windows API 的「形状」书写；此处用 pthread / sem 提供同名
+ * 薄封装，使同一份算法实现无需逐函数重写即可在 Linux 上编译运行。
+ * 覆盖：临界区（递归互斥）/ 条件变量 / 读写锁 / 信号量 / 原子操作 / 睡眠与让片。
+ * 纤程（协程）不能这样映射，见下方协程段的 ucontext 实现。
+ * ========================================================================== */
+#ifndef _WIN32
+#include <pthread.h>
+#include <semaphore.h>
+#include <sched.h>
+#include <stdint.h>
+#include <ucontext.h>
+
+typedef int BOOL;
+typedef long LONG;
+typedef unsigned long DWORD;
+typedef void* HANDLE;
+typedef void* LPVOID;
+#define WINAPI
+#define INFINITE 0xFFFFFFFFu
+#define WAIT_OBJECT_0 0
+
+/* ---- 临界区：Windows 临界区可重入 → 递归互斥量 ---- */
+typedef struct { pthread_mutex_t 互斥; } CRITICAL_SECTION;
+
+static inline void InitializeCriticalSection(CRITICAL_SECTION* 临界区) {
+    pthread_mutexattr_t 属性;
+    pthread_mutexattr_init(&属性);
+    pthread_mutexattr_settype(&属性, PTHREAD_MUTEX_RECURSIVE);
+    pthread_mutex_init(&临界区->互斥, &属性);
+    pthread_mutexattr_destroy(&属性);
+}
+static inline void EnterCriticalSection(CRITICAL_SECTION* 临界区) { pthread_mutex_lock(&临界区->互斥); }
+static inline void LeaveCriticalSection(CRITICAL_SECTION* 临界区) { pthread_mutex_unlock(&临界区->互斥); }
+static inline void DeleteCriticalSection(CRITICAL_SECTION* 临界区) { pthread_mutex_destroy(&临界区->互斥); }
+
+/* ---- 条件变量：等待期间原子释放并重获关联的临界区 ---- */
+typedef struct { pthread_cond_t 条件; } CONDITION_VARIABLE;
+
+static inline void InitializeConditionVariable(CONDITION_VARIABLE* 条件) { pthread_cond_init(&条件->条件, NULL); }
+static inline BOOL SleepConditionVariableCS(CONDITION_VARIABLE* 条件, CRITICAL_SECTION* 临界区, DWORD 毫秒) {
+    (void)毫秒;
+    return pthread_cond_wait(&条件->条件, &临界区->互斥) == 0 ? 1 : 0;
+}
+static inline void WakeConditionVariable(CONDITION_VARIABLE* 条件) { pthread_cond_signal(&条件->条件); }
+static inline void WakeAllConditionVariable(CONDITION_VARIABLE* 条件) { pthread_cond_broadcast(&条件->条件); }
+
+/* ---- 读写锁：多读者共享 / 写者独占 ---- */
+typedef struct { pthread_rwlock_t 读写; } SRWLOCK;
+
+static inline void InitializeSRWLock(SRWLOCK* 锁) { pthread_rwlock_init(&锁->读写, NULL); }
+static inline void AcquireSRWLockShared(SRWLOCK* 锁) { pthread_rwlock_rdlock(&锁->读写); }
+static inline void ReleaseSRWLockShared(SRWLOCK* 锁) { pthread_rwlock_unlock(&锁->读写); }
+static inline void AcquireSRWLockExclusive(SRWLOCK* 锁) { pthread_rwlock_wrlock(&锁->读写); }
+static inline void ReleaseSRWLockExclusive(SRWLOCK* 锁) { pthread_rwlock_unlock(&锁->读写); }
+
+/* ---- 信号量：句柄即堆上的 sem_t 包装 ---- */
+typedef struct { sem_t 量; } POSIX信号量;
+
+static inline HANDLE CreateSemaphore(void* 属性, LONG 初值, LONG 上限, const char* 名称) {
+    POSIX信号量* 句柄;
+    (void)属性; (void)上限; (void)名称;
+    if (初值 < 0) 初值 = 0;
+    句柄 = (POSIX信号量*)calloc(1, sizeof(POSIX信号量));
+    if (!句柄) return NULL;
+    if (sem_init(&句柄->量, 0, (unsigned)初值) != 0) { free(句柄); return NULL; }
+    return (HANDLE)句柄;
+}
+static inline BOOL ReleaseSemaphore(HANDLE 句柄, LONG 增量, LONG* 旧值) {
+    LONG 序;
+    (void)旧值;
+    if (!句柄) return 0;
+    for (序 = 0; 序 < 增量; 序++) sem_post(&((POSIX信号量*)句柄)->量);
+    return 1;
+}
+static inline DWORD WaitForSingleObject(HANDLE 句柄, DWORD 毫秒) {
+    (void)毫秒;
+    if (!句柄) return 1;
+    while (sem_wait(&((POSIX信号量*)句柄)->量) != 0) {
+        if (errno != EINTR) return 1;
+    }
+    return WAIT_OBJECT_0;
+}
+static inline BOOL CloseHandle(HANDLE 句柄) {
+    if (!句柄) return 0;
+    sem_destroy(&((POSIX信号量*)句柄)->量);
+    free(句柄);
+    return 1;
+}
+
+/* ---- 原子操作：__atomic 内建，语义与 Interlocked 系列逐一对应 ---- */
+static inline LONG InterlockedIncrement(volatile LONG* 值) { return __atomic_add_fetch(值, 1, __ATOMIC_SEQ_CST); }
+static inline LONG InterlockedDecrement(volatile LONG* 值) { return __atomic_sub_fetch(值, 1, __ATOMIC_SEQ_CST); }
+static inline LONG InterlockedExchange(volatile LONG* 值, LONG 新值) { return __atomic_exchange_n(值, 新值, __ATOMIC_SEQ_CST); }
+static inline LONG InterlockedExchangeAdd(volatile LONG* 值, LONG 增量) { return __atomic_fetch_add(值, 增量, __ATOMIC_SEQ_CST); }
+static inline LONG InterlockedCompareExchange(volatile LONG* 值, LONG 新值, LONG 期望) {
+    __atomic_compare_exchange_n(值, &期望, 新值, 0, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
+    return 期望;
+}
+static inline LONG InterlockedAnd(volatile LONG* 值, LONG 掩码) { return __atomic_fetch_and(值, 掩码, __ATOMIC_SEQ_CST); }
+static inline LONG InterlockedOr(volatile LONG* 值, LONG 掩码) { return __atomic_fetch_or(值, 掩码, __ATOMIC_SEQ_CST); }
+static inline LONG InterlockedXor(volatile LONG* 值, LONG 掩码) { return __atomic_fetch_xor(值, 掩码, __ATOMIC_SEQ_CST); }
+
+/* ---- 睡眠 / 让出时间片 ---- */
+static inline void MemoryBarrier(void) { __atomic_thread_fence(__ATOMIC_SEQ_CST); }
+static inline void Sleep(DWORD 毫秒) {
+    struct timespec 时长;
+    时长.tv_sec = (time_t)(毫秒 / 1000u);
+    时长.tv_nsec = (long)(毫秒 % 1000u) * 1000000L;
+    nanosleep(&时长, NULL);
+}
+static inline void SwitchToThread(void) { sched_yield(); }
 #endif
 
 // T5：关键字 / 文本标志 的权威 token id 表与完美哈希（宿主与自举共用同一实现）
@@ -999,12 +1118,14 @@ static int 全局参数数量 = 0;
 static const char** 全局参数列表 = NULL;
 
 // 将宽字符参数转换为 UTF-8 副本
+#ifdef _WIN32
 static char* 宽参数转UTF8(const wchar_t* 宽参数) {
     int 长度 = WideCharToMultiByte(CP_UTF8, 0, 宽参数, -1, NULL, 0, NULL, NULL);
     char* 结果 = (char*)malloc(长度 ? 长度 : 1);
     if (结果) WideCharToMultiByte(CP_UTF8, 0, 宽参数, -1, 结果, 长度, NULL, NULL);
     return 结果;
 }
+#endif
 
 void 设置参数(int argc, const char** argv) {
 #ifdef _WIN32
@@ -2316,10 +2437,31 @@ static void* 动态库取符号(动态库句柄 库, const char* 符号名) {
 #include <dlfcn.h>
 typedef void* 动态库句柄;
 static 动态库句柄 动态库打开(const char* 库名) {
-    return dlopen(库名, RTLD_NOW | RTLD_LOCAL);
+    void* 句柄 = dlopen(库名, RTLD_NOW | RTLD_LOCAL);
+    if (句柄 == NULL) {
+        // Windows C 运行时库名（msvcrt.dll / ucrtbase.dll 等）在 POSIX 上没有同名
+        // 动态库；语义等价物是宿主进程的 C 运行时，故回退到 libc / 全局符号表。
+        句柄 = dlopen("libc.so.6", RTLD_NOW | RTLD_LOCAL);
+        if (句柄 == NULL) 句柄 = dlopen(NULL, RTLD_NOW | RTLD_LOCAL);
+    }
+    return 句柄;
 }
+static int 运行时_atexit(void (*函数)(void)) { return atexit(函数); }
 static void* 动态库取符号(动态库句柄 库, const char* 符号名) {
-    return dlsym(库, 符号名);
+    void* 符号 = (库 != NULL) ? dlsym(库, 符号名) : NULL;
+    if (符号 == NULL) {
+        // 数学函数在 libm（可能与 libc 分库，且 --as-needed 下未必已随进程装载）。
+        static void* 数学库 = NULL;
+        if (数学库 == NULL) 数学库 = dlopen("libm.so.6", RTLD_NOW | RTLD_LOCAL);
+        if (数学库 != NULL) 符号 = dlsym(数学库, 符号名);
+    }
+    if (符号 == NULL) 符号 = dlsym(RTLD_DEFAULT, 符号名);
+    // MSVC 专属命名 → POSIX 同名语义函数
+    if (符号 == NULL && 库 != NULL && strcmp(符号名, "_strdup") == 0) 符号 = dlsym(库, "strdup");
+    if (符号 == NULL && 库 != NULL && strcmp(符号名, "_abs64") == 0) 符号 = dlsym(库, "imaxabs");
+    // glibc 只导出 __cxa_atexit，`atexit` 不是动态符号，用本文件内的包装顶上。
+    if (符号 == NULL && strcmp(符号名, "atexit") == 0) 符号 = (void*)运行时_atexit;
+    return 符号;
 }
 #endif
 
@@ -2991,13 +3133,19 @@ void 释放通道函数(通道数据* ch) {
     free(ch);
 }
 
-// 协程实现（协作式单线程：基于 Windows 纤程，不引入原子/同步原语）。
+// 协程实现（协作式单线程，不引入原子/同步原语）。
+// Windows 用纤程（Fiber）承载，POSIX/Linux 用 ucontext 上下文切换，两者语义一致。
 // 语义：创建协程时不执行；首次「恢复」才开始执行，运行至「让出」暂停并把让出值交给恢复者；
 // 协程体返回后标记已完成，之后「恢复」归返 0。让出值以 整数（int）槽传递（语言层为 整数）。
 typedef struct {
     void (*入口)(void*);   // 协程体函数（签名 空类型(指针)）
     void* 帧;              // 形参帧（各形参按 8 字节槽存放）
+#ifdef _WIN32
     void* 纤程;            // 承载协程体的纤程
+#else
+    ucontext_t 上下文;     // 协程自身执行上下文
+    void* 栈;              // 协程私有栈（malloc）
+#endif
     volatile int 已完成;   // 抢占式调度下由工作线程写入、调度线程读取
     int 让出值;
 } 协程对象;
@@ -3008,8 +3156,14 @@ typedef struct {
 #define 日月线程局部 _Thread_local
 
 static 日月线程局部 协程对象* 当前协程 = NULL;
+#ifdef _WIN32
 static 日月线程局部 void* 协程宿主纤程 = NULL;
+#else
+static 日月线程局部 ucontext_t 协程宿主上下文;
+static 日月线程局部 int 协程宿主就绪 = 0;
+#endif
 
+#ifdef _WIN32
 static void 协程入口包装(void* 参数) {
     协程对象* 协 = (协程对象*)参数;
     当前协程 = 协;
@@ -3036,9 +3190,7 @@ void 协程让出(int 值) {
     // 阶段10 G11-B：抢占式调度的任务跑在独立 OS 线程上（本线程无宿主纤程），
     // 此时「让出」解释为让出 CPU 时间片；协作式纤程模式下仍切回宿主纤程。
     if (!协程宿主纤程) {
-#ifdef _WIN32
         SwitchToThread();
-#endif
         return;
     }
     SwitchToFiber(协程宿主纤程);
@@ -3054,6 +3206,55 @@ int 协程恢复(void* 句柄) {
     if (协->已完成) return 0;
     return 协->让出值;
 }
+#else
+/* 协程私有栈 1 MiB：与 Windows 纤程的默认提交量一致。 */
+enum { 协程栈字节 = 1 << 20 };
+
+static void 协程入口包装(void) {
+    协程对象* 协 = 当前协程;
+    协->入口(协->帧);
+    协->已完成 = 1;
+    swapcontext(&协->上下文, &协程宿主上下文);   /* 结束后把控制权交还恢复者 */
+}
+
+void* 创建协程对象(void* 入口, void* 帧) {
+    协程对象* 协 = (协程对象*)calloc(1, sizeof(协程对象));
+    if (!协) return NULL;
+    协->入口 = (void (*)(void*))入口;
+    协->帧 = 帧;
+    协->已完成 = 0;
+    协->让出值 = 0;
+    协->栈 = malloc(协程栈字节);
+    if (!协->栈) { free(协); return NULL; }
+    if (getcontext(&协->上下文) != 0) { free(协->栈); free(协); return NULL; }
+    协->上下文.uc_stack.ss_sp = 协->栈;
+    协->上下文.uc_stack.ss_size = 协程栈字节;
+    协->上下文.uc_link = NULL;
+    makecontext(&协->上下文, 协程入口包装, 0);
+    return 协;
+}
+
+void 协程让出(int 值) {
+    if (!当前协程) return;
+    当前协程->让出值 = 值;
+    // 抢占式调度的任务直接跑在本线程（无宿主上下文）：让出即让出 CPU 时间片。
+    if (!协程宿主就绪) { sched_yield(); return; }
+    swapcontext(&当前协程->上下文, &协程宿主上下文);
+}
+
+int 协程恢复(void* 句柄) {
+    协程对象* 协 = (协程对象*)句柄;
+    if (!协 || 协->已完成) return 0;
+    协程对象* 先前 = 当前协程;
+    当前协程 = 协;
+    协程宿主就绪 = 1;
+    swapcontext(&协程宿主上下文, &协->上下文);
+    协程宿主就绪 = 0;
+    当前协程 = 先前;
+    if (协->已完成) return 0;
+    return 协->让出值;
+}
+#endif
 
 // 轻量协作式调度器（goroutine 式，协作式单线程）：
 // 把若干协程注册为「任务」，按注册顺序轮转恢复，直至全部任务完成。
@@ -3863,6 +4064,19 @@ static char* GC当前线程栈顶(void) {
     void* 栈顶 = NULL;
     __asm__ volatile("movq %%gs:0x08, %0" : "=r"(栈顶));
     return (char*)栈顶;
+#elif defined(__linux__)
+    /* Linux：用 pthread 自己记录的栈区间（低地址 + 长度 = 栈顶）。 */
+    pthread_attr_t 属性;
+    void* 栈低 = NULL;
+    size_t 栈长 = 0;
+    char* 栈顶 = NULL;
+    if (pthread_getattr_np(pthread_self(), &属性) == 0) {
+        if (pthread_attr_getstack(&属性, &栈低, &栈长) == 0 && 栈低) {
+            栈顶 = (char*)栈低 + 栈长;
+        }
+        pthread_attr_destroy(&属性);
+    }
+    return 栈顶;
 #else
     return NULL;
 #endif
@@ -4399,66 +4613,66 @@ typedef struct {
 } 原子实体;
 
 int 创建原子整数(int 初值) {
-    原子实体* 原子 = (原子实体*)calloc(1, sizeof(原子实体));
-    if (!原子) return 0;
-    原子->值 = (LONG)初值;
-    int 句柄 = 同步登记(同步原子, 原子);
-    if (!句柄) { free(原子); return 0; }
+    原子实体* 原子量 = (原子实体*)calloc(1, sizeof(原子实体));
+    if (!原子量) return 0;
+    原子量->值 = (LONG)初值;
+    int 句柄 = 同步登记(同步原子, 原子量);
+    if (!句柄) { free(原子量); return 0; }
     return 句柄;
 }
 
 int 原子读(int 句柄) {
-    原子实体* 原子 = (原子实体*)同步取(句柄, 同步原子);
-    if (!原子) return 0;
-    return (int)InterlockedCompareExchange(&原子->值, 0, 0);
+    原子实体* 原子量 = (原子实体*)同步取(句柄, 同步原子);
+    if (!原子量) return 0;
+    return (int)InterlockedCompareExchange(&原子量->值, 0, 0);
 }
 
 int 原子写(int 句柄, int 值) {
-    原子实体* 原子 = (原子实体*)同步取(句柄, 同步原子);
-    if (!原子) return 0;
-    return (int)InterlockedExchange(&原子->值, (LONG)值);   /* 返回旧值 */
+    原子实体* 原子量 = (原子实体*)同步取(句柄, 同步原子);
+    if (!原子量) return 0;
+    return (int)InterlockedExchange(&原子量->值, (LONG)值);   /* 返回旧值 */
 }
 
 int 原子加(int 句柄, int 值) {
-    原子实体* 原子 = (原子实体*)同步取(句柄, 同步原子);
-    if (!原子) return 0;
-    return (int)InterlockedExchangeAdd(&原子->值, (LONG)值) + 值;   /* 返回新值 */
+    原子实体* 原子量 = (原子实体*)同步取(句柄, 同步原子);
+    if (!原子量) return 0;
+    return (int)InterlockedExchangeAdd(&原子量->值, (LONG)值) + 值;   /* 返回新值 */
 }
 
 int 原子减(int 句柄, int 值) {
-    原子实体* 原子 = (原子实体*)同步取(句柄, 同步原子);
-    if (!原子) return 0;
-    return (int)InterlockedExchangeAdd(&原子->值, -(LONG)值) - 值;   /* 返回新值 */
+    原子实体* 原子量 = (原子实体*)同步取(句柄, 同步原子);
+    if (!原子量) return 0;
+    return (int)InterlockedExchangeAdd(&原子量->值, -(LONG)值) - 值;   /* 返回新值 */
 }
 
 int 原子比较交换(int 句柄, int 期望, int 新值) {
-    原子实体* 原子 = (原子实体*)同步取(句柄, 同步原子);
-    if (!原子) return 0;
-    return (int)InterlockedCompareExchange(&原子->值, (LONG)新值, (LONG)期望);   /* 返回旧值 */
+    原子实体* 原子量 = (原子实体*)同步取(句柄, 同步原子);
+    if (!原子量) return 0;
+    return (int)InterlockedCompareExchange(&原子量->值, (LONG)新值, (LONG)期望);   /* 返回旧值 */
 }
 
 int 原子交换(int 句柄, int 值) {
-    原子实体* 原子 = (原子实体*)同步取(句柄, 同步原子);
-    if (!原子) return 0;
-    return (int)InterlockedExchange(&原子->值, (LONG)值);   /* 返回旧值 */
+    原子实体* 原子量 = (原子实体*)同步取(句柄, 同步原子);
+    if (!原子量) return 0;
+    return (int)InterlockedExchange(&原子量->值, (LONG)值);   /* 返回旧值 */
 }
 
 int 原子与(int 句柄, int 值) {
-    原子实体* 原子 = (原子实体*)同步取(句柄, 同步原子);
-    if (!原子) return 0;
-    return (int)InterlockedAnd(&原子->值, (LONG)值);   /* 返回旧值 */
+    原子实体* 原子量 = (原子实体*)同步取(句柄, 同步原子);
+    if (!原子量) return 0;
+    return (int)InterlockedAnd(&原子量->值, (LONG)值);   /* 返回旧值 */
 }
 
 int 原子或(int 句柄, int 值) {
-    原子实体* 原子 = (原子实体*)同步取(句柄, 同步原子);
-    if (!原子) return 0;
-    return (int)InterlockedOr(&原子->值, (LONG)值);   /* 返回旧值 */
+    原子实体* 原子量 = (原子实体*)同步取(句柄, 同步原子);
+    if (!原子量) return 0;
+    return (int)InterlockedOr(&原子量->值, (LONG)值);   /* 返回旧值 */
 }
 
 int 原子异或(int 句柄, int 值) {
-    原子实体* 原子 = (原子实体*)同步取(句柄, 同步原子);
-    if (!原子) return 0;
-    return (int)InterlockedXor(&原子->值, (LONG)值);   /* 返回旧值 */
+    原子实体* 原子量 = (原子实体*)同步取(句柄, 同步原子);
+    if (!原子量) return 0;
+    return (int)InterlockedXor(&原子量->值, (LONG)值);   /* 返回旧值 */
 }
 
 /* 全内存屏障（等价 fence seq_cst：此前读写对其他处理器可见后才继续） */
@@ -4467,10 +4681,10 @@ void 内存屏障() {
 }
 
 int 销毁原子整数(int 句柄) {
-    原子实体* 原子 = (原子实体*)同步取(句柄, 同步原子);
-    if (!原子) return -1;
+    原子实体* 原子量 = (原子实体*)同步取(句柄, 同步原子);
+    if (!原子量) return -1;
     同步注销(句柄);
-    free(原子);
+    free(原子量);
     return 0;
 }
 

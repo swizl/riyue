@@ -5,7 +5,18 @@
 // 无法用 心 程序构造。故把运行时实现整份包含进本编译单元，直接对内部静态函数
 // `从流读取整文件` 注入故障——关闭底层文件描述符后，fread 必然返回 0 且置 ferror，
 // 正好命中 K7 的分支。
+// 运行时辅助.c 依赖 _GNU_SOURCE（pthread_getattr_np 等）；它在被包含前必须已定义，
+// 因为特性宏只在首个系统头之前生效。
+#ifndef _WIN32
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+#endif
+#ifdef _WIN32
 #include <io.h>
+#else
+#include <unistd.h>
+#endif
 #include <stdio.h>
 #include <string.h>
 
@@ -32,7 +43,11 @@ int main(void) {
     // 2) 故障注入：底层句柄失效 → fread 返回 0 且 ferror 置位 → 必须返回 NULL
     FILE* 读句柄 = fopen(路径, "rb");
     if (!读句柄) { printf("失败: 无法打开自测文件\n"); return 2; }
+#ifdef _WIN32
     _close(_fileno(读句柄));
+#else
+    close(fileno(读句柄));
+#endif
     char* 故障 = 从流读取整文件(读句柄);
     失败 += 断言(故障 == NULL, "读错误时返回 NULL（不再返回半截数据）");
     free(故障);

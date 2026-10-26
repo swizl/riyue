@@ -2,9 +2,27 @@
 # 日月端到端回归：遍历 示例/*.心，用自举编译器 日月.exe 编译并运行，
 # 与 示例/<名>.期望 比对（无 .期望 的用例只要编译成功且退出码为 0 即通过）。
 # 结果同时打印到控制台并固化到 阶段/回归.log；末尾按门禁判定退出码。
-export PATH=/usr/bin:/bin:/mingw64/bin:$PATH
-export MSYS_NO_PATHCONV=1
-cd /d/src/riyue/riyue || exit 9
+# 支持 Windows(MSYS2/MinGW) 与 Linux 两个宿主：工具链一律取自 riyue 源码树
+# 构建的本地化 LLVM（Windows → llvm-build，Linux → llvm-build-linux）。
+cd "$(dirname "$0")" || exit 9
+
+case "$(uname -s)" in
+    Linux)
+        export PATH=/usr/bin:/bin:$PATH
+        LLVM_BIN=/mnt/d/src/riyue/llvm/llvm-build-linux/bin
+        RT_LIBS="-lpthread -ldl -lm"
+        OUT_EXE=./out_t
+        SELFTEST_EXE=./_rt_selftest.exe
+        ;;
+    *)
+        export PATH=/usr/bin:/bin:/mingw64/bin:$PATH
+        export MSYS_NO_PATHCONV=1
+        LLVM_BIN=/d/src/riyue/llvm/llvm-build/bin
+        RT_LIBS="-lws2_32 -lm"
+        OUT_EXE=./out_t.exe
+        SELFTEST_EXE=./_rt_selftest.exe
+        ;;
+esac
 
 # 门禁：Pass 不得低于用例总数，Fail 必须为 0（当前 示例/*.心 共 211 个）。
 MIN_PASS=211
@@ -17,26 +35,29 @@ TIMEOUT_COMPILE=30
 TIMEOUT_RUN=30
 COMPILE_RETRY=2
 
-# 清理编译残留的进程和文件，避免文件锁导致后续编译卡住
+# 清理编译残留的进程和文件，避免文件锁导致后续编译卡住（Windows 专有；
+# Linux 无文件锁问题，只清产物即可）
 清理残留() {
-    /c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe -NoProfile -Command \
-        "Get-Process -Name '日月','out_t','clang++','ld','llc' -ErrorAction SilentlyContinue | Stop-Process -Force" 2>/dev/null
-    rm -f out_t.exe out_t.ll out_t.s out_t.o
+    if [ "$(uname -s)" != "Linux" ]; then
+        /c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe -NoProfile -Command \
+            "Get-Process -Name '日月','out_t','clang++','ld','llc' -ErrorAction SilentlyContinue | Stop-Process -Force" 2>/dev/null
+    fi
+    rm -f out_t out_t.exe out_t.ll out_t.s out_t.o
 }
 
 # K7 故障注入自测（C 级）：底层读错误必须返回 NULL，而不是半截数据。
 # 计入门禁（失败即 Fail+1），但不计入 Pass（Pass 只统计 示例/*.心）。
 运行时读取自测() {
-    /d/src/riyue/llvm/llvm-build/bin/clang -fuse-ld=lld \
+    "$LLVM_BIN/clang" -fuse-ld=lld \
         -finput-charset=UTF-8 -fexec-charset=UTF-8 -O1 \
-        测试/运行时读取自测.c -o _rt_selftest.exe -lws2_32 -lm 2> 阶段/.rt_selftest_cmp
+        测试/运行时读取自测.c -o _rt_selftest.exe $RT_LIBS 2> 阶段/.rt_selftest_cmp
     if [ $? -ne 0 ]; then
         echo "FAIL: 运行时读取自测（编译失败）"
         sed 's/\r//' 阶段/.rt_selftest_cmp
         rm -f _rt_selftest.exe
         return 1
     fi
-    ./_rt_selftest.exe > 阶段/.rt_selftest_out 2>&1
+    $SELFTEST_EXE > 阶段/.rt_selftest_out 2>&1
     rc=$?
     sed 's/\r//' 阶段/.rt_selftest_out
     rm -f _rt_selftest.exe
@@ -80,7 +101,7 @@ COMPILE_RETRY=2
         if [ -f "示例/${name}.期望错" ]; then
             # 期望运行期「被拦截并中止」（如越界）：编译须成功、退出码须非零、
             # 且 stderr（去 \r / 去空行）须等于 .期望错 内容。
-            timeout $TIMEOUT_RUN ./out_t.exe > 阶段/.rt_out 2> 阶段/.rt_err
+            timeout $TIMEOUT_RUN $OUT_EXE > 阶段/.rt_out 2> 阶段/.rt_err
             rc_run=$?
             actual_err=$(sed 's/\r//' 阶段/.rt_err | sed '/^[[:space:]]*$/d')
             expected_err=$(cat "示例/${name}.期望错")
@@ -101,7 +122,7 @@ COMPILE_RETRY=2
                 PASS=$((PASS + 1))
             fi
         elif [ -f "示例/${name}.期望" ]; then
-            actual=$(timeout $TIMEOUT_RUN ./out_t.exe 2>/dev/null | sed 's/\r//')
+            actual=$(timeout $TIMEOUT_RUN $OUT_EXE 2>/dev/null | sed 's/\r//')
             rc_run=$?
             if [ $rc_run -eq 124 ]; then
                 echo "TIMEOUT: $name (run)"
@@ -119,7 +140,7 @@ COMPILE_RETRY=2
                 fi
             fi
         else
-            timeout $TIMEOUT_RUN ./out_t.exe 2>/dev/null 1>/dev/null
+            timeout $TIMEOUT_RUN $OUT_EXE 2>/dev/null 1>/dev/null
             rc2=$?
             if [ $rc2 -eq 124 ]; then
                 echo "TIMEOUT: $name (run)"
@@ -137,7 +158,7 @@ COMPILE_RETRY=2
         清理残留
     done
 
-    rm -f out_t.exe out_t.ll out_t.s out_t.o
+    rm -f out_t out_t.exe out_t.ll out_t.s out_t.o
 
     echo ""
     echo "=== Result ==="
