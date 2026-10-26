@@ -1,0 +1,117 @@
+{
+  "name": "riyue-language",
+  "displayName": "日月语言",
+  "description": "日月语言（.心）：语法高亮 / 代码片段 / LSP（补全·跳转·悬停·引用·符号·重命名·诊断）/ 编译运行 / AI 助手",
+  "version": "0.1.0",
+  "publisher": "riyue",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "main": "./extension.js",
+  "activationEvents": [
+    "onLanguage:riyue"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "riyue",
+        "aliases": [
+          "日月",
+          "Riyue",
+          "riyue"
+        ],
+        "extensions": [
+          ".心"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "riyue",
+        "scopeName": "source.riyue",
+        "path": "./syntaxes/riyue.tmLanguage.json"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "riyue",
+        "path": "./snippets/riyue.json"
+      }
+    ],
+    "commands": [
+      {
+        "command": "riyue.compile",
+        "title": "日月: 编译当前文件"
+      },
+      {
+        "command": "riyue.run",
+        "title": "日月: 编译并运行"
+      },
+      {
+        "command": "riyue.format",
+        "title": "日月: 格式化文档"
+      },
+      {
+        "command": "riyue.aiGenerate",
+        "title": "日月: AI 生成代码"
+      },
+      {
+        "command": "riyue.aiExplain",
+        "title": "日月: AI 解释代码"
+      },
+      {
+        "command": "riyue.restartServer",
+        "title": "日月: 重启语言服务"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "riyue.format",
+          "when": "editorLangId == riyue",
+          "group": "riyue@1"
+        },
+        {
+          "command": "riyue.aiExplain",
+          "when": "editorLangId == riyue",
+          "group": "riyue@2"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "日月语言",
+      "properties": {
+        "日月.编译器路径": {
+          "type": "string",
+          "default": "日月.exe",
+          "description": "日月编译器可执行文件路径（相对路径按「项目根」解析）。"
+        },
+        "日月.项目根": {
+          "type": "string",
+          "default": "",
+          "description": "项目根目录（含 工具/ 与 标准库/）。留空则取当前工作区第一个文件夹。"
+        },
+        "日月.AI端点": {
+          "type": "string",
+          "default": "",
+          "description": "OpenAI 兼容补全端点，形如 http://主机[:端口]/v1/chat/completions（仅明文 http）。"
+        },
+        "日月.AI模型": {
+          "type": "string",
+          "default": "gpt-4o-mini",
+          "description": "调用模型名。"
+        },
+        "日月.AI密钥": {
+          "type": "string",
+          "default": "",
+          "description": "API 密钥（本地调试用；会作为命令行参数传给 工具/AI助手.心）。"
+        }
+      }
+    }
+  }
+}

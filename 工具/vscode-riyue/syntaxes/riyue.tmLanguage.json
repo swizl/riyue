@@ -1,0 +1,104 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "日月语言",
+  "scopeName": "source.riyue",
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#strings" },
+    { "include": "#numbers" },
+    { "include": "#declarations" },
+    { "include": "#keywords" },
+    { "include": "#types" },
+    { "include": "#builtins" },
+    { "include": "#operators" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.double-slash.riyue",
+          "match": "//.*$"
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.riyue",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [
+            {
+              "name": "constant.character.escape.riyue",
+              "match": "\\\\."
+            }
+          ]
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.riyue",
+          "match": "\\b[0-9]+(\\.[0-9]+)?\\b"
+        }
+      ]
+    },
+    "declarations": {
+      "patterns": [
+        {
+          "name": "entity.name.function.riyue",
+          "match": "(?<=函数\\s)[\\p{L}_][\\p{L}\\p{N}_]*"
+        },
+        {
+          "name": "entity.name.type.riyue",
+          "match": "(?<=结构体\\s|枚举\\s)[\\p{L}_][\\p{L}\\p{N}_]*"
+        },
+        {
+          "name": "variable.other.constant.riyue",
+          "match": "(?<=不变式\\s)[\\p{L}_][\\p{L}\\p{N}_]*"
+        }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.riyue",
+          "match": "\\b(函数|归返|如果|否则|当|对于|循环|匹配|尝试|捕获|抛出|创建|删除|导入|结构体|枚举|实现|外部|主程序|主)\\b"
+        },
+        {
+          "name": "constant.language.riyue",
+          "match": "\\b(真|假|空)\\b"
+        }
+      ]
+    },
+    "types": {
+      "patterns": [
+        {
+          "name": "storage.type.riyue",
+          "match": "\\b(整数|浮点|字符串|布尔|字节|字符|空类型|指针)\\b"
+        }
+      ]
+    },
+    "builtins": {
+      "patterns": [
+        {
+          "name": "support.function.builtin.riyue",
+          "match": "\\b(打印|长度|拼接|转字符串|转整数|查找|子串|字符码|字符|去除空白|读取文件|写入文件|文件存在|删除文件|退出进程|创建动态数组|创建动态字符串数组|动态数组添加|动态数组获取|动态数组设置|动态数组长度|动态字符串数组添加|动态字符串数组获取|动态字符串数组大小|获取参数|获取参数数量|读取标准输入行|写入标准输出|TCP监听|TCP连接发送|TCP接受接收|TCP接收|TCP关闭|HTTP获取|HTTP构造请求|HTTP解析响应|JSON解析|JSON转义字符串|要求|确保|不变式)\\b"
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.word.riyue",
+          "match": "\\b(并且|或者|不是|等于|不等于|大于|小于|大于等于|小于等于|动态数组)\\b"
+        },
+        {
+          "name": "keyword.operator.riyue",
+          "match": "(\\?=|!=|>=|<=|==|&&|\\|\\||[+\\-*/%<>=])"
+        }
+      ]
+    }
+  }
+}
