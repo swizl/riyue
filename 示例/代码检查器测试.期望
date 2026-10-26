@@ -44,5 +44,15 @@
 
 3
 2
---- 模块版本 ---
+--- JSON 模式 ---
+{"files":2,"errors":1,"diagnostics":[{"file":"构建/.代码检查/甲.心","line":1,"severity":"warning","message":"行尾多余空白"},{"file":"构建/.代码检查/甲.心","line":2,"severity":"error","message":"非法运算符 === 或 !=="}]}
+2
+1
+{"files":3,"errors":2,"diagnostics":[{"file":"构建/.代码检查/子/丁.心","line":1,"severity":"error","message":"非法运算符 === 或 !=="},{"file":"构建/.代码检查/甲.心","line":1,"severity":"warning","message":"行尾多余空白"},{"file":"构建/.代码检查/甲.心","line":2,"severity":"error","message":"非法运算符 === 或 !=="}]}
 3
+2
+{"files":1,"errors":0,"diagnostics":[]}
+1
+0
+--- 模块版本 ---
+4
