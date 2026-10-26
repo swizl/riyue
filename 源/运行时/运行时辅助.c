@@ -4126,7 +4126,7 @@ int 共享总释放数() {
  *  4. 并行内核仅在工作线程内读只读数组并归约，不调用任何 GC / ARC 入口；
  *     线程数 ≤ 1 时退化为串行，结果与线程数无关（确定性）。
  * ========================================================================== */
-enum { 同步无效 = 0, 同步锁 = 1, 同步信号量 = 2, 同步原子 = 3 };
+enum { 同步无效 = 0, 同步锁 = 1, 同步信号量 = 2, 同步原子 = 3, 同步条件 = 4, 同步读写锁 = 5 };
 
 typedef struct {
     int 种类;
@@ -4290,6 +4290,106 @@ int 销毁信号量(int 句柄) {
     同步注销(句柄);
     CloseHandle(量->内核);
     free(量);
+    return 0;
+}
+
+/* ---- 条件变量（CONDITION_VARIABLE；须与互斥锁配合：等待时原子释放并重获该锁） ---- */
+typedef struct {
+    CONDITION_VARIABLE 条件;
+} 条件实体;
+
+int 创建条件变量() {
+    条件实体* 条件 = (条件实体*)calloc(1, sizeof(条件实体));
+    if (!条件) return 0;
+    InitializeConditionVariable(&条件->条件);
+    int 句柄 = 同步登记(同步条件, 条件);
+    if (!句柄) { free(条件); return 0; }
+    return 句柄;
+}
+
+/* 等待通知：调用前须持有 锁句柄，等待期间该锁被原子释放，被唤醒后重新持有。
+ * 返回 0 = 被唤醒；-1 = 句柄无效 / 未持锁 / 等待失败。 */
+int 条件变量等待(int 锁句柄, int 条件句柄) {
+    锁实体* 锁 = (锁实体*)同步取(锁句柄, 同步锁);
+    条件实体* 条件 = (条件实体*)同步取(条件句柄, 同步条件);
+    if (!锁 || !条件 || 锁->持有 <= 0) return -1;
+    锁->持有--;
+    BOOL 成功 = SleepConditionVariableCS(&条件->条件, &锁->临界区, INFINITE);
+    锁->持有++;
+    return 成功 ? 0 : -1;
+}
+
+/* 唤醒一个等待者（无等待者时为空操作） */
+int 条件变量唤醒(int 句柄) {
+    条件实体* 条件 = (条件实体*)同步取(句柄, 同步条件);
+    if (!条件) return -1;
+    WakeConditionVariable(&条件->条件);
+    return 0;
+}
+
+/* 唤醒全部等待者 */
+int 条件变量唤醒全部(int 句柄) {
+    条件实体* 条件 = (条件实体*)同步取(句柄, 同步条件);
+    if (!条件) return -1;
+    WakeAllConditionVariable(&条件->条件);
+    return 0;
+}
+
+int 销毁条件变量(int 句柄) {
+    条件实体* 条件 = (条件实体*)同步取(句柄, 同步条件);
+    if (!条件) return -1;
+    同步注销(句柄);
+    free(条件);
+    return 0;
+}
+
+/* ---- 读写锁（SRWLOCK：多读者共享 / 写者独占；无删除 API，销毁仅回收槽位与内存） ---- */
+typedef struct {
+    SRWLOCK 锁;
+} 读写锁实体;
+
+int 创建读写锁() {
+    读写锁实体* 锁 = (读写锁实体*)calloc(1, sizeof(读写锁实体));
+    if (!锁) return 0;
+    InitializeSRWLock(&锁->锁);
+    int 句柄 = 同步登记(同步读写锁, 锁);
+    if (!句柄) { free(锁); return 0; }
+    return 句柄;
+}
+
+int 读锁加锁(int 句柄) {
+    读写锁实体* 锁 = (读写锁实体*)同步取(句柄, 同步读写锁);
+    if (!锁) return -1;
+    AcquireSRWLockShared(&锁->锁);
+    return 0;
+}
+
+int 读锁解锁(int 句柄) {
+    读写锁实体* 锁 = (读写锁实体*)同步取(句柄, 同步读写锁);
+    if (!锁) return -1;
+    ReleaseSRWLockShared(&锁->锁);
+    return 0;
+}
+
+int 写锁加锁(int 句柄) {
+    读写锁实体* 锁 = (读写锁实体*)同步取(句柄, 同步读写锁);
+    if (!锁) return -1;
+    AcquireSRWLockExclusive(&锁->锁);
+    return 0;
+}
+
+int 写锁解锁(int 句柄) {
+    读写锁实体* 锁 = (读写锁实体*)同步取(句柄, 同步读写锁);
+    if (!锁) return -1;
+    ReleaseSRWLockExclusive(&锁->锁);
+    return 0;
+}
+
+int 销毁读写锁(int 句柄) {
+    读写锁实体* 锁 = (读写锁实体*)同步取(句柄, 同步读写锁);
+    if (!锁) return -1;
+    同步注销(句柄);
+    free(锁);
     return 0;
 }
 
