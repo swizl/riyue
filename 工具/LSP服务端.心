@@ -1,6 +1,6 @@
 // 日月 LSP 服务端（阶段9 G9：工具链 / IDE 支持）
 // 阶段：短板补齐计划 §Phase 6（IDE 支持：LSP 服务端）+ 编译器差距补齐计划 §阶段9
-// 状态：stdio 实装——JSON-RPC 2.0 帧循环 + 括号诊断 + 全量文本同步。
+// 状态：stdio 实装——JSON-RPC 2.0 帧循环 + 括号诊断 + 增量文本同步（9.2）。
 //
 // 架构：
 //   · 传输：stdio —— LSP 帧为 `Content-Length: N\r\n\r\n` + N 字节 JSON-RPC 2.0 消息体；
@@ -10,15 +10,17 @@
 //   · 形态：独立进程，与编辑器插件以 stdio 通信。
 //
 // 已实现：initialize / initialized / shutdown / exit /
-//         textDocument/didOpen / textDocument/didChange（→ publishDiagnostics）/
+//         textDocument/didOpen（全量登记）/ textDocument/didChange（range 增量，9.2）/
 //         textDocument/completion（关键字 + 文档标识符，最多 64 项）/
-//         textDocument/definition（光标处标识符 → 文档内首次出现）/
+//         textDocument/definition（光标处标识符 → 跨文件首个独立出现，9.2）/
 //         textDocument/hover（光标处标识符 → 推断类型，9F）/
-//         textDocument/references（光标处标识符 → 文档内全部出现位置，P6）/
+//         textDocument/references（光标处标识符 → 跨文件全部出现位置，9.2）/
 //         textDocument/documentSymbol（文档内顶层声明符号表，P6 续）/
 //         textDocument/rename（光标处标识符 → WorkspaceEdit 全部改写，P6 续2）/
 //         textDocument/codeAction（光标所在行的文本问题 → quickfix 数组，P6 续3）/
 //         textDocument/foldingRange（跨行花括号块 → 折叠区间数组，P6 续4）/
+//         textDocument/semanticTokens/full（词法语义高亮，相对编码，9.2）/
+//         workspace/symbol（全工作区符号检索，9.2）/
 //         未知请求 → -32601；诊断日志走 stderr，协议应答走 stdout。
 //         诊断：括号配对 / 字符串未闭合 / 全角标点 / 字面量与类型标注不符（9B）/
 //               未声明的标识符（9F）；9F 起单帧聚合多诊断（上限 8 条）。
