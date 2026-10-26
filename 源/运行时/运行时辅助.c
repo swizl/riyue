@@ -4331,6 +4331,41 @@ int 原子减(int 句柄, int 值) {
     return (int)InterlockedExchangeAdd(&原子->值, -(LONG)值) - 值;   /* 返回新值 */
 }
 
+int 原子比较交换(int 句柄, int 期望, int 新值) {
+    原子实体* 原子 = (原子实体*)同步取(句柄, 同步原子);
+    if (!原子) return 0;
+    return (int)InterlockedCompareExchange(&原子->值, (LONG)新值, (LONG)期望);   /* 返回旧值 */
+}
+
+int 原子交换(int 句柄, int 值) {
+    原子实体* 原子 = (原子实体*)同步取(句柄, 同步原子);
+    if (!原子) return 0;
+    return (int)InterlockedExchange(&原子->值, (LONG)值);   /* 返回旧值 */
+}
+
+int 原子与(int 句柄, int 值) {
+    原子实体* 原子 = (原子实体*)同步取(句柄, 同步原子);
+    if (!原子) return 0;
+    return (int)InterlockedAnd(&原子->值, (LONG)值);   /* 返回旧值 */
+}
+
+int 原子或(int 句柄, int 值) {
+    原子实体* 原子 = (原子实体*)同步取(句柄, 同步原子);
+    if (!原子) return 0;
+    return (int)InterlockedOr(&原子->值, (LONG)值);   /* 返回旧值 */
+}
+
+int 原子异或(int 句柄, int 值) {
+    原子实体* 原子 = (原子实体*)同步取(句柄, 同步原子);
+    if (!原子) return 0;
+    return (int)InterlockedXor(&原子->值, (LONG)值);   /* 返回旧值 */
+}
+
+/* 全内存屏障（等价 fence seq_cst：此前读写对其他处理器可见后才继续） */
+void 内存屏障() {
+    MemoryBarrier();
+}
+
 int 销毁原子整数(int 句柄) {
     原子实体* 原子 = (原子实体*)同步取(句柄, 同步原子);
     if (!原子) return -1;
