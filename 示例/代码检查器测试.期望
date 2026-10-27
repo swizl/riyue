@@ -10,6 +10,10 @@
 ---
 检查完成: 警告 0 条, 错误 0 条
 
+--- 字面量感知 ---
+---
+检查完成: 警告 0 条, 错误 0 条
+
 --- 目录模式 ---
 1
 0
@@ -45,14 +49,18 @@
 3
 2
 --- JSON 模式 ---
-{"files":2,"errors":1,"diagnostics":[{"file":"构建/.代码检查/甲.心","line":1,"severity":"warning","message":"行尾多余空白"},{"file":"构建/.代码检查/甲.心","line":2,"severity":"error","message":"非法运算符 === 或 !=="}]}
+{"files":2,"errors":1,"diagnostics":[{"file":"构建/.代码检查/甲.心","line":1,"column":7,"severity":"warning","code":"W002","message":"行尾多余空白"},{"file":"构建/.代码检查/甲.心","line":2,"column":7,"severity":"error","code":"E002","message":"非法运算符 === 或 !=="}]}
 2
 1
-{"files":3,"errors":2,"diagnostics":[{"file":"构建/.代码检查/子/丁.心","line":1,"severity":"error","message":"非法运算符 === 或 !=="},{"file":"构建/.代码检查/甲.心","line":1,"severity":"warning","message":"行尾多余空白"},{"file":"构建/.代码检查/甲.心","line":2,"severity":"error","message":"非法运算符 === 或 !=="}]}
+{"files":3,"errors":2,"diagnostics":[{"file":"构建/.代码检查/子/丁.心","line":1,"column":7,"severity":"error","code":"E002","message":"非法运算符 === 或 !=="},{"file":"构建/.代码检查/甲.心","line":1,"column":7,"severity":"warning","code":"W002","message":"行尾多余空白"},{"file":"构建/.代码检查/甲.心","line":2,"column":7,"severity":"error","code":"E002","message":"非法运算符 === 或 !=="}]}
 3
 2
 {"files":1,"errors":0,"diagnostics":[]}
 1
 0
+--- JSON 定位字段 ---
+{"files":1,"errors":2,"diagnostics":[{"file":"构建/.代码检查单/全集.心","line":2,"column":1,"severity":"warning","code":"W001","message":"制表符缩进"},{"file":"构建/.代码检查单/全集.心","line":3,"column":7,"severity":"warning","code":"W002","message":"行尾多余空白"},{"file":"构建/.代码检查单/全集.心","line":4,"column":6,"severity":"warning","code":"W003","message":"全角标点"},{"file":"构建/.代码检查单/全集.心","line":5,"column":2,"severity":"error","code":"E001","message":"字符串未闭合"},{"file":"构建/.代码检查单/全集.心","line":6,"column":7,"severity":"error","code":"E002","message":"非法运算符 === 或 !=="}]}
+1
+2
 --- 模块版本 ---
-4
+5
