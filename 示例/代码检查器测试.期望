@@ -14,6 +14,17 @@
 ---
 检查完成: 警告 0 条, 错误 0 条
 
+--- 字符常量与块注释 ---
+错误 [行 4]: 非法运算符 === 或 !==
+---
+检查完成: 警告 0 条, 错误 1 条
+
+--- 未闭合诊断 ---
+错误 [行 1]: 字符常量未闭合
+错误 [行 2]: 块注释未闭合
+---
+检查完成: 警告 0 条, 错误 2 条
+
 --- 目录模式 ---
 1
 0
@@ -62,5 +73,9 @@
 {"files":1,"errors":2,"diagnostics":[{"file":"构建/.代码检查单/全集.心","line":2,"column":1,"severity":"warning","code":"W001","message":"制表符缩进"},{"file":"构建/.代码检查单/全集.心","line":3,"column":7,"severity":"warning","code":"W002","message":"行尾多余空白"},{"file":"构建/.代码检查单/全集.心","line":4,"column":6,"severity":"warning","code":"W003","message":"全角标点"},{"file":"构建/.代码检查单/全集.心","line":5,"column":2,"severity":"error","code":"E001","message":"字符串未闭合"},{"file":"构建/.代码检查单/全集.心","line":6,"column":7,"severity":"error","code":"E002","message":"非法运算符 === 或 !=="}]}
 1
 2
+--- JSON 未闭合定位 ---
+{"files":1,"errors":2,"diagnostics":[{"file":"构建/.代码检查未闭/未闭.心","line":1,"column":5,"severity":"error","code":"E004","message":"字符常量未闭合"},{"file":"构建/.代码检查未闭/未闭.心","line":2,"column":1,"severity":"error","code":"E003","message":"块注释未闭合"}]}
+1
+2
 --- 模块版本 ---
-5
+6
