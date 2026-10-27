@@ -95,5 +95,14 @@
 {"files":1,"errors":0,"diagnostics":[{"file":"构建/.代码检查不可达/不可达.心","line":4,"column":9,"severity":"warning","code":"W005","message":"不可达代码"}]}
 1
 0
+--- 潜在空指针 ---
+警告 [行 4]: 潜在空指针
+---
+检查完成: 警告 1 条, 错误 0 条
+
+--- JSON 空指针定位 ---
+{"files":1,"errors":0,"diagnostics":[{"file":"构建/.代码检查空指针/空指针.心","line":4,"column":6,"severity":"warning","code":"W006","message":"潜在空指针"}]}
+1
+0
 --- 模块版本 ---
-8
+9
