@@ -104,5 +104,15 @@
 {"files":1,"errors":0,"diagnostics":[{"file":"构建/.代码检查空指针/空指针.心","line":4,"column":6,"severity":"warning","code":"W006","message":"潜在空指针"}]}
 1
 0
+--- 类型不匹配 ---
+警告 [行 2]: 类型不匹配
+警告 [行 5]: 类型不匹配
+---
+检查完成: 警告 2 条, 错误 0 条
+
+--- JSON 类型不匹配定位 ---
+{"files":1,"errors":0,"diagnostics":[{"file":"构建/.代码检查类型/类型.心","line":2,"column":5,"severity":"warning","code":"W007","message":"类型不匹配"},{"file":"构建/.代码检查类型/类型.心","line":5,"column":5,"severity":"warning","code":"W007","message":"类型不匹配"}]}
+1
+0
 --- 模块版本 ---
-9
+10
