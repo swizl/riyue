@@ -67,10 +67,17 @@
 <h1>模块文档</h1>
 <p>声明 0 条，代码块 0 段</p>
 
+--- JSON ---
+{"declarations":[{"kind":"函数","name":"映射平方","line":3,"doc":"平方映射：对源做平方映射"},{"kind":"结构体","name":"点","line":4},{"kind":"方法","name":"初始化","line":5},{"kind":"枚举","name":"颜色","line":7}],"codeBlocks":1}
+
+{"declarations":[],"codeBlocks":0}
+
+--- JSON 转义 ---
+引号\" 反斜杠\\ 换行\n
 --- 整数转字符串 ---
 0
 7
 1234
 -42
 --- 模块版本 ---
-2
+3
