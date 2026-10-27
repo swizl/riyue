@@ -11,8 +11,9 @@
 检查完成: 警告 0 条, 错误 0 条
 
 --- 字面量感知 ---
+警告 [行 2]: 未使用变量
 ---
-检查完成: 警告 0 条, 错误 0 条
+检查完成: 警告 1 条, 错误 0 条
 
 --- 字符常量与块注释 ---
 错误 [行 4]: 非法运算符 === 或 !==
@@ -29,8 +30,9 @@
 1
 0
 == 构建/.代码检查/乙.心 ==
+警告 [行 1]: 未使用变量
 ---
-检查完成: 警告 0 条, 错误 0 条
+检查完成: 警告 1 条, 错误 0 条
 == 构建/.代码检查/甲.心 ==
 警告 [行 1]: 行尾多余空白
 错误 [行 2]: 非法运算符 === 或 !==
@@ -43,8 +45,9 @@
 1
 --- 递归目录模式 ---
 == 构建/.代码检查/乙.心 ==
+警告 [行 1]: 未使用变量
 ---
-检查完成: 警告 0 条, 错误 0 条
+检查完成: 警告 1 条, 错误 0 条
 == 构建/.代码检查/子/丁.心 ==
 错误 [行 1]: 非法运算符 === 或 !==
 ---
@@ -60,13 +63,13 @@
 3
 2
 --- JSON 模式 ---
-{"files":2,"errors":1,"diagnostics":[{"file":"构建/.代码检查/甲.心","line":1,"column":7,"severity":"warning","code":"W002","message":"行尾多余空白"},{"file":"构建/.代码检查/甲.心","line":2,"column":7,"severity":"error","code":"E002","message":"非法运算符 === 或 !=="}]}
+{"files":2,"errors":1,"diagnostics":[{"file":"构建/.代码检查/乙.心","line":1,"column":5,"severity":"warning","code":"W004","message":"未使用变量"},{"file":"构建/.代码检查/甲.心","line":1,"column":7,"severity":"warning","code":"W002","message":"行尾多余空白"},{"file":"构建/.代码检查/甲.心","line":2,"column":7,"severity":"error","code":"E002","message":"非法运算符 === 或 !=="}]}
 2
 1
-{"files":3,"errors":2,"diagnostics":[{"file":"构建/.代码检查/子/丁.心","line":1,"column":7,"severity":"error","code":"E002","message":"非法运算符 === 或 !=="},{"file":"构建/.代码检查/甲.心","line":1,"column":7,"severity":"warning","code":"W002","message":"行尾多余空白"},{"file":"构建/.代码检查/甲.心","line":2,"column":7,"severity":"error","code":"E002","message":"非法运算符 === 或 !=="}]}
+{"files":3,"errors":2,"diagnostics":[{"file":"构建/.代码检查/乙.心","line":1,"column":5,"severity":"warning","code":"W004","message":"未使用变量"},{"file":"构建/.代码检查/子/丁.心","line":1,"column":7,"severity":"error","code":"E002","message":"非法运算符 === 或 !=="},{"file":"构建/.代码检查/甲.心","line":1,"column":7,"severity":"warning","code":"W002","message":"行尾多余空白"},{"file":"构建/.代码检查/甲.心","line":2,"column":7,"severity":"error","code":"E002","message":"非法运算符 === 或 !=="}]}
 3
 2
-{"files":1,"errors":0,"diagnostics":[]}
+{"files":1,"errors":0,"diagnostics":[{"file":"构建/.代码检查/乙.心","line":1,"column":5,"severity":"warning","code":"W004","message":"未使用变量"}]}
 1
 0
 --- JSON 定位字段 ---
@@ -77,5 +80,11 @@
 {"files":1,"errors":2,"diagnostics":[{"file":"构建/.代码检查未闭/未闭.心","line":1,"column":5,"severity":"error","code":"E004","message":"字符常量未闭合"},{"file":"构建/.代码检查未闭/未闭.心","line":2,"column":1,"severity":"error","code":"E003","message":"块注释未闭合"}]}
 1
 2
+--- 未使用变量 ---
+警告 [行 1]: 未使用变量
+警告 [行 6]: 未使用变量
+---
+检查完成: 警告 2 条, 错误 0 条
+
 --- 模块版本 ---
-6
+7
