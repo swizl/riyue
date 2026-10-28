@@ -124,5 +124,11 @@
 {"files":1,"errors":0,"diagnostics":[{"file":"构建/.代码检查类型/类型.心","line":2,"column":5,"severity":"warning","code":"W007","message":"类型不匹配"},{"file":"构建/.代码检查类型/类型.心","line":5,"column":5,"severity":"warning","code":"W007","message":"类型不匹配"}]}
 1
 0
+--- 行切分（CRLF 与末行无换行）---
+警告 [行 2]: 行尾多余空白
+警告 [行 3]: 未使用变量
+---
+检查完成: 警告 2 条, 错误 0 条
+
 --- 模块版本 ---
-11
+14
