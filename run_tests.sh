@@ -13,6 +13,7 @@ case "$(uname -s)" in
         RT_LIBS="-lpthread -ldl -lm"
         OUT_EXE=./out_t
         SELFTEST_EXE=./_rt_selftest.exe
+        C_SHARED_FLAGS="-fPIC"
         ;;
     *)
         export PATH=/usr/bin:/bin:/mingw64/bin:$PATH
@@ -21,11 +22,12 @@ case "$(uname -s)" in
         RT_LIBS="-lws2_32 -lm"
         OUT_EXE=./out_t.exe
         SELFTEST_EXE=./_rt_selftest.exe
+        C_SHARED_FLAGS=""
         ;;
 esac
 
-# 门禁：Pass 不得低于用例总数，Fail 必须为 0（当前 示例/*.心 共 212 个）。
-MIN_PASS=212
+# 门禁：Pass 不得低于用例总数，Fail 必须为 0（当前 示例/*.心 共 213 个）。
+MIN_PASS=213
 LOG=阶段/回归.log
 
 PASS=0
@@ -66,10 +68,28 @@ COMPILE_RETRY=2
     return 1
 }
 
+# C 互操作自测（阶段10 续43）：用本地化 clang 把 C 侧编成 `_cinterop.dll`（Linux 为同名
+# ELF 共享库），供 示例/C互操作测试.心 以 `外部 函数` 调用，验证 clang + 日月联合编译路径。
+# 计入门禁（失败即 Fail+1），但不计入 Pass（Pass 只统计 示例/*.心）。
+构建C互操作库() {
+    "$LLVM_BIN/clang" -finput-charset=UTF-8 -fexec-charset=UTF-8 -O2 $C_SHARED_FLAGS -shared \
+        示例/C互操作/工具.c -o _cinterop.dll 2> 阶段/.cinterop_cmp
+    if [ $? -ne 0 ]; then
+        echo "FAIL: C互操作库（编译失败）"
+        sed 's/\r//' 阶段/.cinterop_cmp
+        return 1
+    fi
+    return 0
+}
+
 运行回归() {
     if ! 运行时读取自测; then
         FAIL=$((FAIL + 1))
         FAIL_LIST="$FAIL_LIST 运行时读取自测"
+    fi
+    if ! 构建C互操作库; then
+        FAIL=$((FAIL + 1))
+        FAIL_LIST="$FAIL_LIST C互操作库(cmp)"
     fi
     for f in 示例/*.心; do
         name=$(basename "$f" .心)
@@ -159,6 +179,7 @@ COMPILE_RETRY=2
     done
 
     rm -f out_t out_t.exe out_t.ll out_t.s out_t.o
+    rm -f _cinterop.dll
 
     echo ""
     echo "=== Result ==="
