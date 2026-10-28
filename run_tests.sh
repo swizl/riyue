@@ -91,31 +91,36 @@ COMPILE_RETRY=2
         示例/C互操作/链接加法.c -o _clink_add.o 2> 阶段/.clink_cmp \
         && "$LLVM_BIN/clang" -finput-charset=UTF-8 -fexec-charset=UTF-8 -O2 -c \
             示例/C互操作/链接乘法.c -o _clink_mul.o 2>> 阶段/.clink_cmp \
-        && "$LLVM_BIN/llvm-ar" rcs _clink.a _clink_mul.o 2>> 阶段/.clink_cmp
+        && "$LLVM_BIN/llvm-ar" rcs _clink.a _clink_mul.o 2>> 阶段/.clink_cmp \
+        && "$LLVM_BIN/clang" -finput-charset=UTF-8 -fexec-charset=UTF-8 -O2 -c \
+            示例/C互操作/链接减法.c -o _clink_sub.o 2>> 阶段/.clink_cmp \
+        && mkdir -p _clink_lib \
+        && "$LLVM_BIN/llvm-ar" rcs _clink_lib/libclink_sub.a _clink_sub.o 2>> 阶段/.clink_cmp
     if [ $? -ne 0 ]; then
         echo "FAIL: 链接互操作（附加对象/归档构建失败）"
         sed 's/\r//' 阶段/.clink_cmp
-        rm -f _clink_add.o _clink_mul.o _clink.a
+        rm -rf _clink_add.o _clink_mul.o _clink_sub.o _clink.a _clink_lib
         return 1
     fi
     清理残留
     timeout $TIMEOUT_COMPILE ./日月.exe 示例/C互操作/链接用例.心 out_t \
-        --附加对象=./_clink_add.o --附加库=./_clink.a --链接库=m > /dev/null 2> 阶段/.clink_cmp
+        --附加对象=./_clink_add.o --附加库=./_clink.a \
+        --库路径=./_clink_lib --链接库=clink_sub --链接库=m > /dev/null 2> 阶段/.clink_cmp
     rc=$?
     if [ $rc -ne 0 ]; then
         echo "FAIL: 链接互操作（编译失败，退出码 $rc）"
         sed 's/\r//' 阶段/.clink_cmp
-        rm -f _clink_add.o _clink_mul.o _clink.a
+        rm -rf _clink_add.o _clink_mul.o _clink_sub.o _clink.a _clink_lib
         return 1
     fi
     actual=$(timeout $TIMEOUT_RUN $OUT_EXE 2>/dev/null | sed 's/\r//')
     expected=$(cat 示例/C互操作/链接用例.期望)
-    rm -f _clink_add.o _clink_mul.o _clink.a
+    rm -rf _clink_add.o _clink_mul.o _clink_sub.o _clink.a _clink_lib
     if [ "$actual" != "$expected" ]; then
         echo "FAIL: 链接互操作（输出不匹配）"
         return 1
     fi
-    echo "OK: 链接互操作（--附加对象 / --附加库 / --链接库）"
+    echo "OK: 链接互操作（--附加对象 / --附加库 / --链接库 / --库路径）"
     return 0
 }
 
@@ -221,7 +226,8 @@ COMPILE_RETRY=2
 
     rm -f out_t out_t.exe out_t.ll out_t.s out_t.o
     rm -f _cinterop.dll
-    rm -f _clink_add.o _clink_mul.o _clink.a
+    rm -f _clink_add.o _clink_mul.o _clink_sub.o _clink.a
+    rm -rf _clink_lib
 
     echo ""
     echo "=== Result ==="

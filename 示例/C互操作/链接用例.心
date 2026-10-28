@@ -1,15 +1,19 @@
-// 阶段10 续45：CLI 链接期附加输入（--附加对象 / --附加库 / --链接库）。
-// 本文件不定义 riyue_link_add / riyue_link_mul：编译器把它们当作外部符号，
+// 阶段10 续45/续47：CLI 链接期附加输入（--附加对象 / --附加库 / --链接库 / --库路径）。
+// 本文件不定义 riyue_link_add / riyue_link_mul / riyue_link_sub：编译器把它们当作外部符号，
 // 按「空类型 + 调用点参数类型」补一条声明，实现由链接期附加的 .o / .a 提供。
 // 手工编译（工作目录 = 仓库根）：
 //   clang -O2 -c 示例/C互操作/链接加法.c -o _clink_add.o
 //   clang -O2 -c 示例/C互操作/链接乘法.c -o _clink_mul.o
 //   llvm-ar rcs _clink.a _clink_mul.o
+//   clang -O2 -c 示例/C互操作/链接减法.c -o _clink_sub.o
+//   mkdir -p _clink_lib && llvm-ar rcs _clink_lib/libclink_sub.a _clink_sub.o
 //   日月.exe 示例/C互操作/链接用例.心 out_t.exe \
-//       --附加对象=./_clink_add.o --附加库=./_clink.a --链接库=m
+//       --附加对象=./_clink_add.o --附加库=./_clink.a \
+//       --库路径=./_clink_lib --链接库=clink_sub --链接库=m
 函数 主程序 {
     ("=== C 链接互操作测试 ===")打印;
     (40, 2)riyue_link_add;
     (7, 7)riyue_link_mul;
+    (40, 2)riyue_link_sub;
     ("=== 测试完成 ===")打印;
 }

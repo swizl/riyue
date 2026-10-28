@@ -1475,7 +1475,7 @@ LLVM函数* 代码生成器::确保函数签名(恒常 函数& 函数,
            " -ffreestanding -nostdlibinc -O1 -c \"源/运行时/交叉运行时.c\" -o " + 临时运行时名 +
            " && ld.lld -m aarch64linux -static -e _start " + 临时运行时名 + " " + 临时对象名 + " -o " + 临时可执行名)
         : ("set \"PATH=D:\\src\\riyue\\llvm\\llvm-build\\bin;C:\\tools\\msys64\\mingw64\\bin;%PATH%\" && ld.lld -m i386pep C:/tools/msys64/mingw64/lib/crt2.o " +
-           临时对象名 + " " + 运行时对象路径() + " -o " + 临时可执行名 +
+           临时对象名 + " " + 运行时对象路径() + 附加链接参数 + " -o " + 临时可执行名 +
            " -LC:/tools/msys64/mingw64/lib -LC:/tools/msys64/mingw64/lib/gcc/x86_64-w64-mingw32/16.1.0 -lmingw32 -lmingwex -lmsvcrt -lgcc -lmoldname -lws2_32 -lm -ladvapi32 -lshell32 -luser32 -lkernel32");
 #否则
     // Linux 宿主：clang / ld.lld 一律取自 riyue 源码树构建的 llvm-build-linux（工具链目录()），
@@ -1486,7 +1486,7 @@ LLVM函数* 代码生成器::确保函数签名(恒常 函数& 函数,
         ? (工具链 + "clang --target=" + 目标三元组.str() +
            " -ffreestanding -nostdlibinc -O1 -c \"源/运行时/交叉运行时.c\" -o " + 临时运行时名 +
            " && " + 工具链 + "ld.lld -m aarch64linux -static -e _start " + 临时运行时名 + " " + 临时对象名 + " -o " + 临时可执行名)
-        : (工具链 + "clang -fuse-ld=lld -no-pie " + 临时对象名 + " " + 运行时对象路径() + " -o " + 临时可执行名 +
+        : (工具链 + "clang -fuse-ld=lld -no-pie " + 临时对象名 + " " + 运行时对象路径() + 附加链接参数 + " -o " + 临时可执行名 +
            " -lm -lpthread -ldl");
 #结束
     整数型 链接结果 = 执行命令(链接命令);
@@ -1593,10 +1593,10 @@ LLVM函数* 代码生成器::确保函数签名(恒常 函数& 函数,
     文本 链接命令;
 #如果定义 _WIN32
     链接命令 = "set \"PATH=D:\\src\\riyue\\llvm\\llvm-build\\bin;C:\\tools\\msys64\\mingw64\\bin;%PATH%\" && ld.lld -m " +
-        链接仿真 + " --shared " + 临时对象名 + " -o " + 临时共享库名;
+        链接仿真 + " --shared " + 临时对象名 + 附加链接参数 + " -o " + 临时共享库名;
 #否则
     // Linux 宿主：ld.lld 取自 riyue 的 llvm-build-linux（工具链目录()）。
-    链接命令 = 工具链目录() + "ld.lld -m " + 链接仿真 + " --shared " + 临时对象名 + " -o " + 临时共享库名;
+    链接命令 = 工具链目录() + "ld.lld -m " + 链接仿真 + " --shared " + 临时对象名 + 附加链接参数 + " -o " + 临时共享库名;
 #结束
     整数型 链接结果 = 执行命令(链接命令);
     std::remove(临时对象名.c_str());
@@ -1677,7 +1677,7 @@ LLVM函数* 代码生成器::确保函数签名(恒常 函数& 函数,
            " -ffreestanding -nostdlibinc -O1 -c \"源/运行时/交叉运行时.c\" -o " + 临时运行时名 +
            " && ld.lld -m arm64pe --dll --no-insert-timestamp " + 临时运行时名 + " " + 临时对象名 + " -o \"" + 输出文件名 + "\"")
         : ("set \"PATH=D:\\src\\riyue\\llvm\\llvm-build\\bin;C:\\tools\\msys64\\mingw64\\bin;%PATH%\" && ld.lld -m i386pep --dll C:/tools/msys64/mingw64/lib/dllcrt2.o " +
-           临时对象名 + " " + 运行时对象路径() + " -o \"" + 输出文件名 + "\"" +
+           临时对象名 + " " + 运行时对象路径() + 附加链接参数 + " -o \"" + 输出文件名 + "\"" +
            " -LC:/tools/msys64/mingw64/lib -LC:/tools/msys64/mingw64/lib/gcc/x86_64-w64-mingw32/16.1.0 -lmingw32 -lmingwex -lmsvcrt -lgcc -lmoldname -lws2_32 -lm -ladvapi32 -lshell32 -luser32 -lkernel32");
 #否则
     // Linux 宿主：x86_64 PE 动态库需要目标 crt（dllcrt2.o）与 msvcrt，宿主链不具备，
