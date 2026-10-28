@@ -13,3 +13,12 @@
 日月导出 long long riyue_mul64(long long 甲, long long 乙) { return 甲 * 乙; }
 
 日月导出 double riyue_scale(double 值) { return 值 * 1.5 + 0.25; }
+
+// 阶段10 续51：结构体按指针传递（心侧 `结构体` 变量本身就是指向堆上布局的指针，
+// 直接传给 `指针` 形参即可；字段顺序/自然对齐与 C 结构体一致）。
+typedef struct {
+    int 横;
+    int 纵;
+} 演示点;
+
+日月导出 int riyue_sum_point(const 演示点 *点) { return 点->横 * 100 + 点->纵; }

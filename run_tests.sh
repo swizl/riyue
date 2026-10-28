@@ -26,8 +26,8 @@ case "$(uname -s)" in
         ;;
 esac
 
-# 门禁：Pass 不得低于用例总数，Fail 必须为 0（当前 示例/*.心 共 213 个）。
-MIN_PASS=213
+# 门禁：Pass 不得低于用例总数，Fail 必须为 0（当前 示例/*.心 共 214 个）。
+MIN_PASS=214
 LOG=阶段/回归.log
 
 PASS=0
@@ -124,6 +124,45 @@ COMPILE_RETRY=2
     return 0
 }
 
+# C 头文件导入自测（阶段10 续50）：用 工具/头文件导入.心 从 示例/C互操作/演示库.h
+# 生成 `.心` 声明（#define 常量 → 枚举、enum → 枚举、函数原型 → 外部 函数），再由
+# 示例/C互操作/头文件用例.心 导入并运行，验证「C 头文件 → 心声明 → 运行期 FFI」链路。
+# 计入门禁（失败即 Fail+1），但不计入 Pass（Pass 只统计 示例/*.心）。
+头文件导入自测() {
+    清理残留
+    timeout $TIMEOUT_COMPILE ./日月.exe 工具/头文件导入.心 out_t > /dev/null 2> 阶段/.hdr_cmp
+    if [ $? -ne 0 ]; then
+        echo "FAIL: 头文件导入（工具编译失败）"
+        sed 's/\r//' 阶段/.hdr_cmp
+        return 1
+    fi
+    rm -f 阶段/.hdr导入.心
+    $OUT_EXE 示例/C互操作/演示库.h 阶段/.hdr导入.心 > /dev/null 2>> 阶段/.hdr_cmp
+    if [ $? -ne 0 ] || [ ! -f 阶段/.hdr导入.心 ]; then
+        echo "FAIL: 头文件导入（声明生成失败）"
+        sed 's/\r//' 阶段/.hdr_cmp
+        return 1
+    fi
+    清理残留
+    timeout $TIMEOUT_COMPILE ./日月.exe 示例/C互操作/头文件用例.心 out_t > /dev/null 2> 阶段/.hdr_cmp
+    rc=$?
+    if [ $rc -ne 0 ]; then
+        echo "FAIL: 头文件导入（用例编译失败，退出码 $rc）"
+        sed 's/\r//' 阶段/.hdr_cmp
+        rm -f 阶段/.hdr导入.心
+        return 1
+    fi
+    actual=$(timeout $TIMEOUT_RUN $OUT_EXE 2>/dev/null | sed 's/\r//')
+    expected=$(cat 示例/C互操作/头文件用例.期望)
+    rm -f 阶段/.hdr导入.心
+    if [ "$actual" != "$expected" ]; then
+        echo "FAIL: 头文件导入（输出不匹配）"
+        return 1
+    fi
+    echo "OK: 头文件导入（#define 常量 / enum / 函数原型 → 外部 函数）"
+    return 0
+}
+
 运行回归() {
     if ! 运行时读取自测; then
         FAIL=$((FAIL + 1))
@@ -136,6 +175,10 @@ COMPILE_RETRY=2
     if ! 链接互操作自测; then
         FAIL=$((FAIL + 1))
         FAIL_LIST="$FAIL_LIST 链接互操作"
+    fi
+    if ! 头文件导入自测; then
+        FAIL=$((FAIL + 1))
+        FAIL_LIST="$FAIL_LIST 头文件导入"
     fi
     for f in 示例/*.心; do
         name=$(basename "$f" .心)
