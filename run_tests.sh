@@ -163,6 +163,40 @@ COMPILE_RETRY=2
     return 0
 }
 
+# 结构体按值自测（阶段10 续52）：C 聚合 ABI 走「链接期直调」——clang 把 工具.c 编成
+# `_cstruct.o`，日月把结构体形参按 Win64/SysV 一致规则折算为同宽整数实参，直接调用
+# C 符号（不再经运行期 `外部调用N` 的固定标量转发）。验证 8 字节结构体 {int,int}。
+# 计入门禁（失败即 Fail+1），但不计入 Pass（Pass 只统计 示例/*.心）。
+结构体按值自测() {
+    "$LLVM_BIN/clang" -finput-charset=UTF-8 -fexec-charset=UTF-8 -O2 -c \
+        示例/C互操作/工具.c -o _cstruct.o 2> 阶段/.cstruct_cmp
+    if [ $? -ne 0 ]; then
+        echo "FAIL: 结构体按值（C 侧编译失败）"
+        sed 's/\r//' 阶段/.cstruct_cmp
+        rm -f _cstruct.o
+        return 1
+    fi
+    清理残留
+    timeout $TIMEOUT_COMPILE ./日月.exe 示例/C互操作/结构体按值用例.心 out_t \
+        --附加对象=./_cstruct.o > /dev/null 2> 阶段/.cstruct_cmp
+    rc=$?
+    if [ $rc -ne 0 ]; then
+        echo "FAIL: 结构体按值（用例编译失败，退出码 $rc）"
+        sed 's/\r//' 阶段/.cstruct_cmp
+        rm -f _cstruct.o
+        return 1
+    fi
+    actual=$(timeout $TIMEOUT_RUN $OUT_EXE 2>/dev/null | sed 's/\r//')
+    expected=$(cat 示例/C互操作/结构体按值用例.期望)
+    rm -f _cstruct.o
+    if [ "$actual" != "$expected" ]; then
+        echo "FAIL: 结构体按值（输出不匹配）"
+        return 1
+    fi
+    echo "OK: 结构体按值（C 聚合 ABI 链接期直调）"
+    return 0
+}
+
 运行回归() {
     if ! 运行时读取自测; then
         FAIL=$((FAIL + 1))
@@ -179,6 +213,10 @@ COMPILE_RETRY=2
     if ! 头文件导入自测; then
         FAIL=$((FAIL + 1))
         FAIL_LIST="$FAIL_LIST 头文件导入"
+    fi
+    if ! 结构体按值自测; then
+        FAIL=$((FAIL + 1))
+        FAIL_LIST="$FAIL_LIST 结构体按值"
     fi
     for f in 示例/*.心; do
         name=$(basename "$f" .心)
