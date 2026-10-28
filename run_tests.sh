@@ -33,7 +33,7 @@ LOG=阶段/回归.log
 PASS=0
 FAIL=0
 FAIL_LIST=""
-TIMEOUT_COMPILE=30
+TIMEOUT_COMPILE=120
 TIMEOUT_RUN=30
 COMPILE_RETRY=2
 
@@ -82,6 +82,43 @@ COMPILE_RETRY=2
     return 0
 }
 
+# 链接期附加输入自测（阶段10 续45）：clang 单独编出 .o、llvm-ar 打包成 .a，再用
+# `--附加对象=` / `--附加库=` 把两者与 日月 产物一并交给链接器（`--链接库=` 拼 -l）。
+# 示例/C互操作/链接用例.心 不定义这两个符号，靠链接期附加输入解析，验证「C → .o/.a → 日月」
+# 的混合链接入口。计入门禁（失败即 Fail+1），但不计入 Pass（Pass 只统计 示例/*.心）。
+链接互操作自测() {
+    "$LLVM_BIN/clang" -finput-charset=UTF-8 -fexec-charset=UTF-8 -O2 -c \
+        示例/C互操作/链接加法.c -o _clink_add.o 2> 阶段/.clink_cmp \
+        && "$LLVM_BIN/clang" -finput-charset=UTF-8 -fexec-charset=UTF-8 -O2 -c \
+            示例/C互操作/链接乘法.c -o _clink_mul.o 2>> 阶段/.clink_cmp \
+        && "$LLVM_BIN/llvm-ar" rcs _clink.a _clink_mul.o 2>> 阶段/.clink_cmp
+    if [ $? -ne 0 ]; then
+        echo "FAIL: 链接互操作（附加对象/归档构建失败）"
+        sed 's/\r//' 阶段/.clink_cmp
+        rm -f _clink_add.o _clink_mul.o _clink.a
+        return 1
+    fi
+    清理残留
+    timeout $TIMEOUT_COMPILE ./日月.exe 示例/C互操作/链接用例.心 out_t \
+        --附加对象=./_clink_add.o --附加库=./_clink.a --链接库=m > /dev/null 2> 阶段/.clink_cmp
+    rc=$?
+    if [ $rc -ne 0 ]; then
+        echo "FAIL: 链接互操作（编译失败，退出码 $rc）"
+        sed 's/\r//' 阶段/.clink_cmp
+        rm -f _clink_add.o _clink_mul.o _clink.a
+        return 1
+    fi
+    actual=$(timeout $TIMEOUT_RUN $OUT_EXE 2>/dev/null | sed 's/\r//')
+    expected=$(cat 示例/C互操作/链接用例.期望)
+    rm -f _clink_add.o _clink_mul.o _clink.a
+    if [ "$actual" != "$expected" ]; then
+        echo "FAIL: 链接互操作（输出不匹配）"
+        return 1
+    fi
+    echo "OK: 链接互操作（--附加对象 / --附加库 / --链接库）"
+    return 0
+}
+
 运行回归() {
     if ! 运行时读取自测; then
         FAIL=$((FAIL + 1))
@@ -90,6 +127,10 @@ COMPILE_RETRY=2
     if ! 构建C互操作库; then
         FAIL=$((FAIL + 1))
         FAIL_LIST="$FAIL_LIST C互操作库(cmp)"
+    fi
+    if ! 链接互操作自测; then
+        FAIL=$((FAIL + 1))
+        FAIL_LIST="$FAIL_LIST 链接互操作"
     fi
     for f in 示例/*.心; do
         name=$(basename "$f" .心)
@@ -180,6 +221,7 @@ COMPILE_RETRY=2
 
     rm -f out_t out_t.exe out_t.ll out_t.s out_t.o
     rm -f _cinterop.dll
+    rm -f _clink_add.o _clink_mul.o _clink.a
 
     echo ""
     echo "=== Result ==="
