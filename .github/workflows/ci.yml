@@ -1,0 +1,76 @@
+name: 静态自检
+
+# 说明：全量回归（run_tests.sh）与不动点验证都依赖源码树内自建的本地化 LLVM 23
+# （llvm/llvm-build 或 llvm-build-linux，体积大、不纳入仓库），托管 runner 上无法复现。
+# 故本工作流只做「无需 LLVM 的静态自检」，用于拦截编码损坏、脚本语法错误与
+# 用例计数 / 期望文件配对漂移；全量门禁仍以本地 `bash run_tests.sh` 为准。
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  静态自检:
+    name: 静态自检（无需 LLVM）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 脚本语法
+        run: |
+          bash -n run_tests.sh
+          bash -n 不动点验证.sh
+          echo "OK: 脚本语法"
+
+      - name: UTF-8 可解码
+        run: |
+          python3 - <<'PY'
+          import pathlib, sys
+
+          # 仓库内既有 41 个示例带 UTF-8 BOM（词法层的「字节序」跳过规则本就兼容），
+          # 故此处只拦「非 UTF-8 或字节损坏」，不强制去 BOM。
+          roots = ["自举", "标准库", "示例", "工具", "文档", "测试"]
+          suffixes = {".心", ".md", ".c", ".h"}
+          bad = []
+          for root in roots:
+              for path in pathlib.Path(root).rglob("*"):
+                  if not path.is_file() or path.suffix not in suffixes:
+                      continue
+                  try:
+                      path.read_bytes().decode("utf-8")
+                  except UnicodeDecodeError as exc:
+                      bad.append(f"{path}: 非 UTF-8 ({exc})")
+          for line in bad:
+              print("FAIL:", line)
+          if bad:
+              sys.exit(1)
+          print("OK: 源码与文档均为合法 UTF-8")
+          PY
+
+      - name: 用例计数与门禁一致
+        run: |
+          actual=$(find 示例 -maxdepth 1 -name '*.心' -type f | wc -l)
+          expect=$(sed -n 's/^MIN_PASS=\([0-9][0-9]*\)$/\1/p' run_tests.sh)
+          echo "示例/*.心 = $actual，run_tests.sh MIN_PASS = $expect"
+          if [ -z "$expect" ] || [ "$actual" != "$expect" ]; then
+            echo "FAIL: 用例数与 MIN_PASS 不一致（新增示例须同步抬升 MIN_PASS）"
+            exit 1
+          fi
+          echo "OK: 用例计数与门禁一致"
+
+      - name: 期望文件配对
+        run: |
+          missing=0
+          while IFS= read -r f; do
+            base="${f%.期望}"
+            if [ ! -f "$base.心" ]; then
+              echo "FAIL: $f 无同名 .心 用例"
+              missing=1
+            fi
+          done < <(find 示例 -name '*.期望' -type f)
+          [ "$missing" -eq 0 ] || exit 1
+          echo "OK: 所有 .期望 均有同名 .心"
