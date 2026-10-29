@@ -1,0 +1,26 @@
+=== DAP服务端测试 ===
+1
+1
+1
+{"jsonrpc":"2.0","id":2,"result":{}}
+示例/调试器测试.心
+0
+{"jsonrpc":"2.0","id":3,"result":{"breakpoints":[{"verified":false,"message":"日月暂不支持行级断点（已登记）"},{"verified":false,"message":"日月暂不支持行级断点（已登记）"}]}}
+2
+{"jsonrpc":"2.0","id":4,"result":{}}
+1
+{"jsonrpc":"2.0","id":5,"result":{"threads":[{"id":1,"name":"主线程"}]}}
+{"jsonrpc":"2.0","id":6,"result":{"stackFrames":[],"totalFrames":0}}
+{"jsonrpc":"2.0","id":7,"result":{"result":"日月暂不支持表达式求值","variablesReference":0}}
+{"jsonrpc":"2.0","id":8,"result":{"allThreadsContinued":true}}
+{"jsonrpc":"2.0","id":9,"error":{"code":-32601,"message":"未支持的方法: custom/unknown"}}
+0
+{"jsonrpc":"2.0","id":10,"result":{}}
+1
+1
+1
+{"jsonrpc":"2.0","id":12,"result":{"stackFrames":[{"id":1,"name":"主程序","source":{"name":"日月程序","path":"示例/调试器测试.心"},"line":1,"column":1}],"totalFrames":1}}
+{"jsonrpc":"2.0","id":13,"result":{"allThreadsContinued":true}}
+0
+{"jsonrpc":"2.0","id":14,"result":{}}
+1

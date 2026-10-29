@@ -7,6 +7,8 @@
 //   3) 任务命令：编译当前文件 / 编译并运行 / 格式化文档
 //   4) AI 助手入口：编译 `工具/AI助手.心` → `构建/AI助手.exe`（→ 标准库/AI.心），
 //      生成插入光标处、解释新开文档
+//   5) 调试器（DAP）：编译 `工具/DAP服务端.心` → `构建/DAP服务端.exe`，注册 `riyue` 调试类型
+//      （编译 + 运行 + 一次性回放输出；断点仅登记，不命中）
 //
 // 说明：服务端已实现 completion / definition / hover / references / documentSymbol /
 //       rename / publishDiagnostics；本客户端按需转发，其余一律返回 null（不报错）。
@@ -252,6 +254,47 @@ function activate(context) {
     };
 
     const isRiyue = (doc) => doc && doc.languageId === 'riyue';
+
+    // ---- 调试器（DAP）：工具/DAP服务端.心 → 构建/DAP服务端.exe ----
+    // 能力边界见 工具/DAP会话.心 文件头：编译 + 运行 + 一次性回放输出；
+    // 断点仅登记（不命中），栈帧只有入口一帧，单步等价继续。
+
+    context.subscriptions.push(vscode.debug.registerDebugAdapterDescriptorFactory('riyue', {
+        async createDebugAdapterDescriptor() {
+            const serverExe = await ensureTool('DAP服务端', 'DAP服务端');
+            if (!serverExe) {
+                vscode.window.showErrorMessage('日月调试服务构建失败，详见输出面板。');
+                return null;
+            }
+            return new vscode.DebugAdapterExecutable(serverExe, [], {
+                cwd: projectRoot(),
+                windowsHide: true
+            });
+        }
+    }));
+
+    context.subscriptions.push(vscode.debug.registerDebugConfigurationProvider('riyue', {
+        resolveDebugConfiguration(folder, cfg) {
+            const config = cfg || {};
+            if (!config.type && !config.request && !config.name) {
+                const editor = vscode.window.activeTextEditor;
+                if (!editor || !isRiyue(editor.document)) {
+                    vscode.window.showErrorMessage('请先打开一个日月（.心）源文件再启动调试。');
+                    return undefined;
+                }
+                config.type = 'riyue';
+                config.name = '日月：调试当前文件';
+                config.request = 'launch';
+                config.program = editor.document.uri.fsPath;
+                config.stopOnEntry = false;
+            }
+            if (!config.program) {
+                vscode.window.showErrorMessage('请在 launch.json 中为日月调试配置指定 program（.心 源文件）。');
+                return undefined;
+            }
+            return config;
+        }
+    }));
 
     if (vscode.window.activeTextEditor && isRiyue(vscode.window.activeTextEditor.document)) {
         ensureStarted();

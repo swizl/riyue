@@ -13,9 +13,66 @@
   ],
   "main": "./extension.js",
   "activationEvents": [
-    "onLanguage:riyue"
+    "onLanguage:riyue",
+    "onDebugResolve:riyue",
+    "onDebugInitialConfigurations"
   ],
   "contributes": {
+    "breakpoints": [
+      {
+        "language": "riyue"
+      }
+    ],
+    "debuggers": [
+      {
+        "type": "riyue",
+        "label": "日月",
+        "languages": [
+          "riyue"
+        ],
+        "configurationAttributes": {
+          "launch": {
+            "required": [
+              "program"
+            ],
+            "properties": {
+              "program": {
+                "type": "string",
+                "description": "要编译并运行的日月源文件（.心）。",
+                "default": "${file}"
+              },
+              "stopOnEntry": {
+                "type": "boolean",
+                "description": "启动后先停在入口（只发一次 stopped 事件，继续即一次性跑完）。",
+                "default": false
+              }
+            }
+          }
+        },
+        "initialConfigurations": [
+          {
+            "type": "riyue",
+            "request": "launch",
+            "name": "日月：调试当前文件",
+            "program": "${file}",
+            "stopOnEntry": false
+          }
+        ],
+        "configurationSnippets": [
+          {
+            "label": "日月：调试当前文件",
+            "description": "编译并运行当前 .心 文件，输出回显到调试控制台",
+            "body": {
+              "type": "riyue",
+              "request": "launch",
+              "name": "日月：调试当前文件",
+              "program": "^\"\\${file}\"",
+              "stopOnEntry": false
+            }
+          }
+        ]
+      }
+    ],
     "languages": [
       {
         "id": "riyue",
