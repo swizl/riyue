@@ -89,3 +89,9 @@ typedef struct {
 日月导出 int riyue_mid_weight(演示中点 点) {
     return 点.横 * 100 + 点.纵 * 10 + 点.丙;
 }
+
+// 阶段10 续58：类型别名作按值返回类型——ABI 与 `riyue_mid_make` 完全相同，
+// 但用独立符号，避免同一 C 符号在日月 IR 里被声明两次（llvm-as 视作重复定义）。
+日月导出 演示中点 riyue_mid_make_alias(int 横, int 纵, int 丙) {
+    return riyue_mid_make(横, 纵, 丙);
+}
