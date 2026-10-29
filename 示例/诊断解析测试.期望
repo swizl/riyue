@@ -1,0 +1,13 @@
+=== 诊断解析测试 ===
+1
+{"file":"","line":0,"column":0,"severity":"error","code":"C001","message":"未声明的标识符: 甲"}
+{"file":"a.心","line":0,"column":0,"severity":"error","code":"C006","message":"'返回;' 不受支持"}
+{"file":"","line":3,"column":7,"severity":"error","code":"C005","message":"找不到模块 x.心"}
+{"file":"a.心","line":0,"column":0,"severity":"error","code":"C000","message":"旧格式无码"}
+{"file":"","line":0,"column":0,"severity":"warning","code":"C000","message":"普通警告"}
+1
+{"file":"b.心","line":12,"column":5,"severity":"error","code":"C003","message":"解析失败"}
+{"file":"","line":0,"column":0,"severity":"error","code":"C001","message":"未知 \"甲\""}
+1
+0
+0
