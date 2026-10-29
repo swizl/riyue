@@ -208,6 +208,8 @@
     如果 (比 ?= 0) { 16 = 结果; }
     (方法名, "workspace/symbol")字符串比较 = 比;
     如果 (比 ?= 0) { 17 = 结果; }
+    (方法名, "textDocument/formatting")字符串比较 = 比;
+    如果 (比 ?= 0) { 18 = 结果; }
 }
 
 // 是否为已知 LSP 方法（序号 != 0）（8CM）
@@ -432,6 +434,7 @@
     如果 (序号 ?= 15) { "textDocument/foldingRange" = 结果; }
     如果 (序号 ?= 16) { "textDocument/semanticTokens/full" = 结果; }
     如果 (序号 ?= 17) { "workspace/symbol" = 结果; }
+    如果 (序号 ?= 18) { "textDocument/formatting" = 结果; }
 }
 
 // 构造 window/logMessage 通知：{"jsonrpc":"2.0","method":"window/logMessage","params":{"message":"<文本>"}}（8CV）
@@ -959,6 +962,13 @@
     (正文, ",")拼接 = 正文;
     (正文, 引)拼接 = 正文;
     (正文, "workspaceSymbolProvider")拼接 = 正文;
+    (正文, 引)拼接 = 正文;
+    (正文, ":")拼接 = 正文;
+    (正文, "true")拼接 = 正文;
+    // P6 续5：整文格式化（会话层已实装 textDocument/formatting）
+    (正文, ",")拼接 = 正文;
+    (正文, 引)拼接 = 正文;
+    (正文, "documentFormattingProvider")拼接 = 正文;
     (正文, 引)拼接 = 正文;
     (正文, ":")拼接 = 正文;
     (正文, "true")拼接 = 正文;

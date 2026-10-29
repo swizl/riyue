@@ -1,9 +1,9 @@
 === LSP服务端测试 ===
-14
-{"jsonrpc":"2.0","id":7,"result":{"capabilities":{"textDocumentSync":1,"completionProvider":{},"definitionProvider":true,"hoverProvider":true,"semanticTokensProvider":{"legend":{"tokenTypes":["keyword","function","struct","enum","number","string","comment","variable","method"],"tokenModifiers":[]},"full":true},"workspaceSymbolProvider":true},"serverInfo":{"name":"日月语言服务端","version":"1.0"}}}
-393
-407
-407
+15
+{"jsonrpc":"2.0","id":7,"result":{"capabilities":{"textDocumentSync":1,"completionProvider":{},"definitionProvider":true,"hoverProvider":true,"semanticTokensProvider":{"legend":{"tokenTypes":["keyword","function","struct","enum","number","string","comment","variable","method"],"tokenModifiers":[]},"full":true},"workspaceSymbolProvider":true,"documentFormattingProvider":true},"serverInfo":{"name":"日月语言服务端","version":"1.0"}}}
+427
+441
+441
 {"jsonrpc":"2.0","id":9,"result":null}
 {"jsonrpc":"2.0","id":11,"error":{"code":-32601}}
 0
@@ -63,4 +63,7 @@ workspace/symbol
 {"jsonrpc":"2.0","id":49,"result":[{"uri":"file:///p.riyue","range":{"start":{"line":0,"character":0},"end":{"line":0,"character":2}}},{"uri":"file:///n.riyue","range":{"start":{"line":0,"character":3},"end":{"line":0,"character":5}}}]}
 {"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":"file:///q.riyue","diagnostics":[{"range":{"start":{"line":0,"character":4},"end":{"line":0,"character":5}},"severity":1,"source":"日月","message":"未声明的标识符: 甲"}]}}
 {"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":"file:///q.riyue","diagnostics":[{"range":{"start":{"line":0,"character":4},"end":{"line":0,"character":5}},"severity":1,"source":"日月","message":"未声明的标识符: 甲"}]}}
-{"jsonrpc":"2.0","id":52,"result":{"data":[[0,0,1,7,0],[0,4,1,7,0]]}}
+18
+textDocument/formatting
+{"jsonrpc":"2.0","id":54,"result":[{"range":{"start":{"line":0,"character":0},"end":{"line":2,"character":1}},"newText":"函数 主 {\n    (甲)打印;\n}\n"}]}
+{"jsonrpc":"2.0","id":55,"result":[]}
