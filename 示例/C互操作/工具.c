@@ -63,3 +63,23 @@ typedef struct {
 日月导出 int riyue_big_sum(const 演示大点 *点) {
     return 点->横 + 点->纵 + 点->甲 + 点->乙 + 点->丙 + 点->丁;
 }
+
+// 阶段10 续56：9–16 字节聚合体按值返回——Win64 只用 RAX 传 1/2/4/8 字节、其余走隐藏指针，
+// SysV 则按 RAX:RDX 寄存器对返回；两平台规则不同，日月侧按目标三元组分派（此前为编译期报错）。
+typedef struct {
+    int 横;
+    int 纵;
+    int 丙;
+} 演示中点;
+
+日月导出 演示中点 riyue_mid_make(int 横, int 纵, int 丙) {
+    演示中点 点;
+    点.横 = 横;
+    点.纵 = 纵;
+    点.丙 = 丙;
+    return 点;
+}
+
+日月导出 int riyue_mid_sum(const 演示中点 *点) {
+    return 点->横 + 点->纵 + 点->丙;
+}
