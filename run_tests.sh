@@ -197,6 +197,51 @@ COMPILE_RETRY=2
     return 0
 }
 
+# 档位（C++29 profiles 式，阶段10 续66）自测：安全档的结构性禁用与 `免检` 豁免。
+# 判据：安全档下违规用例须报 C013 且不产生产物；登记 免检 后须降级为审计行并正常产出；
+# 默认（标准）档对同一用例不设限；非法档位取值须报 C014。
+档位自测() {
+    rm -f 阶段/.档位_禁.ll 阶段/.档位_免.ll 阶段/.档位_常.ll 阶段/.档位_错.ll
+    timeout $TIMEOUT_COMPILE ./日月.exe --档位=安全 示例/档位/安全档禁令.心 阶段/.档位_禁.ll \
+        > /dev/null 2> 阶段/.档位_禁.err
+    if [ -f 阶段/.档位_禁.ll ]; then
+        echo "FAIL: 档位（安全档禁令仍产生产物）"
+        return 1
+    fi
+    if ! grep -q "错误\[C013\]" 阶段/.档位_禁.err; then
+        echo "FAIL: 档位（安全档禁令未报 C013）"
+        sed 's/\r//' 阶段/.档位_禁.err
+        return 1
+    fi
+    timeout $TIMEOUT_COMPILE ./日月.exe --档位=安全 示例/档位/安全档免检.心 阶段/.档位_免.ll \
+        > /dev/null 2> 阶段/.档位_免.err
+    if [ ! -f 阶段/.档位_免.ll ]; then
+        echo "FAIL: 档位（免检后未产出）"
+        sed 's/\r//' 阶段/.档位_免.err
+        return 1
+    fi
+    if ! grep -q "审计\[C013\]" 阶段/.档位_免.err; then
+        echo "FAIL: 档位（免检未输出审计行）"
+        return 1
+    fi
+    timeout $TIMEOUT_COMPILE ./日月.exe 示例/档位/安全档禁令.心 阶段/.档位_常.ll \
+        > /dev/null 2> 阶段/.档位_常.err
+    if [ ! -f 阶段/.档位_常.ll ]; then
+        echo "FAIL: 档位（标准档误禁）"
+        sed 's/\r//' 阶段/.档位_常.err
+        return 1
+    fi
+    timeout $TIMEOUT_COMPILE ./日月.exe --档位=错 示例/档位/安全档禁令.心 阶段/.档位_错.ll \
+        > /dev/null 2> 阶段/.档位_错.err
+    if ! grep -q "错误\[C014\]" 阶段/.档位_错.err; then
+        echo "FAIL: 档位（非法取值未报 C014）"
+        return 1
+    fi
+    rm -f 阶段/.档位_禁.ll 阶段/.档位_免.ll 阶段/.档位_常.ll 阶段/.档位_错.ll
+    echo "OK: 档位（安全档 C012/C013 禁用 + 函数内免检豁免）"
+    return 0
+}
+
 运行回归() {
     if ! 运行时读取自测; then
         FAIL=$((FAIL + 1))
@@ -217,6 +262,10 @@ COMPILE_RETRY=2
     if ! 结构体按值自测; then
         FAIL=$((FAIL + 1))
         FAIL_LIST="$FAIL_LIST 结构体按值"
+    fi
+    if ! 档位自测; then
+        FAIL=$((FAIL + 1))
+        FAIL_LIST="$FAIL_LIST 档位"
     fi
     for f in 示例/*.心; do
         name=$(basename "$f" .心)
