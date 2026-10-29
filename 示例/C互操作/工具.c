@@ -83,3 +83,9 @@ typedef struct {
 日月导出 int riyue_mid_sum(const 演示中点 *点) {
     return 点->横 + 点->纵 + 点->丙;
 }
+
+// 阶段10 续57：9–16 字节聚合体按值**传参**——Win64 按引用（指向副本的指针）、
+// SysV 占两个八字节整型寄存器；日月侧同由目标平台分派。
+日月导出 int riyue_mid_weight(演示中点 点) {
+    return 点.横 * 100 + 点.纵 * 10 + 点.丙;
+}
