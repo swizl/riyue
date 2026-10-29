@@ -72,7 +72,7 @@ COMPILE_RETRY=2
 # ELF 共享库），供 示例/C互操作测试.心 以 `外部 函数` 调用，验证 clang + 日月联合编译路径。
 # 计入门禁（失败即 Fail+1），但不计入 Pass（Pass 只统计 示例/*.心）。
 构建C互操作库() {
-    "$LLVM_BIN/clang" -finput-charset=UTF-8 -fexec-charset=UTF-8 -O2 $C_SHARED_FLAGS -shared \
+    "$LLVM_BIN/clang" -fuse-ld=lld -finput-charset=UTF-8 -fexec-charset=UTF-8 -O2 $C_SHARED_FLAGS -shared \
         示例/C互操作/工具.c -o _cinterop.dll 2> 阶段/.cinterop_cmp
     if [ $? -ne 0 ]; then
         echo "FAIL: C互操作库（编译失败）"
@@ -197,11 +197,12 @@ COMPILE_RETRY=2
     return 0
 }
 
-# 档位（C++29 profiles 式，阶段10 续66）自测：安全档的结构性禁用与 `免检` 豁免。
-# 判据：安全档下违规用例须报 C013 且不产生产物；登记 免检 后须降级为审计行并正常产出；
-# 默认（标准）档对同一用例不设限；非法档位取值须报 C014。
+# 档位（C++29 profiles 式，阶段10 续66/续67）自测：安全档的结构性禁用与 `免检` 豁免。
+# 判据：安全档下违规用例（C013 命令执行 / C015 文件系统写 / C016 网络）须报对应错误码且不产生产物；
+# 登记 免检 后须降级为审计行并正常产出；默认（标准）档对同一用例不设限；非法档位取值须报 C014。
 档位自测() {
     rm -f 阶段/.档位_禁.ll 阶段/.档位_免.ll 阶段/.档位_常.ll 阶段/.档位_错.ll
+    rm -f 阶段/.档位_写.ll 阶段/.档位_写免.ll 阶段/.档位_网.ll 阶段/.档位_网免.ll
     timeout $TIMEOUT_COMPILE ./日月.exe --档位=安全 示例/档位/安全档禁令.心 阶段/.档位_禁.ll \
         > /dev/null 2> 阶段/.档位_禁.err
     if [ -f 阶段/.档位_禁.ll ]; then
@@ -224,6 +225,52 @@ COMPILE_RETRY=2
         echo "FAIL: 档位（免检未输出审计行）"
         return 1
     fi
+    # 续67：C015 文件系统写禁用 + 免检豁免
+    timeout $TIMEOUT_COMPILE ./日月.exe --档位=安全 示例/档位/安全档文件写.心 阶段/.档位_写.ll \
+        > /dev/null 2> 阶段/.档位_写.err
+    if [ -f 阶段/.档位_写.ll ]; then
+        echo "FAIL: 档位（安全档文件写仍产生产物）"
+        return 1
+    fi
+    if ! grep -q "错误\[C015\]" 阶段/.档位_写.err; then
+        echo "FAIL: 档位（安全档文件写未报 C015）"
+        sed 's/\r//' 阶段/.档位_写.err
+        return 1
+    fi
+    timeout $TIMEOUT_COMPILE ./日月.exe --档位=安全 示例/档位/安全档文件写免检.心 阶段/.档位_写免.ll \
+        > /dev/null 2> 阶段/.档位_写免.err
+    if [ ! -f 阶段/.档位_写免.ll ]; then
+        echo "FAIL: 档位（C015 免检后未产出）"
+        sed 's/\r//' 阶段/.档位_写免.err
+        return 1
+    fi
+    if ! grep -q "审计\[C015\]" 阶段/.档位_写免.err; then
+        echo "FAIL: 档位（C015 免检未输出审计行）"
+        return 1
+    fi
+    # 续67：C016 网络禁用 + 免检豁免
+    timeout $TIMEOUT_COMPILE ./日月.exe --档位=安全 示例/档位/安全档联网.心 阶段/.档位_网.ll \
+        > /dev/null 2> 阶段/.档位_网.err
+    if [ -f 阶段/.档位_网.ll ]; then
+        echo "FAIL: 档位（安全档联网仍产生产物）"
+        return 1
+    fi
+    if ! grep -q "错误\[C016\]" 阶段/.档位_网.err; then
+        echo "FAIL: 档位（安全档联网未报 C016）"
+        sed 's/\r//' 阶段/.档位_网.err
+        return 1
+    fi
+    timeout $TIMEOUT_COMPILE ./日月.exe --档位=安全 示例/档位/安全档联网免检.心 阶段/.档位_网免.ll \
+        > /dev/null 2> 阶段/.档位_网免.err
+    if [ ! -f 阶段/.档位_网免.ll ]; then
+        echo "FAIL: 档位（C016 免检后未产出）"
+        sed 's/\r//' 阶段/.档位_网免.err
+        return 1
+    fi
+    if ! grep -q "审计\[C016\]" 阶段/.档位_网免.err; then
+        echo "FAIL: 档位（C016 免检未输出审计行）"
+        return 1
+    fi
     timeout $TIMEOUT_COMPILE ./日月.exe 示例/档位/安全档禁令.心 阶段/.档位_常.ll \
         > /dev/null 2> 阶段/.档位_常.err
     if [ ! -f 阶段/.档位_常.ll ]; then
@@ -238,7 +285,8 @@ COMPILE_RETRY=2
         return 1
     fi
     rm -f 阶段/.档位_禁.ll 阶段/.档位_免.ll 阶段/.档位_常.ll 阶段/.档位_错.ll
-    echo "OK: 档位（安全档 C012/C013 禁用 + 函数内免检豁免）"
+    rm -f 阶段/.档位_写.ll 阶段/.档位_写免.ll 阶段/.档位_网.ll 阶段/.档位_网免.ll
+    echo "OK: 档位（安全档 C012/C013/C015/C016 禁用 + 函数内免检豁免）"
     return 0
 }
 
