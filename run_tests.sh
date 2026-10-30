@@ -26,8 +26,8 @@ case "$(uname -s)" in
         ;;
 esac
 
-# 门禁：Pass 不得低于用例总数，Fail 必须为 0（当前 示例/*.心 共 218 个）。
-MIN_PASS=218
+# 门禁：Pass 不得低于用例总数，Fail 必须为 0（当前 示例/*.心 共 219 个）。
+MIN_PASS=219
 LOG=阶段/回归.log
 
 PASS=0
@@ -290,6 +290,19 @@ COMPILE_RETRY=2
     return 0
 }
 
+# 错误诊断自测（改进计划 Task 3.4）：语义 / 语法 / 入口 / 导入 / 档位五类错误
+# 须给出带错误码的诊断，且编译失败时不留中间产物。判据在 测试/错误诊断测试.sh。
+# 计入门禁（失败即 Fail+1），但不计入 Pass（Pass 只统计 示例/*.心）。
+错误诊断自测() {
+    if bash 测试/错误诊断测试.sh > 阶段/.errdiag.log 2>&1; then
+        grep '^OK: 错误诊断' 阶段/.errdiag.log | sed 's/\r//'
+        return 0
+    fi
+    echo "FAIL: 错误诊断（用例未全部通过）"
+    sed 's/\r//' 阶段/.errdiag.log | grep -E '^(FAIL|    实际输出)' | head -10
+    return 1
+}
+
 运行回归() {
     if ! 运行时读取自测; then
         FAIL=$((FAIL + 1))
@@ -314,6 +327,10 @@ COMPILE_RETRY=2
     if ! 档位自测; then
         FAIL=$((FAIL + 1))
         FAIL_LIST="$FAIL_LIST 档位"
+    fi
+    if ! 错误诊断自测; then
+        FAIL=$((FAIL + 1))
+        FAIL_LIST="$FAIL_LIST 错误诊断"
     fi
     for f in 示例/*.心; do
         name=$(basename "$f" .心)
