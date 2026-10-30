@@ -27,6 +27,8 @@ case "$(uname -s)" in
 esac
 
 # 门禁：Pass 不得低于用例总数，Fail 必须为 0（当前 示例/*.心 共 221 个）。
+# 约束：本脚本必须单独串行运行——不得与其他编译/回归任务并发（两份 LLVM 工具链
+# 同时压提交内存会触发 MSYS2 fork 半残 + 整机 bugcheck 0xEF，见 内存检查 注释）。
 MIN_PASS=221
 LOG=阶段/回归.log
 
@@ -38,13 +40,47 @@ TIMEOUT_RUN=30
 COMPILE_RETRY=2
 
 # 清理编译残留的进程和文件，避免文件锁导致后续编译卡住（Windows 专有；
-# Linux 无文件锁问题，只清产物即可）
+# Linux 无文件锁问题，只清产物即可）。
+# 加固：杀进程需要拉起 powershell（约 60MB 提交内存），逐用例调用会在 221 例上
+# 反复放大 fork/提交峰值，曾把整机提交额度打穿并触发 bugcheck 0xEF 重启。
+# 故拆成两层：
+#   清理产物() —— 逐用例调用，只删产物文件（零进程开销）
+#   清理残留() —— 每 MEM_GUARD_EVERY 例 + 失败/超时路径调用，杀进程 + 删产物
+清理产物() {
+    rm -f out_t out_t.exe out_t.ll out_t.s out_t.o
+}
+
 清理残留() {
     if [ "$(uname -s)" != "Linux" ]; then
-        /c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe -NoProfile -Command \
-            "Get-Process -Name '日月','out_t','clang++','ld','llc' -ErrorAction SilentlyContinue | Stop-Process -Force" 2>/dev/null
+        /c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe -NoProfile -NonInteractive -Command \
+            "Get-Process -Name '日月','out_t','clang','clang++','ld','llc' -ErrorAction SilentlyContinue | Stop-Process -Force" 2>/dev/null
     fi
-    rm -f out_t out_t.exe out_t.ll out_t.s out_t.o
+    清理产物
+}
+
+# 提交内存守卫：LLVM 工具链在个别重用例上会短时吃满提交额度，耗尽后 MSYS2 fork
+# 只拷贝一半（0xC000012D / Win32 error 299），关键系统进程被牵连 → bugcheck 0xEF。
+# 每 MEM_GUARD_EVERY 例探一次剩余提交内存：< WARN_MB 提示并喘息，< FLOOR_MB 立即中止。
+MEM_GUARD_EVERY=20
+MEM_WARN_MB=2000
+MEM_FLOOR_MB=800
+CASE_NO=0
+
+内存检查() {
+    [ "$(uname -s)" = "Linux" ] && return 0
+    可用=$(/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe -NoProfile -NonInteractive -Command \
+        "(Get-CimInstance Win32_OperatingSystem).FreeVirtualMemory" 2>/dev/null | tr -d '\r\n ')
+    [ -z "$可用" ] && return 0
+    可用MB=$((可用 / 1024))
+    if [ "$可用MB" -lt "$MEM_FLOOR_MB" ]; then
+        echo "ABORT: 提交内存仅剩 ${可用MB}MB（< ${MEM_FLOOR_MB}MB），中止以免拖垮系统"
+        return 1
+    fi
+    if [ "$可用MB" -lt "$MEM_WARN_MB" ]; then
+        echo "WARN: 提交内存仅剩 ${可用MB}MB，暂停 5 秒等待系统回收"
+        sleep 5
+    fi
+    return 0
 }
 
 # K7 故障注入自测（C 级）：底层读错误必须返回 NULL，而不是半截数据。
@@ -334,7 +370,17 @@ COMPILE_RETRY=2
     fi
     for f in 示例/*.心; do
         name=$(basename "$f" .心)
-        清理残留
+        CASE_NO=$((CASE_NO + 1))
+        if [ $((CASE_NO % MEM_GUARD_EVERY)) -eq 0 ]; then
+            清理残留
+            if ! 内存检查; then
+                FAIL=$((FAIL + 1))
+                FAIL_LIST="$FAIL_LIST $name(oom_abort)"
+                break
+            fi
+        else
+            清理产物
+        fi
         timeout $TIMEOUT_COMPILE ./日月.exe "$f" out_t 2>/dev/null 1>/dev/null
         rc=$?
         retry=0
@@ -416,7 +462,7 @@ COMPILE_RETRY=2
                 FAIL_LIST="$FAIL_LIST $name(rt)"
             fi
         fi
-        清理残留
+        清理产物
     done
 
     rm -f out_t out_t.exe out_t.ll out_t.s out_t.o
@@ -440,5 +486,14 @@ COMPILE_RETRY=2
 
 mkdir -p 阶段
 : > "$LOG"
+# 跑前清场 + 提交内存预检：避免上一轮残留的 日月/out_t 占着文件锁与提交内存；
+# 提交内存不足时宁可不开跑，也不要让 MSYS2 fork 失败把整机拖垮。
+清理残留
+if ! 内存检查; then
+    echo "门禁: 未通过 (启动时提交内存不足，未开跑)"
+    exit 9
+fi
 运行回归 2>&1 | tee "$LOG"
-exit "${PIPESTATUS[0]}"
+RC=${PIPESTATUS[0]}
+清理残留
+exit "$RC"
