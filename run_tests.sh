@@ -26,8 +26,8 @@ case "$(uname -s)" in
         ;;
 esac
 
-# 门禁：Pass 不得低于用例总数，Fail 必须为 0（当前 示例/*.心 共 219 个）。
-MIN_PASS=219
+# 门禁：Pass 不得低于用例总数，Fail 必须为 0（当前 示例/*.心 共 220 个）。
+MIN_PASS=220
 LOG=阶段/回归.log
 
 PASS=0
