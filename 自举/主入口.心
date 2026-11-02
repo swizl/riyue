@@ -802,7 +802,9 @@
                         链接命令 + 目标三元组 = 链接命令;
                         链接命令 + " -filetype=obj " = 链接命令;
                         链接命令 + 编译输入bc = 链接命令;
-                        链接命令 + " -o riyue_obj_%i.o && ld.lld -m i386pep C:/tools/msys64/mingw64/lib/crt2.o riyue_obj_%i.o riyue_rt_%i.o" = 链接命令;
+                        // --stack 64MB：编译器按 AST 递归，深嵌套（数百层）在默认 1MB 栈下
+                        // 会直接段错误；保留值只是虚拟预留，不占提交内存。宿主链同值。
+                        链接命令 + " -o riyue_obj_%i.o && ld.lld -m i386pep --stack 67108864 C:/tools/msys64/mingw64/lib/crt2.o riyue_obj_%i.o riyue_rt_%i.o" = 链接命令;
                         链接命令 + 附加链接参数 = 链接命令;
                         链接命令 + " -o riyue_out_%i.exe -LC:/tools/msys64/mingw64/lib -LC:/tools/msys64/mingw64/lib/gcc/x86_64-w64-mingw32/16.1.0 -lmingw32 -lmingwex -lmsvcrt -lgcc -lmoldname -lws2_32 -lm -ladvapi32 -lshell32 -luser32 -lkernel32 && move /Y riyue_out_%i.exe " = 链接命令;
                         如果 (出后缀 ?= "exe") {

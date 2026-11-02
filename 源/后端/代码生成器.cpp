@@ -1474,7 +1474,7 @@ LLVM函数* 代码生成器::确保函数签名(恒常 函数& 函数,
         ? ("set \"PATH=D:\\src\\riyue\\llvm\\llvm-build\\bin;C:\\tools\\msys64\\mingw64\\bin;%PATH%\" && clang --target=" + 目标三元组.str() +
            " -ffreestanding -nostdlibinc -O1 -c \"源/运行时/交叉运行时.c\" -o " + 临时运行时名 +
            " && ld.lld -m aarch64linux -static -e _start " + 临时运行时名 + " " + 临时对象名 + " -o " + 临时可执行名)
-        : ("set \"PATH=D:\\src\\riyue\\llvm\\llvm-build\\bin;C:\\tools\\msys64\\mingw64\\bin;%PATH%\" && ld.lld -m i386pep C:/tools/msys64/mingw64/lib/crt2.o " +
+        : ("set \"PATH=D:\\src\\riyue\\llvm\\llvm-build\\bin;C:\\tools\\msys64\\mingw64\\bin;%PATH%\" && ld.lld -m i386pep --stack 67108864 C:/tools/msys64/mingw64/lib/crt2.o " +
            临时对象名 + " " + 运行时对象路径() + 附加链接参数 + " -o " + 临时可执行名 +
            " -LC:/tools/msys64/mingw64/lib -LC:/tools/msys64/mingw64/lib/gcc/x86_64-w64-mingw32/16.1.0 -lmingw32 -lmingwex -lmsvcrt -lgcc -lmoldname -lws2_32 -lm -ladvapi32 -lshell32 -luser32 -lkernel32");
 #否则
