@@ -9,6 +9,9 @@
 # 依赖：仓库根的 日月.exe（`make 日月.exe`）。由 run_tests.sh 的「错误诊断自测」调用，
 #       也可单独执行：`bash 测试/错误诊断测试.sh`（退出码非 0 即失败）。
 cd "$(dirname "$0")/.." || exit 9
+# 单独执行时也需要关闭 MSYS 的路径转换：日月.exe 是原生 Windows 程序，
+# 否则「阶段/.错误诊断/xxx.心」会被改写成「阶段C:/tools/msys64/...」。
+export MSYS_NO_PATHCONV=1
 
 WORK=阶段/.错误诊断
 rm -rf "$WORK"
@@ -95,6 +98,89 @@ else
     echo "FAIL: 深嵌套 300 层（失败但无带码诊断，退出码 $rc）"
     echo "    实际输出: $(echo "$got" | sed 's/\r//' | head -3 | tr '\n' ' ')"
     FAIL=$((FAIL + 1))
+fi
+
+# 合法 300 层嵌套（正例）：上面的判例断言「有界」，这里断言「不误伤」——
+# 300 层括号是合法代码，必须正常编译出 .ll（解析深度阀 8192 覆盖约 5100 的
+# 实际穿透量），而不是靠报 C003 兜底。
+printf '%s' '函数 主程序 { ' > "$WORK/合法深嵌套.心"
+i=0
+while [ "$i" -lt 300 ]; do printf '(' >> "$WORK/合法深嵌套.心"; i=$((i + 1)); done
+printf '%s' '1' >> "$WORK/合法深嵌套.心"
+i=0
+while [ "$i" -lt 300 ]; do printf ')' >> "$WORK/合法深嵌套.心"; i=$((i + 1)); done
+printf '%s\n' '打印; }' >> "$WORK/合法深嵌套.心"
+
+rm -f "$WORK/合法深嵌套.ll"
+got=$(timeout $TMO ./日月.exe "$WORK/合法深嵌套.心" "$WORK/合法深嵌套.ll" 2>&1)
+rc=$?
+if [ "$rc" -eq 0 ] && [ -s "$WORK/合法深嵌套.ll" ]; then
+    echo "OK: 合法深嵌套 300 层（正常产出 .ll）"
+    PASS=$((PASS + 1))
+else
+    echo "FAIL: 合法深嵌套 300 层（退出码 $rc，未产出 .ll）"
+    echo "    实际输出: $(echo "$got" | sed 's/\r//' | head -3 | tr '\n' ' ')"
+    FAIL=$((FAIL + 1))
+fi
+
+# 交叉目标闭环（阶段5G 续）：
+#   ① aarch64 Linux 静态 ELF：链入交叉运行时后不得有未定义符号，可执行文件头为 AArch64；
+#   ② wasm32-wasip1：产出 WASI 命令模块，_start 可被 Node WASI 实例化并打印「你好」。
+# 本机无 qemu，aarch64 只做静态校验；wasm 由 Node 实际运行（无 node 时跳过该断言）。
+case "$(uname -s)" in
+    Linux) LLVM_BIN=/mnt/d/src/riyue/llvm/llvm-build-linux/bin ;;
+    *)     LLVM_BIN=/d/src/riyue/llvm/llvm-build/bin
+           # 本地化 LLVM 是 MinGW 构建，需 mingw64/bin 提供 libstdc++ 等运行库
+           PATH="$LLVM_BIN:/mingw64/bin:$PATH"; export PATH ;;
+esac
+
+printf '%s\n' '函数 主程序 { ("你好")打印; }' > "$WORK/交叉宿主.心"
+
+rm -f "$WORK/交叉aarch64"
+got=$(timeout $TMO ./日月.exe --目标=aarch64-unknown-linux-gnu "$WORK/交叉宿主.心" "$WORK/交叉aarch64" 2>&1)
+rc=$?
+if [ "$rc" -eq 0 ] && [ -f "$WORK/交叉aarch64" ] \
+   && "$LLVM_BIN/llvm-readelf" -h "$WORK/交叉aarch64" 2>/dev/null | grep -q 'Machine:.*AArch64' \
+   && [ -z "$("$LLVM_BIN/llvm-nm" -u "$WORK/交叉aarch64" 2>/dev/null)" ]; then
+    echo "OK: aarch64 交叉可执行（ELF64 AArch64，无未定义符号）"
+    PASS=$((PASS + 1))
+else
+    echo "FAIL: aarch64 交叉可执行（退出码 $rc，未产出可链接产物）"
+    echo "    实际输出: $(echo "$got" | sed 's/\r//' | head -3 | tr '\n' ' ')"
+    FAIL=$((FAIL + 1))
+fi
+
+# Node 可能不在 MSYS 登录 shell 的 PATH 里：回退到本机常见安装位置
+NODE=$(command -v node 2>/dev/null)
+if [ -z "$NODE" ] && [ -x /d/ProgramData/nodejs/node.exe ]; then NODE=/d/ProgramData/nodejs/node.exe; fi
+if [ -z "$NODE" ] && [ -x "/c/Program Files/nodejs/node.exe" ]; then NODE="/c/Program Files/nodejs/node.exe"; fi
+
+rm -f "$WORK/交叉wasi.wasm"
+got=$(timeout $TMO ./日月.exe --目标=wasm32-wasip1 "$WORK/交叉宿主.心" "$WORK/交叉wasi.wasm" 2>&1)
+rc=$?
+if [ "$rc" -ne 0 ] || [ ! -s "$WORK/交叉wasi.wasm" ]; then
+    echo "FAIL: wasm32-wasip1 产物（退出码 $rc，未产出 .wasm）"
+    echo "    实际输出: $(echo "$got" | sed 's/\r//' | head -3 | tr '\n' ' ')"
+    FAIL=$((FAIL + 1))
+elif [ -z "$NODE" ]; then
+    echo "OK: wasm32-wasip1 产物（已产出；无 node，跳过运行验证）"
+    PASS=$((PASS + 1))
+else
+    printf '%s\n' \
+        'const fs=require("node:fs"); const {WASI}=require("node:wasi");' \
+        'const w=new WASI({version:"preview1",args:[],env:{}});' \
+        'const m=new WebAssembly.Module(fs.readFileSync(process.argv[2]));' \
+        'w.start(new WebAssembly.Instance(m,w.getImportObject()));' \
+        > "$WORK/跑wasi.js"
+    # 只取 stdout：Node 会把 WASI 实验特性警告打到 stderr，混入会污染断言
+    got=$(timeout $TMO "$NODE" "$WORK/跑wasi.js" "$WORK/交叉wasi.wasm" 2>/dev/null | tr -d '\r')
+    if [ "$got" = "你好" ]; then
+        echo "OK: wasm32-wasip1 可运行（Node WASI 输出「你好」）"
+        PASS=$((PASS + 1))
+    else
+        echo "FAIL: wasm32-wasip1 运行输出不符（实际: $(echo "$got" | head -3 | tr '\n' ' ')）"
+        FAIL=$((FAIL + 1))
+    fi
 fi
 
 echo ""

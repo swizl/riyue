@@ -340,6 +340,9 @@
             // 阶段10 续56：聚合体按值返回的调用约定随目标平台分派（Win64 大小 9–16 走隐藏指针，
             // SysV 走 RAX:RDX 寄存器对），故把「是否 Windows 目标」告知发射层。
             (目标三元组, "windows")含子串 = 目标为窗口平台;
+            // 阶段5G 续：WASI 目标（wasm32-wasip1 / wasm32-wasi）按「命令模块」处理——
+            // 需要发射 main 入口并链入交叉运行时，产出可直接运行的 .wasm。
+            (目标三元组, "wasi")含子串 = 目标为WASI;
             // 阶段9 G9-B：--缓存 且目标为 .ll 时先查缓存（IR 文本级）。
             // 阶段9 G9-D：--缓存 且宿主 .exe 时也查产物缓存（链接产物级），命中即复制、跳过编译与链接。
             // 键 = 简单哈希(源码 | 源码长度 | 优化级别 | 调试模式 | 发布模式 | 目标三元组 | 输出路径)
@@ -352,7 +355,8 @@
             "" = 缓存产物路径;
             如果 (出后缀 ?= ".ll") {
                 ".ll" = 缓存产物后缀;
-                "日月IR缓存1|" = 缓存键前缀;
+                // 缓存2：printf 调用返回类型由 空类型 改为 整数32（wasm 变参 ABI），旧缓存 IR 不可复用
+                "日月IR缓存2|" = 缓存键前缀;
                 输出路径 = 缓存产物路径;
             } 否则如果 (是否动态库 ?= 0) {
                 // 仅宿主 x86_64 可执行文件走产物级缓存（交叉目标在下方边界检查处直接报错）
@@ -364,7 +368,8 @@
                 }
                 如果 (产物宿主目标 ?= 1) {
                     ".exe" = 缓存产物后缀;
-                    "日月产物缓存1|" = 缓存键前缀;
+                    // 缓存2：同上，产物级缓存也随发射层变更失效
+                    "日月产物缓存2|" = 缓存键前缀;
                     如果 (出后缀 ?= "exe") { 输出路径 = 缓存产物路径; }
                     否则 { 输出路径 + ".exe" = 缓存产物路径; }
                 }
@@ -440,7 +445,7 @@
                 ()发射字符串常量表;
                 ()发射字符串结构常量表;
                 (闭包定义)发射;
-                如果 (是否动态库 ?= 0) { ()发射主程序入口; }
+                如果 (是否动态库 ?= 0 || 目标为WASI ?= 1) { ()发射主程序入口; }
                 ()发射外部声明;
                 如果 (调试模式 ?= 1) { ()发射调试元数据表; }
                 如果 (未声明出错 ?= 1) {
@@ -621,11 +626,26 @@
                             链接命令 + 目标三元组 = 链接命令;
                             链接命令 + " -filetype=obj " = 链接命令;
                             链接命令 + 编译输入bc = 链接命令;
-                            链接命令 + " -o riyue_obj_$$.o && " = 链接命令;
-                            链接命令 + 工具链 = 链接命令;
-                            链接命令 + "wasm-ld --no-entry --export-all --allow-undefined riyue_obj_$$.o -o riyue_wasm_$$.wasm && mv -f riyue_wasm_$$.wasm \"" = 链接命令;
-                            链接命令 + 输出路径 = 链接命令;
-                            链接命令 + "\"" = 链接命令;
+                            链接命令 + " -o riyue_obj_$$.o" = 链接命令;
+                            如果 (目标为WASI ?= 1) {
+                                // WASI 命令模块：链入交叉运行时，_start 调用 main 并经
+                                // wasi_snapshot_preview1.fd_write/proc_exit 完成输出与退出。
+                                链接命令 + " && " = 链接命令;
+                                链接命令 + 工具链 = 链接命令;
+                                链接命令 + "clang --target=" = 链接命令;
+                                链接命令 + 目标三元组 = 链接命令;
+                                链接命令 + " -ffreestanding -nostdlibinc -O1 -c \"源/运行时/交叉运行时.c\" -o riyue_crt_$$.o && " = 链接命令;
+                                链接命令 + 工具链 = 链接命令;
+                                链接命令 + "wasm-ld --entry=_start --export=_start -z stack-size=2097152 riyue_crt_$$.o riyue_obj_$$.o -o riyue_wasm_$$.wasm && mv -f riyue_wasm_$$.wasm \"" = 链接命令;
+                                链接命令 + 输出路径 = 链接命令;
+                                链接命令 + "\" && rm -f riyue_crt_$$.o" = 链接命令;
+                            } 否则 {
+                                链接命令 + " && " = 链接命令;
+                                链接命令 + 工具链 = 链接命令;
+                                链接命令 + "wasm-ld --no-entry --export-all --allow-undefined riyue_obj_$$.o -o riyue_wasm_$$.wasm && mv -f riyue_wasm_$$.wasm \"" = 链接命令;
+                                链接命令 + 输出路径 = 链接命令;
+                                链接命令 + "\"" = 链接命令;
+                            }
                         } 否则 {
                             如果 (交叉可执行 ?= 1) {
                                 链接命令 + " && " = 链接命令;
@@ -766,18 +786,28 @@
                         链接命令 + "\"" + 输出路径 + "\"" = 链接命令;
                     } 否则如果 (是否动态库 ?= 3) {
                         // 阶段5F：WebAssembly 模块 —— llc 按 wasm32 目标出目标文件，
-                        // 再由 wasm-ld 直出 .wasm。无入口（--no-entry）：模块由宿主调用
-                        // 「导出」函数；未定义符号（printf/malloc 等）留给宿主提供
-                        // （--allow-undefined），与 .so 的「不链运行时」策略一致。
+                        // 再由 wasm-ld 直出 .wasm。默认无入口：模块由宿主调用「导出」函数，
+                        // 未定义符号（printf/malloc 等）留给宿主提供（--allow-undefined）。
+                        // 目标为 WASI 时（--目标=wasm32-wasip1）改为命令模块：链入交叉运行时，
+                        // 以 _start 为入口，经 wasi_snapshot_preview1 输出/退出，可直接运行。
                         链接命令 + " && llc" = 链接命令;
                         链接命令 + llc优化参数 = 链接命令;
                         链接命令 + " -mtriple=" = 链接命令;
                         链接命令 + 目标三元组 = 链接命令;
                         链接命令 + " -filetype=obj " = 链接命令;
                         链接命令 + 编译输入bc = 链接命令;
-                        链接命令 + " -o riyue_obj_%i.o && wasm-ld --no-entry --export-all --allow-undefined riyue_obj_%i.o -o riyue_wasm_%i.wasm && move /Y riyue_wasm_%i.wasm \"" = 链接命令;
-                        链接命令 + 输出路径 = 链接命令;
-                        链接命令 + "\"" = 链接命令;
+                        链接命令 + " -o riyue_obj_%i.o" = 链接命令;
+                        如果 (目标为WASI ?= 1) {
+                            链接命令 + " && clang --target=" = 链接命令;
+                            链接命令 + 目标三元组 = 链接命令;
+                            链接命令 + " -ffreestanding -nostdlibinc -O1 -c \"源/运行时/交叉运行时.c\" -o riyue_crt_%i.o && wasm-ld --entry=_start --export=_start -z stack-size=2097152 riyue_crt_%i.o riyue_obj_%i.o -o riyue_wasm_%i.wasm && move /Y riyue_wasm_%i.wasm \"" = 链接命令;
+                            链接命令 + 输出路径 = 链接命令;
+                            链接命令 + "\" && del riyue_crt_%i.o" = 链接命令;
+                        } 否则 {
+                            链接命令 + " && wasm-ld --no-entry --export-all --allow-undefined riyue_obj_%i.o -o riyue_wasm_%i.wasm && move /Y riyue_wasm_%i.wasm \"" = 链接命令;
+                            链接命令 + 输出路径 = 链接命令;
+                            链接命令 + "\"" = 链接命令;
+                        }
                     } 否则 {
                         如果 (交叉可执行 ?= 1) {
                             // 阶段5G：aarch64 Linux 静态可执行文件（ELF64）。
