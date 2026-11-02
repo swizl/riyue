@@ -388,13 +388,19 @@ CASE_NO=0
 }
 
 专项自测() {
-    if ! 运行时读取自测; then
-        FAIL=$((FAIL + 1))
-        FAIL_LIST="$FAIL_LIST 运行时读取自测"
-    fi
+    # 前置构建：示例/C互操作测试.心 运行期要加载 ./_cinterop.dll，分片模式也必须先
+    # 构建，否则该用例必然失败（缺的是依赖，不是用例本身）。
     if ! 构建C互操作库; then
         FAIL=$((FAIL + 1))
         FAIL_LIST="$FAIL_LIST C互操作库(cmp)"
+    fi
+    if [ "$SHARD_TOTAL" -gt 1 ]; then
+        return 0
+    fi
+
+    if ! 运行时读取自测; then
+        FAIL=$((FAIL + 1))
+        FAIL_LIST="$FAIL_LIST 运行时读取自测"
     fi
     if ! 链接互操作自测; then
         FAIL=$((FAIL + 1))
@@ -419,11 +425,10 @@ CASE_NO=0
 }
 
 运行回归() {
-    # 全量模式先跑专项自测；分片模式跳过——这些是全局检查（C 互操作构建、链接、
-    # 头文件、结构体按值、档位、错误诊断），每片重复跑既无意义又最吃内存。
-    if [ "$SHARD_TOTAL" -eq 1 ]; then
-        专项自测
-    fi
+    # 全量模式：前置构建 + 全套专项自测；分片模式只做前置构建（C 互操作库），
+    # 其余全局检查（链接、头文件、结构体按值、档位、错误诊断）每片重复跑既无
+    # 意义又最吃内存，故跳过。
+    专项自测
 
     CASES=(示例/*.心)
     N_CASES=${#CASES[@]}
@@ -440,7 +445,7 @@ CASE_NO=0
             return 1
         fi
         EXPECT_PASS=$((TO - FROM + 1))
-        echo "分片 $SHARD_INDEX/$SHARD_TOTAL：用例序号 $FROM..$TO（$EXPECT_PASS 例），已跳过专项自测"
+        echo "分片 $SHARD_INDEX/$SHARD_TOTAL：用例序号 $FROM..$TO（$EXPECT_PASS 例），已跳过其余专项自测"
     fi
 
     IDX=0

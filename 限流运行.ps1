@@ -121,11 +121,15 @@ if (-not $selfAssigned) {
 
 Write-Host ("作业硬限：总提交 {0} MB / 单进程 {1} MB / 最大进程 {2}；脚本 {3}" -f $内存上限MB, $单进程上限MB, $最大进程数, $脚本)
 
+# 登录 shell 的 profile 可能把 cwd 切到 HOME，故显式 cd 回仓库根（POSIX 形式路径）。
+$root = (Get-Location).Path
+$msysRoot = ($root -replace '\\', '/') -replace '^([A-Za-z]):', '/$1'
+
 $psi = New-Object System.Diagnostics.ProcessStartInfo
 $psi.FileName = $Bash
-$psi.Arguments = '-lc "bash ' + $脚本 + '"'
+$psi.Arguments = '-lc "cd ' + $msysRoot + ' && bash ' + $脚本 + '"'
 $psi.UseShellExecute = $false
-$psi.WorkingDirectory = (Get-Location).Path
+$psi.WorkingDirectory = $root
 $psi.EnvironmentVariables['MSYSTEM'] = 'MINGW64'
 $psi.EnvironmentVariables['MSYS_NO_PATHCONV'] = '1'
 $psi.EnvironmentVariables['MSYS2_ARG_CONV_EXCL'] = '*'
