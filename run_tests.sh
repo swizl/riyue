@@ -26,11 +26,53 @@ case "$(uname -s)" in
         ;;
 esac
 
-# 门禁：Pass 不得低于用例总数，Fail 必须为 0（当前 示例/*.心 共 221 个）。
+# 门禁：全量跑时 Pass 不得低于用例总数，Fail 必须为 0（当前 示例/*.心 共 221 个）。
 # 约束：本脚本必须单独串行运行——不得与其他编译/回归任务并发（两份 LLVM 工具链
-# 同时压提交内存会触发 MSYS2 fork 半残 + 整机 bugcheck 0xEF，见 内存检查 注释）。
+# 同时压提交内存会触发 MSYS2 fork 半残 + 整机 bugcheck 0xEF，见 守卫 注释）。
+#
+# 用法：
+#   ./run_tests.sh               全量：含专项自测，门禁 Pass >= MIN_PASS 且 Fail = 0
+#   ./run_tests.sh --分片 1/8    只跑第 1 片：示例按文件名排序切块，跳过专项自测，
+#                                门禁 = 本片全过（Pass = 本片用例数、Fail = 0）
+#
+# 分片用意：单次风险面从 221 例收缩到 1/N；配合 限流运行.ps1 的 Job Object 硬上限
+# （串行执行时作业上限≈单用例上限），一片里的用例作恶只会拖垮这一片，不会拖垮整机。
 MIN_PASS=221
 LOG=阶段/回归.log
+
+# 分片参数（变量名用 ASCII：bash 的变量名不保证支持多字节，函数名可以）
+SHARD_INDEX=0
+SHARD_TOTAL=1
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --分片)
+            shift
+            SHARD_ARG=${1:-}
+            case "$SHARD_ARG" in
+                [0-9]*/[0-9]*) ;;
+                *) echo "用法: $0 [--分片 K/N]" >&2; exit 2 ;;
+            esac
+            SHARD_INDEX=${SHARD_ARG%%/*}
+            SHARD_TOTAL=${SHARD_ARG##*/}
+            if [ "$SHARD_TOTAL" -lt 1 ] || [ "$SHARD_INDEX" -lt 1 ] || [ "$SHARD_INDEX" -gt "$SHARD_TOTAL" ]; then
+                echo "分片参数非法: $SHARD_ARG（要求 1 <= K <= N）" >&2
+                exit 2
+            fi
+            shift
+            ;;
+        -h|--帮助)
+            echo "用法: $0 [--分片 K/N]"
+            exit 0
+            ;;
+        *)
+            echo "未知参数: $1（用法: $0 [--分片 K/N]）" >&2
+            exit 2
+            ;;
+    esac
+done
+if [ "$SHARD_TOTAL" -gt 1 ]; then
+    LOG=阶段/回归_$SHARD_INDEX-$SHARD_TOTAL.log
+fi
 
 PASS=0
 FAIL=0
@@ -61,23 +103,29 @@ COMPILE_RETRY=2
 # 提交内存守卫：LLVM 工具链在个别重用例上会短时吃满提交额度，耗尽后 MSYS2 fork
 # 只拷贝一半（0xC000012D / Win32 error 299），关键系统进程被牵连 → bugcheck 0xEF。
 # 每 MEM_GUARD_EVERY 例探一次剩余提交内存：< WARN_MB 提示并喘息，< FLOOR_MB 立即中止。
+# 加固：杀残留与探内存合到同一次 PowerShell 调用——原先每轮起两个约 60MB 的
+# powershell，本身就是额外的提交压力（221 例 × 2 次）。
 MEM_GUARD_EVERY=20
 MEM_WARN_MB=2000
 MEM_FLOOR_MB=800
 CASE_NO=0
 
-内存检查() {
-    [ "$(uname -s)" = "Linux" ] && return 0
-    可用=$(/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe -NoProfile -NonInteractive -Command \
-        "(Get-CimInstance Win32_OperatingSystem).FreeVirtualMemory" 2>/dev/null | tr -d '\r\n ')
-    [ -z "$可用" ] && return 0
-    可用MB=$((可用 / 1024))
-    if [ "$可用MB" -lt "$MEM_FLOOR_MB" ]; then
-        echo "ABORT: 提交内存仅剩 ${可用MB}MB（< ${MEM_FLOOR_MB}MB），中止以免拖垮系统"
+守卫() {
+    if [ "$(uname -s)" = "Linux" ]; then
+        清理产物
+        return 0
+    fi
+    AVAIL=$(/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe -NoProfile -NonInteractive -Command \
+        "Get-Process -Name '日月','out_t','clang','clang++','ld','llc' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue; (Get-CimInstance Win32_OperatingSystem).FreeVirtualMemory" 2>/dev/null | tr -dc '0-9')
+    清理产物
+    [ -z "$AVAIL" ] && return 0
+    AVAIL_MB=$((AVAIL / 1024))
+    if [ "$AVAIL_MB" -lt "$MEM_FLOOR_MB" ]; then
+        echo "ABORT: 提交内存仅剩 ${AVAIL_MB}MB（< ${MEM_FLOOR_MB}MB），中止以免拖垮系统"
         return 1
     fi
-    if [ "$可用MB" -lt "$MEM_WARN_MB" ]; then
-        echo "WARN: 提交内存仅剩 ${可用MB}MB，暂停 5 秒等待系统回收"
+    if [ "$AVAIL_MB" -lt "$MEM_WARN_MB" ]; then
+        echo "WARN: 提交内存仅剩 ${AVAIL_MB}MB，暂停 5 秒等待系统回收"
         sleep 5
     fi
     return 0
@@ -339,7 +387,7 @@ CASE_NO=0
     return 1
 }
 
-运行回归() {
+专项自测() {
     if ! 运行时读取自测; then
         FAIL=$((FAIL + 1))
         FAIL_LIST="$FAIL_LIST 运行时读取自测"
@@ -368,12 +416,42 @@ CASE_NO=0
         FAIL=$((FAIL + 1))
         FAIL_LIST="$FAIL_LIST 错误诊断"
     fi
-    for f in 示例/*.心; do
+}
+
+运行回归() {
+    # 全量模式先跑专项自测；分片模式跳过——这些是全局检查（C 互操作构建、链接、
+    # 头文件、结构体按值、档位、错误诊断），每片重复跑既无意义又最吃内存。
+    if [ "$SHARD_TOTAL" -eq 1 ]; then
+        专项自测
+    fi
+
+    CASES=(示例/*.心)
+    N_CASES=${#CASES[@]}
+    FROM=1
+    TO=$N_CASES
+    EXPECT_PASS=$MIN_PASS
+    if [ "$SHARD_TOTAL" -gt 1 ]; then
+        CHUNK=$(( (N_CASES + SHARD_TOTAL - 1) / SHARD_TOTAL ))
+        FROM=$(( (SHARD_INDEX - 1) * CHUNK + 1 ))
+        TO=$(( FROM + CHUNK - 1 ))
+        [ "$TO" -gt "$N_CASES" ] && TO=$N_CASES
+        if [ "$FROM" -gt "$N_CASES" ]; then
+            echo "分片 $SHARD_INDEX/$SHARD_TOTAL 无对应用例（用例总数 $N_CASES），请检查分片参数" >&2
+            return 1
+        fi
+        EXPECT_PASS=$((TO - FROM + 1))
+        echo "分片 $SHARD_INDEX/$SHARD_TOTAL：用例序号 $FROM..$TO（$EXPECT_PASS 例），已跳过专项自测"
+    fi
+
+    IDX=0
+    for f in "${CASES[@]}"; do
+        IDX=$((IDX + 1))
+        [ "$IDX" -lt "$FROM" ] && continue
+        [ "$IDX" -gt "$TO" ] && break
         name=$(basename "$f" .心)
         CASE_NO=$((CASE_NO + 1))
         if [ $((CASE_NO % MEM_GUARD_EVERY)) -eq 0 ]; then
-            清理残留
-            if ! 内存检查; then
+            if ! 守卫; then
                 FAIL=$((FAIL + 1))
                 FAIL_LIST="$FAIL_LIST $name(oom_abort)"
                 break
@@ -476,11 +554,11 @@ CASE_NO=0
     if [ $FAIL -gt 0 ]; then
         echo "Failed:$FAIL_LIST"
     fi
-    if [ "$FAIL" -eq 0 ] && [ "$PASS" -ge "$MIN_PASS" ]; then
-        echo "门禁: 通过 (Pass=$PASS >= $MIN_PASS, Fail=0)"
+    if [ "$FAIL" -eq 0 ] && [ "$PASS" -ge "$EXPECT_PASS" ]; then
+        echo "门禁: 通过 (Pass=$PASS >= $EXPECT_PASS, Fail=0)"
         return 0
     fi
-    echo "门禁: 未通过 (Pass=$PASS, Fail=$FAIL；要求 Pass>=$MIN_PASS 且 Fail=0)"
+    echo "门禁: 未通过 (Pass=$PASS, Fail=$FAIL；要求 Pass>=$EXPECT_PASS 且 Fail=0)"
     return 1
 }
 
@@ -488,8 +566,7 @@ mkdir -p 阶段
 : > "$LOG"
 # 跑前清场 + 提交内存预检：避免上一轮残留的 日月/out_t 占着文件锁与提交内存；
 # 提交内存不足时宁可不开跑，也不要让 MSYS2 fork 失败把整机拖垮。
-清理残留
-if ! 内存检查; then
+if ! 守卫; then
     echo "门禁: 未通过 (启动时提交内存不足，未开跑)"
     exit 9
 fi
